@@ -26,11 +26,12 @@ class StoryBar {
     private var prev: List<IntArray>? = null
     private var pendingAt = -1L
     private var pendingSize = -1
+    private var fullAt = -1L
     /** เวลาที่ขึ้นช่องถัดไป (ms นับจากเริ่มอัด) หรือ -1 */
     var advancedAtMs = -1L
         private set
 
-    @Synchronized fun reset() { lastLocateAt = -1000L; y = -1; prev = null; pendingAt = -1L; pendingSize = -1; advancedAtMs = -1L }
+    @Synchronized fun reset() { fullAt = -1L; lastLocateAt = -1000L; y = -1; prev = null; pendingAt = -1L; pendingSize = -1; advancedAtMs = -1L }
 
     /** อ่านพิกเซลจาก Image (RGBA) ตรง ๆ — ตรวจได้ทุกเฟรมที่จอแสดง */
     private class Px(img: Image) : Pix {
@@ -107,6 +108,14 @@ class StoryBar {
         val p = prev
         prev = r
         if (p == null || r.isEmpty()) return
+        // แถบขาวเต็มถึงขวาสุด = สตอรี่ช่องสุดท้ายจบ (ต่อไปจะเป็นของคนถัดไป)
+        // ต้องค่อย ๆ เต็มมาจริง (รอบก่อนเกือบถึงแล้ว) ไม่ใช่กระโดดเต็มเพราะวิดีโอข้างหลังสว่าง
+        val end = r[r.size - 1][1]
+        val pEnd = if (p.isEmpty()) 0 else p[p.size - 1][1]
+        if (end >= N * 0.95f && (fullAt >= 0 || pEnd >= N * 0.95f - 4)) {
+            if (fullAt < 0) fullAt = tMs
+            if (tMs - fullAt >= 60 && fullAt >= 2000) { advancedAtMs = fullAt; return }
+        } else fullAt = -1L
         // ยืนยันเฟรมถัด ๆ มา (≥60 ms): ยังมีจำนวนช่องเท่าเดิม (หรือมากกว่า) = ขึ้นช่องใหม่จริง
         if (pendingAt >= 0) {
             // 2 วิแรกของการอัดไม่นับ (กันพลาดตอนเพิ่งเริ่ม)

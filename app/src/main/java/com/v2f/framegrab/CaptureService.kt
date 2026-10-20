@@ -1454,8 +1454,9 @@ class CaptureService : Service() {
         val bottom = screenH - sysDimen("navigation_bar_height") - win - m
         val cands = listOf(
             (lp.x + offX) to (lp.y + offY),
-            (screenW - win - m) to top, m to top,
+            // มุมล่างก่อน: มุมบนจะบังแถบความคืบหน้าของสตอรี่ (ใช้ตรวจว่าจบสตอรี่)
             (screenW - win - m) to bottom, m to bottom,
+            (screenW - win - m) to top, m to top,
         )
         val pick = if (full) null else cands.firstOrNull { (x, y) ->
             !android.graphics.RectF.intersects(
