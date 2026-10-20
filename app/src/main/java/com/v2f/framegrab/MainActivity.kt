@@ -39,6 +39,8 @@ class MainActivity : Activity() {
     private lateinit var crashBox: TextView
     private lateinit var cropBtn: TextView
     private lateinit var clearBtn: TextView
+    private lateinit var appsPermBtn: TextView
+    private lateinit var appsNote: TextView
 
     private fun dp(v: Float): Int =
         TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, resources.displayMetrics).roundToInt()
@@ -103,6 +105,21 @@ class MainActivity : Activity() {
             isChecked = Prefs.autoSaveSingle(this@MainActivity)
             setOnCheckedChangeListener { _, v -> Prefs.setAutoSaveSingle(this@MainActivity, v) }
         }, gap(14f))
+
+        col.addView(CheckBox(this).apply {
+            text = "แสดงปุ่มลอยเฉพาะใน TikTok, Instagram, Facebook"
+            setTextColor(Color.WHITE)
+            isChecked = Prefs.onlyInVideoApps(this@MainActivity)
+            setOnCheckedChangeListener { _, v -> Prefs.setOnlyInVideoApps(this@MainActivity, v); refresh() }
+        }, gap(10f))
+        appsPermBtn = button("🔓 อนุญาต \"การเข้าถึงข้อมูลการใช้งาน\" ให้ FrameGrab", 0xFF8A5A00.toInt()) {
+            Toast.makeText(this, "เลือก FrameGrab แล้วเปิด \"อนุญาตการเข้าถึงข้อมูลการใช้งาน\"", Toast.LENGTH_LONG).show()
+            try { startActivity(AppWatch.permissionIntent(this)) }
+            catch (e: Exception) { startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) }
+        }
+        col.addView(appsPermBtn, gap(6f))
+        appsNote = label("", 12.5f)
+        col.addView(appsNote, gap(2f))
 
         col.addView(label("ส่วนที่จะเก็บ", 16f, Color.WHITE), gap(26f))
         cropBtn = button("", 0xFF2A2D3A.toInt()) { choosePreset() }
@@ -180,6 +197,14 @@ class MainActivity : Activity() {
         crashBox.visibility = if (crash != null) android.view.View.VISIBLE else android.view.View.GONE
         if (crash != null) crashBox.text = "⚠️ ครั้งก่อนแอปปิดเอง — แตะเพื่อคัดลอกรายละเอียด แล้ววางส่งให้ Claude\n\n" +
             crash.lineSequence().take(6).joinToString("\n")
+        val onlyApps = Prefs.onlyInVideoApps(this)
+        val usageOk = AppWatch.hasPermission(this)
+        appsPermBtn.visibility = if (onlyApps && !usageOk) android.view.View.VISIBLE else android.view.View.GONE
+        appsNote.text = when {
+            !onlyApps -> "ปุ่มลอยจะแสดงในทุกแอป"
+            usageOk -> "✅ ปุ่มลอยจะซ่อนเองเมื่อออกจาก TikTok / IG / Facebook"
+            else -> "ต้องอนุญาตก่อน แอปถึงจะรู้ว่าตอนนี้เปิดแอปไหนอยู่ (ระหว่างนี้ปุ่มลอยจะแสดงทุกแอป)"
+        }
         val overlayOk = Settings.canDrawOverlays(this)
         status.text = when {
             CaptureService.running -> "✅ ปุ่มลอยทำงานอยู่ — เปิดแอปที่ต้องการแล้วแตะปุ่ม 🎞️"
@@ -227,7 +252,9 @@ class MainActivity : Activity() {
 
     private fun onStartClicked() {
         if (CaptureService.running) {
-            startService(Intent(this, CaptureService::class.java).setAction(CaptureService.ACTION_QUIT))
+            // ปิดจากหน้าแอป: ปิดปุ่มลอยและกรอบ แต่หน้าแอปยังเปิดอยู่
+            startService(Intent(this, CaptureService::class.java).setAction(CaptureService.ACTION_QUIT)
+                .putExtra(CaptureService.EXTRA_EXIT_APP, false))
             status.postDelayed({ refresh() }, 300)
             return
         }

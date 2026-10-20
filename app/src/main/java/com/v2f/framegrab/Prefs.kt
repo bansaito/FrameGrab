@@ -40,6 +40,10 @@ object Prefs {
     fun autoSaveSingle(c: Context): Boolean = sp(c).getBoolean("autoSaveSingle", true)
     fun setAutoSaveSingle(c: Context, v: Boolean) = sp(c).edit().putBoolean("autoSaveSingle", v).apply()
 
+    /** แสดงปุ่มลอยเฉพาะใน TikTok / Instagram / Facebook */
+    fun onlyInVideoApps(c: Context): Boolean = sp(c).getBoolean("onlyInApps", true)
+    fun setOnlyInVideoApps(c: Context, v: Boolean) = sp(c).edit().putBoolean("onlyInApps", v).apply()
+
     fun hasCustomCrop(c: Context): Boolean = sp(c).contains("cropL")
     fun cropRect(c: Context): FloatArray = sp(c).let {
         floatArrayOf(it.getFloat("cropL", 0f), it.getFloat("cropT", 0f), it.getFloat("cropR", 1f), it.getFloat("cropB", 1f))

@@ -53,6 +53,7 @@ class CaptureService : Service() {
         const val ACTION_START = "com.v2f.framegrab.START"
         const val ACTION_STOP_REC = "com.v2f.framegrab.STOP_REC"
         const val ACTION_QUIT = "com.v2f.framegrab.QUIT"
+        const val EXTRA_EXIT_APP = "exitApp"
         const val EXTRA_CODE = "code"
         const val EXTRA_DATA = "data"
         private const val CHANNEL = "capture"
@@ -94,6 +95,8 @@ class CaptureService : Service() {
     private val handles = ArrayList<Pair<HandleView, WindowManager.LayoutParams>>()
     private val handleModes = intArrayOf(1 or 2, 4 or 2, 1 or 8, 4 or 8, 16)
     @Volatile private var draggingGuide = false
+    @Volatile private var appHidden = false     // ไม่ได้อยู่ใน TikTok/IG/FB → ซ่อนทุกอย่าง
+    @Volatile private var holdHidden = false    // กำลังซ่อนเพื่อจับภาพ ห้ามโผล่กลับเอง
     private val locBuf = IntArray(2)
     private var menuOpen = false
     private var lastOutsideClose = 0L
@@ -127,7 +130,7 @@ class CaptureService : Service() {
         when (intent?.action) {
             ACTION_START -> start(intent)
             ACTION_STOP_REC -> stopRecording(dropLastMs = 1500) // ตัดภาพตอนดึงแถบแจ้งเตือนลงมา
-            ACTION_QUIT -> quit()
+            ACTION_QUIT -> quit(exitApp = intent.getBooleanExtra(EXTRA_EXIT_APP, true))
         }
         return START_NOT_STICKY
     }
@@ -432,17 +435,20 @@ class CaptureService : Service() {
         scheduleFade()
         refreshGuide()
         main.postDelayed(liveTick, 1000)
+        main.post(appTick)
     }
 
     private fun removeOverlays() {
         main.removeCallbacks(liveTick)
+        main.removeCallbacks(appTick)
         for ((v, _) in handles) try { wm.removeView(v) } catch (e: Exception) { }
         handles.clear()
         editBar?.let { try { wm.removeView(it) } catch (e: Exception) { } }
         editBar = null
         guideEditing = false
         closeMenu()
-        removeOverlays()
+        root?.let { try { wm.removeView(it) } catch (e: Exception) { } }
+        root = null
         guide?.let { try { wm.removeView(it) } catch (e: Exception) { } }
         guide = null
     }
@@ -510,7 +516,7 @@ class CaptureService : Service() {
             menuBox.addView(menuRow("⌛  นานสุด ${Prefs.maxLabel(Prefs.maxSeconds(this))}") { cycleMax() })
             menuBox.addView(menuRow("🖼  ดูภาพ (${FrameStore.count(this)})") { openViewer() })
             menuBox.addView(menuRow("⚙️  ตั้งค่า / เปิดแอป") { openApp() })
-            menuBox.addView(menuRow("✕  ปิดปุ่มลอย") { quit() })
+            menuBox.addView(menuRow("✕  ปิดปุ่มลอยและแอป") { quit() })
         } else {
             menuBox.addView(menuRow("‹  เลือกกรอบ") { menuPage = 0; buildMenu(); layoutMenu() })
             for (p in Cropper.PRESETS) {
@@ -673,6 +679,28 @@ class CaptureService : Service() {
         return sb
     }
 
+    /** ดูว่าแอปไหนเปิดอยู่ แสดงปุ่มลอยเฉพาะใน TikTok / Instagram / Facebook */
+    private val appTick = object : Runnable {
+        override fun run() {
+            if (root == null) return
+            val svc = this@CaptureService
+            val enabled = Prefs.onlyInVideoApps(svc) && AppWatch.hasPermission(svc)
+            val fg = if (enabled) AppWatch.foreground(svc) else null
+            val hide = enabled && fg != null && fg !in AppWatch.VIDEO_APPS
+            if (hide != appHidden) {
+                appHidden = hide
+                if (hide) {
+                    if (guideEditing) finishGuideEdit(false)
+                    closeMenu()
+                    if (!recording && !holdHidden) showOverlay() // showOverlay จะซ่อนให้เพราะ appHidden
+                } else if (!recording && !holdHidden) {
+                    showOverlay()
+                }
+            }
+            main.postDelayed(this, 700)
+        }
+    }
+
     /** วัดสัดส่วนวิดีโอทุก ~1 วินาที และให้กรอบบนจอตามวิดีโอแบบเรียลไทม์ */
     private val liveTick = object : Runnable {
         override fun run() {
@@ -708,7 +736,7 @@ class CaptureService : Service() {
     }
 
     private fun shouldShowGuide(): Boolean =
-        guideEditing || (Prefs.showGuide(this) && !recording && root?.visibility == View.VISIBLE && guide?.rect != null)
+        guideEditing || (!appHidden && Prefs.showGuide(this) && !recording && root?.visibility == View.VISIBLE && guide?.rect != null)
 
     // ---------- จุดจับบนกรอบ (ลากได้ทันที ไม่ต้องเข้าเมนู) ----------
     @SuppressLint("ClickableViewAccessibility")
@@ -914,6 +942,7 @@ class CaptureService : Service() {
 
     /** ซ่อนทุกอย่างของเราก่อนจับภาพ */
     private fun hideOverlay() {
+        holdHidden = true
         if (guideEditing) finishGuideEdit(false)
         closeMenu()
         guide?.visibility = View.INVISIBLE
@@ -926,6 +955,15 @@ class CaptureService : Service() {
 
     private fun showOverlay() {
         val r = root ?: return
+        holdHidden = false
+        if (appHidden && !recording) { // ไม่ได้อยู่ในแอปวิดีโอ: ซ่อนไว้
+            r.visibility = View.INVISIBLE
+            lp.flags = lp.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+            wm.updateViewLayout(r, lp)
+            guide?.visibility = View.INVISIBLE
+            syncHandles()
+            return
+        }
         r.visibility = View.VISIBLE
         lp.flags = lp.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
         wm.updateViewLayout(r, lp)
@@ -994,20 +1032,29 @@ class CaptureService : Service() {
     private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_SHORT).show()
 
     // ---------- ปิด ----------
-    private fun quit() {
+    /**
+     * ปิดทุกอย่าง: ปุ่มลอย, เมนู, กรอบ, จุดจับ, การจับภาพหน้าจอ
+     * exitApp = ปิดหน้าจอของแอปด้วย (ปิดจากปุ่มลอย/แจ้งเตือน)
+     */
+    private fun quit(exitApp: Boolean = true) {
         if (quitting) return
         quitting = true
         recording = false
         running = false
         main.removeCallbacks(fadeRunnable)
-        root?.let { try { wm.removeView(it) } catch (e: Exception) { } }
-        root = null
+        removeOverlays()
         display?.release(); display = null
         synchronized(lock) { latest?.close(); latest = null }
         reader?.close(); reader = null
         projection?.let { p -> projection = null; try { p.stop() } catch (e: Exception) { } }
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
+        if (exitApp) {
+            // ปิดหน้าจอของแอปที่เปิดค้างอยู่ทั้งหมด
+            try {
+                getSystemService(android.app.ActivityManager::class.java).appTasks.forEach { it.finishAndRemoveTask() }
+            } catch (e: Exception) { }
+        }
     }
 
     override fun onDestroy() {
