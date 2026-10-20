@@ -32,6 +32,15 @@ object Prefs {
     }
     fun setCropPreset(c: Context, v: String) = sp(c).edit().putString("cropPreset", v).apply()
 
+    /** v3.3: เวอร์ชันก่อนลากกรอบแล้วกลายเป็น "custom" ถาวร (กรอบหยุดตามวิดีโอ) → คืนเป็นอัตโนมัติครั้งเดียว */
+    fun migrateCustomOnce(c: Context) {
+        val p = sp(c)
+        if (p.getBoolean("mig33", false)) return
+        p.edit().putBoolean("mig33", true).apply {
+            if (p.getString("cropPreset", null) == "custom") putString("cropPreset", "auto")
+        }.apply()
+    }
+
     /** แสดงกรอบบนจอ (ซ่อนเองตอนจับภาพ จึงไม่ติดในภาพ) */
     fun showGuide(c: Context): Boolean = sp(c).getBoolean("showGuide", true)
     fun setShowGuide(c: Context, v: Boolean) = sp(c).edit().putBoolean("showGuide", v).apply()

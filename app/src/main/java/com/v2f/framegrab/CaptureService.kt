@@ -110,6 +110,9 @@ class CaptureService : Service() {
     @Volatile private var holdHidden = false    // กำลังซ่อนเพื่อจับภาพ ห้ามโผล่กลับเอง
     @Volatile private var inOwnApp = false      // กำลังเปิดหน้าแอป FrameGrab เอง
     @Volatile private var ownUiHidden = false   // หน้าดูภาพ/หน้าลากกรอบเปิดอยู่
+    // ลากกรอบชั่วคราว (กรอบแบบอัตโนมัติ/สัดส่วน): ใช้กับวิดีโอนี้ พอเปลี่ยนวิดีโอจะกลับไปตามวิดีโอเอง
+    @Volatile private var overrideRect: android.graphics.RectF? = null   // พิกัดจอ
+    @Volatile private var lastDetected: android.graphics.RectF? = null   // กรอบที่ตรวจได้ล่าสุด (พิกัดจอ)
     @Volatile private var feedHidden = false    // ไม่ได้อยู่หน้าสตอรี่ และตั้งให้แสดงเฉพาะสตอรี่
     private var storyMiss = 0                   // นับครั้งที่ไม่เจอหน้าสตอรี่ติดกัน (กันกะพริบ)
     @Volatile private var capturedAppVisible = true // Android 14+ อัด "แอปเดียว": แอปนั้นอยู่บนจอไหม
@@ -143,6 +146,7 @@ class CaptureService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
+        Prefs.migrateCustomOnce(this)
         super.onCreate()
         Crash.install(this)
         wm = getSystemService(WindowManager::class.java)
@@ -266,7 +270,7 @@ class CaptureService : Service() {
                 val msOfDay = ((now.get(java.util.Calendar.HOUR_OF_DAY) * 60 + now.get(java.util.Calendar.MINUTE)) * 60 +
                     now.get(java.util.Calendar.SECOND)) * 1000L + now.get(java.util.Calendar.MILLISECOND)
                 updateGuideFrom(bmp)
-                val out = Cropper.apply(bmp, Cropper.rectFor(this, bmp))
+                val out = Cropper.apply(bmp, cropRectFor(bmp))
                 try {
                     val f = FrameStore.save(this, out, 's', msOfDay)
                     ok = true
@@ -312,7 +316,7 @@ class CaptureService : Service() {
             while (latestAt <= hiddenAt + 60 && SystemClock.uptimeMillis() < end) SystemClock.sleep(10)
             // วัดกรอบจากภาพแรก (ใช้ทั้งคลิป) แล้ววางปุ่ม ■ ไว้นอกกรอบถ้าทำได้
             grabBitmap()?.let { b ->
-                recRect = Cropper.rectFor(this@CaptureService, b); recBmpW = b.width; recBmpH = b.height
+                recRect = cropRectFor(b); recBmpW = b.width; recBmpH = b.height
                 b.recycle()
             }
             if (showStop) {
@@ -336,7 +340,7 @@ class CaptureService : Service() {
                     val bmp = grabBitmap()
                     if (bmp != null) {
                         // ใช้กรอบเดียวกันทั้งคลิป (คำนวณจากภาพแรก) ภาพจะได้ขนาดเท่ากันทุกภาพ
-                        val rect = recRect ?: Cropper.rectFor(this@CaptureService, bmp).also { recRect = it }
+                        val rect = recRect ?: cropRectFor(bmp).also { recRect = it }
                         val out = Cropper.apply(bmp, rect)
                         try { FrameStore.save(this@CaptureService, out, 'c', el, 90); recCount++ } catch (e: Exception) { }
                         if (out !== bmp) out.recycle()
@@ -719,9 +723,14 @@ class CaptureService : Service() {
         val sx = screenW / bmp.width.toFloat()
         val sy = screenH / bmp.height.toFloat()
         val full = r.left <= 0 && r.top <= 0 && r.right >= bmp.width && r.bottom >= bmp.height
-        val rect = if (full || preset == "full") null
+        val detected = if (full || preset == "full") null
             else android.graphics.RectF(r.left * sx, r.top * sy, r.right * sx, r.bottom * sy)
+        // เปลี่ยนวิดีโอ (กรอบที่ตรวจได้ขยับมาก) → ยกเลิกการลากชั่วคราว กลับไปตามวิดีโอ
+        if (changed(detected, lastDetected)) overrideRect = null
+        lastDetected = detected
+        val rect = overrideRect ?: detected
         main.post {
+            if (draggingGuide) return@post
             guide?.let { g ->
                 g.rect = rect
                 // ป้ายบอกสัดส่วนจริงของกรอบ (เช่น 9:15.7) ไม่ใช่แค่ชื่อที่เลือก
@@ -732,6 +741,26 @@ class CaptureService : Service() {
                 syncHandles()
             }
         }
+    }
+
+    /** กรอบที่จะใช้ตัดภาพ: ถ้าลากปรับชั่วคราวไว้ ใช้อันนั้น ไม่งั้นคำนวณตามตั้งค่า */
+    private fun cropRectFor(bmp: Bitmap): android.graphics.Rect {
+        val o = overrideRect
+        if (o != null && screenW > 0 && screenH > 0) {
+            val sx = bmp.width / screenW.toFloat(); val sy = bmp.height / screenH.toFloat()
+            return android.graphics.Rect(
+                (o.left * sx).roundToInt().coerceIn(0, bmp.width - 1), (o.top * sy).roundToInt().coerceIn(0, bmp.height - 1),
+                (o.right * sx).roundToInt().coerceIn(1, bmp.width), (o.bottom * sy).roundToInt().coerceIn(1, bmp.height)
+            )
+        }
+        return Cropper.rectFor(this, bmp)
+    }
+
+    /** กรอบสองอันต่างกันพอจะนับว่า "เปลี่ยนวิดีโอ" ไหม (ขอบขยับเกิน 3% ของจอ) */
+    private fun changed(a: android.graphics.RectF?, b: android.graphics.RectF?): Boolean {
+        if (a == null || b == null) return a != b
+        val tx = screenW * 0.03f; val ty = screenH * 0.03f
+        return abs(a.left - b.left) > tx || abs(a.right - b.right) > tx || abs(a.top - b.top) > ty || abs(a.bottom - b.bottom) > ty
     }
 
     /** วัดสัดส่วนวิดีโอจากภาพ แล้วอัปเดตปุ่มกลม/แจ้งเตือนถ้าเปลี่ยน (เรียกจากเธรดทำงาน) */
@@ -906,9 +935,15 @@ class CaptureService : Service() {
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 draggingGuide = false
                 val r = g.rect ?: return
-                // ปล่อยนิ้ว = บันทึกเป็นกรอบกำหนดเองทันที
-                Prefs.setCropRect(this, r.left / screenW, r.top / screenH, r.right / screenW, r.bottom / screenH)
-                Prefs.setCropPreset(this, "custom")
+                val preset = Prefs.cropPreset(this)
+                if (preset == "custom" || preset == "full") {
+                    // กรอบที่ลากไว้: บันทึกถาวร
+                    Prefs.setCropRect(this, r.left / screenW, r.top / screenH, r.right / screenW, r.bottom / screenH)
+                    Prefs.setCropPreset(this, "custom")
+                } else {
+                    // อัตโนมัติ/สัดส่วน: ปรับชั่วคราวเฉพาะวิดีโอนี้ เลื่อนไปวิดีโอใหม่แล้วกรอบจะตามวิดีโอเอง
+                    overrideRect = android.graphics.RectF(r)
+                }
                 g.showRatio = false
                 g.label = Cropper.ratioTag(r.width().toInt(), r.height().toInt())
                 g.invalidate()
