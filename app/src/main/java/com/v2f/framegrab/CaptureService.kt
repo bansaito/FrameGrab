@@ -112,14 +112,19 @@ class CaptureService : Service() {
     @Volatile private var ownUiHidden = false   // หน้าดูภาพ/หน้าลากกรอบเปิดอยู่
     // ลากกรอบชั่วคราว (กรอบแบบอัตโนมัติ/สัดส่วน): ใช้กับวิดีโอนี้ พอเปลี่ยนวิดีโอจะกลับไปตามวิดีโอเอง
     @Volatile private var overrideRect: android.graphics.RectF? = null   // พิกัดจอ
-    @Volatile private var lastDetected: android.graphics.RectF? = null   // กรอบที่ตรวจได้ล่าสุด (พิกัดจอ)
+    @Volatile private var lastDetected: android.graphics.RectF? = null   // กรอบที่แสดงล่าสุด (พิกัดจอ)
+    // ตรวจกรอบแค่ 3 ครั้งต่อวิดีโอ แล้วล็อกไว้ (กันกรอบกระตุกรัวๆ) จนกว่าภาพจะเปลี่ยนเป็นวิดีโออื่น
+    private val samples = ArrayList<android.graphics.RectF?>()
+    @Volatile private var locked = false
+    @Volatile private var lockedRect: android.graphics.RectF? = null
+    private var lockThumb: IntArray? = null
     @Volatile private var feedHidden = false    // ไม่ได้อยู่หน้าสตอรี่ และตั้งให้แสดงเฉพาะสตอรี่
     private var storyMiss = 0                   // นับครั้งที่ไม่เจอหน้าสตอรี่ติดกัน (กันกะพริบ)
     @Volatile private var capturedAppVisible = true // Android 14+ อัด "แอปเดียว": แอปนั้นอยู่บนจอไหม
     @Volatile private var fgLabel: String? = null   // แอปที่ตรวจเจอ (แสดงในแจ้งเตือน)
     private var lastBase: android.graphics.RectF? = null // พื้นที่วิดีโอล่าสุด (พิกัดจอ)
     private val prefListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-        if (key in setOf("cropPreset", "showGuide", "cropL", "cropT", "cropR", "cropB")) main.post { applyGuidePrefs() }
+        if (key in setOf("cropPreset", "showGuide", "cropL", "cropT", "cropR", "cropB")) { work.post { resetLock() }; main.post { applyGuidePrefs() } }
     }
     private val locBuf = IntArray(2)
     private var menuOpen = false
@@ -711,7 +716,35 @@ class CaptureService : Service() {
 
     // ---------- กรอบบนจอ ----------
     /** คำนวณกรอบจากภาพที่ไม่มีปุ่มของเรา (เรียกจากเธรดทำงาน) */
+    /** ภาพย่อ 12x12 (ความสว่าง) ของกลางจอ ไว้ดูว่าเปลี่ยนวิดีโอหรือยัง */
+    private fun thumb(b: Bitmap): IntArray = IntArray(144) { k ->
+        val i = k % 12; val j = k / 12
+        val p = b.getPixel((b.width * (0.05f + 0.9f * i / 11)).toInt().coerceIn(0, b.width - 1),
+            (b.height * (0.15f + 0.65f * j / 11)).toInt().coerceIn(0, b.height - 1))
+        (((p shr 16) and 0xFF) * 299 + ((p shr 8) and 0xFF) * 587 + (p and 0xFF) * 114) / 1000
+    }
+
+    /** เริ่มตรวจกรอบใหม่ (เปลี่ยนวิดีโอ/เปลี่ยนตั้งค่า/กลับมาจากหน้าฟีด) — เรียกบนเธรดทำงาน */
+    private fun resetLock() {
+        samples.clear(); locked = false; lockedRect = null; lockThumb = null; lastDetected = null
+    }
+
+    /** ค่ากลางของแต่ละขอบ (ถ้าส่วนใหญ่ไม่เจอกรอบ = ทั้งจอ) */
+    private fun median(list: List<android.graphics.RectF?>): android.graphics.RectF? {
+        val rs = list.filterNotNull()
+        if (rs.size * 2 <= list.size) return null
+        fun m(f: (android.graphics.RectF) -> Float) = rs.map(f).sorted()[rs.size / 2]
+        return android.graphics.RectF(m { it.left }, m { it.top }, m { it.right }, m { it.bottom })
+    }
+
     private fun updateGuideFrom(bmp: Bitmap) {
+        if (locked) {
+            // ล็อกแล้ว: ไม่ตรวจกรอบซ้ำ ดูแค่ว่าภาพเปลี่ยนเป็นวิดีโออื่นหรือยัง
+            val t = thumb(bmp); val o = lockThumb
+            val diff = if (o == null) 999 else t.indices.sumOf { kotlin.math.abs(t[it] - o[it]) } / t.size
+            if (diff < 30) return
+            resetLock(); overrideRect = null   // วิดีโอใหม่ → ยกเลิกกรอบที่ลากชั่วคราว
+        }
         noteRatio(bmp)
         if (!inOwnApp) Cropper.autoRect(this, bmp).let { a ->
             val sx = screenW / bmp.width.toFloat(); val sy = screenH / bmp.height.toFloat()
@@ -725,15 +758,20 @@ class CaptureService : Service() {
         val full = r.left <= 0 && r.top <= 0 && r.right >= bmp.width && r.bottom >= bmp.height
         val detected = if (full || preset == "full") null
             else android.graphics.RectF(r.left * sx, r.top * sy, r.right * sx, r.bottom * sy)
-        // เปลี่ยนวิดีโอ (กรอบที่ตรวจได้ขยับมาก) → ยกเลิกการลากชั่วคราว กลับไปตามวิดีโอ
-        if (changed(detected, lastDetected)) overrideRect = null
-        lastDetected = detected
-        val rect = overrideRect ?: detected
+        samples.add(detected)
+        var show = detected
+        if (samples.size >= 3) {
+            show = median(samples)
+            lockedRect = show; locked = true; lockThumb = thumb(bmp)
+        }
+        // ขยับนิดเดียว (≤3% ของจอ) ไม่ต้องย้ายกรอบ
+        if (!changed(show, lastDetected) && !(locked && samples.size == 3)) return
+        lastDetected = show
+        val rect = overrideRect ?: show
         main.post {
             if (draggingGuide) return@post
             guide?.let { g ->
                 g.rect = rect
-                // ป้ายบอกสัดส่วนจริงของกรอบ (เช่น 9:15.7) ไม่ใช่แค่ชื่อที่เลือก
                 g.label = rect?.let { Cropper.ratioName(it.width().roundToInt(), it.height().roundToInt()) }
                     ?: Cropper.presetLabel(this, preset)
                 g.invalidate()
@@ -751,6 +789,14 @@ class CaptureService : Service() {
             return android.graphics.Rect(
                 (o.left * sx).roundToInt().coerceIn(0, bmp.width - 1), (o.top * sy).roundToInt().coerceIn(0, bmp.height - 1),
                 (o.right * sx).roundToInt().coerceIn(1, bmp.width), (o.bottom * sy).roundToInt().coerceIn(1, bmp.height)
+            )
+        }
+        val l = lockedRect
+        if (locked && l != null && screenW > 0 && screenH > 0) {
+            val sx = bmp.width / screenW.toFloat(); val sy = bmp.height / screenH.toFloat()
+            return android.graphics.Rect(
+                (l.left * sx).roundToInt().coerceIn(0, bmp.width - 1), (l.top * sy).roundToInt().coerceIn(0, bmp.height - 1),
+                (l.right * sx).roundToInt().coerceIn(1, bmp.width), (l.bottom * sy).roundToInt().coerceIn(1, bmp.height)
             )
         }
         return Cropper.rectFor(this, bmp)
@@ -836,6 +882,7 @@ class CaptureService : Service() {
                     val hide = !story && storyMiss >= 2
                     if (story && feedHidden || hide && !feedHidden) {
                         feedHidden = !story
+                        resetLock()
                         main.post { main.removeCallbacks(appTick); main.post(appTick) }
                     }
                     if (story) { if (guideLive) updateGuideFrom(b) else noteRatio(b) }
