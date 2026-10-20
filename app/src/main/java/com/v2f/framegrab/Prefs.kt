@@ -26,6 +26,16 @@ object Prefs {
     /** ส่วนที่จะเก็บ: 0 ทั้งจอ, 1 ตัดขอบอัตโนมัติ, 2 กรอบที่ตั้งเอง */
     fun cropMode(c: Context): Int = sp(c).getInt("cropMode", 0)
     fun setCropMode(c: Context, v: Int) = sp(c).edit().putInt("cropMode", v).apply()
+    /** กรอบที่เลือก: "full", "auto", "custom" หรือสัดส่วนเช่น "9:16" */
+    fun cropPreset(c: Context): String = sp(c).getString("cropPreset", null) ?: when (cropMode(c)) {
+        1 -> "auto"; 2 -> "custom"; else -> "full"
+    }
+    fun setCropPreset(c: Context, v: String) = sp(c).edit().putString("cropPreset", v).apply()
+
+    /** แสดงกรอบบนจอ (ซ่อนเองตอนจับภาพ จึงไม่ติดในภาพ) */
+    fun showGuide(c: Context): Boolean = sp(c).getBoolean("showGuide", true)
+    fun setShowGuide(c: Context, v: Boolean) = sp(c).edit().putBoolean("showGuide", v).apply()
+
     fun hasCustomCrop(c: Context): Boolean = sp(c).contains("cropL")
     fun cropRect(c: Context): FloatArray = sp(c).let {
         floatArrayOf(it.getFloat("cropL", 0f), it.getFloat("cropT", 0f), it.getFloat("cropR", 1f), it.getFloat("cropB", 1f))

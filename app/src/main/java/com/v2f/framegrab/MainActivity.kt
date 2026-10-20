@@ -98,18 +98,17 @@ class MainActivity : Activity() {
         col.addView(clearBtn, gap(10f))
 
         col.addView(label("ส่วนที่จะเก็บ", 16f, Color.WHITE), gap(26f))
-        cropBtn = button("", 0xFF2A2D3A.toInt()) {
-            var next = (Prefs.cropMode(this) + 1) % 3
-            if (next == Cropper.CUSTOM && !Prefs.hasCustomCrop(this)) {
-                next = Cropper.FULL
-                Toast.makeText(this, "ยังไม่ได้ตั้งกรอบ กด ✏️ ตั้งกรอบเอง ก่อน", Toast.LENGTH_SHORT).show()
-            }
-            Prefs.setCropMode(this, next); refresh()
-        }
+        cropBtn = button("", 0xFF2A2D3A.toInt()) { choosePreset() }
         col.addView(cropBtn, gap(8f))
+        col.addView(CheckBox(this).apply {
+            text = "แสดงกรอบบนจอ (ซ่อนเองตอนจับภาพ ไม่ติดในภาพ)"
+            setTextColor(Color.WHITE)
+            isChecked = Prefs.showGuide(this@MainActivity)
+            setOnCheckedChangeListener { _, v -> Prefs.setShowGuide(this@MainActivity, v) }
+        }, gap(4f))
         col.addView(button("✏️ ตั้งกรอบเอง (ลากกรอบบนภาพหน้าจอ)", 0xFF2A2D3A.toInt()) {
             if (Cropper.refFile(this).isFile) startActivity(Intent(this, CropActivity::class.java))
-            else Toast.makeText(this, "เปิดแอปวิดีโอก่อน แล้วแตะปุ่มลอย 🎞️ → ✏️ ตั้งกรอบจากจอนี้", Toast.LENGTH_LONG).show()
+            else Toast.makeText(this, "เปิดแอปวิดีโอก่อน แล้วแตะปุ่มลอย 🎞️ → ✂️ กรอบ → กำหนดเอง", Toast.LENGTH_LONG).show()
         }, gap(8f))
         col.addView(label(
             "ตัดได้เฉพาะส่วนที่อยู่นอกวิดีโอ (แถบสถานะ, แถบเมนูล่าง, ขอบดำ) ปุ่มหรือตัวหนังสือที่แอปวาดทับบนวิดีโอตัดออกไม่ได้", 12.5f
@@ -151,7 +150,7 @@ class MainActivity : Activity() {
         col.addView(label(
             "1. กด \"เปิดปุ่มลอย\" แล้วอนุญาต \"แสดงทับแอปอื่น\"\n" +
             "2. กดอนุญาตการจับภาพหน้าจอ\n" +
-            "3. เปิด TikTok / IG / Facebook แล้วแตะปุ่ม 🎞️\n" +
+            "3. เปิด TikTok / IG / Facebook แล้วแตะปุ่ม 🎞️ (บรรทัดบนสุดของเมนูบอกสัดส่วนวิดีโอที่เล่นอยู่)\n" +
             "   📸 จับภาพนี้ — จับภาพทีละภาพ\n" +
             "   ⏺ อัดต่อเนื่อง — เล่นคลิปไปเรื่อย ๆ แล้วจับทุก 0.25 วิ\n" +
             "4. อัดเสร็จจะเปิดหน้าดูภาพให้เอง: ถ่างนิ้วซูม, ปัดซ้าย/ขวาเปลี่ยนภาพ\n" +
@@ -186,8 +185,37 @@ class MainActivity : Activity() {
         clearBtn.text = if (n > 0) "🧹 ล้างภาพทั้งหมด ($n ภาพ · ${FrameStore.sizeLabel(FrameStore.totalBytes(this))})" else "🧹 ล้างภาพทั้งหมด"
         clearBtn.alpha = if (n > 0) 1f else 0.5f
         intervalBtn.text = "⏱ จับทุก ${Prefs.intervalLabel(Prefs.interval(this))} วินาที  (แตะเพื่อเปลี่ยน)"
-        cropBtn.text = "✂️ เก็บ: ${Cropper.modeLabel(Prefs.cropMode(this))}  (แตะเพื่อเปลี่ยน)"
+        cropBtn.text = "✂️ กรอบ: ${Cropper.presetLabel(Prefs.cropPreset(this))}  (แตะเพื่อเลือก)"
         maxBtn.text = "⌛ อัดนานสุด ${Prefs.maxLabel(Prefs.maxSeconds(this))}  (แตะเพื่อเปลี่ยน)"
+    }
+
+    /** เลือกกรอบจากรายการ (ทั้งจอ, อัตโนมัติ, 9:16, 3:4, 1:1 …) */
+    private fun choosePreset() {
+        val cur = Prefs.cropPreset(this)
+        val items = Cropper.PRESETS.map { p ->
+            val shape = when {
+                p.rw == 0 && p.id == "full" -> "📱"
+                p.id == "auto" -> "✨"
+                p.id == "custom" -> "✏️"
+                p.rw > p.rh -> "▭"
+                p.rw < p.rh -> "▯"
+                else -> "□"
+            }
+            (if (p.id == cur) "✓ " else "    ") + "$shape  ${p.label}"
+        }.toTypedArray()
+        android.app.AlertDialog.Builder(this)
+            .setTitle("เลือกกรอบที่จะเก็บ")
+            .setItems(items) { _, i ->
+                val p = Cropper.PRESETS[i]
+                if (p.id == "custom" && !Prefs.hasCustomCrop(this)) {
+                    if (Cropper.refFile(this).isFile) startActivity(Intent(this, CropActivity::class.java))
+                    else Toast.makeText(this, "เปิดแอปวิดีโอก่อน แล้วแตะปุ่มลอย 🎞️ → ✂️ กรอบ → กำหนดเอง", Toast.LENGTH_LONG).show()
+                } else {
+                    Prefs.setCropPreset(this, p.id)
+                    refresh()
+                }
+            }
+            .show()
     }
 
     private fun onStartClicked() {

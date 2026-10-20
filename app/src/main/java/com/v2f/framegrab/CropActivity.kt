@@ -47,7 +47,7 @@ class CropActivity : Activity() {
         val bmp: Bitmap? = if (ref.isFile) BitmapFactory.decodeFile(ref.path) else null
         if (bmp == null) {
             Toast.makeText(
-                this, "ยังไม่มีภาพหน้าจอให้ตั้งกรอบ: เปิดแอปวิดีโอ แตะปุ่มลอย 🎞️ → ✏️ ตั้งกรอบจากจอนี้",
+                this, "ยังไม่มีภาพหน้าจอให้ตั้งกรอบ: เปิดแอปวิดีโอ แตะปุ่มลอย 🎞️ → ✂️ กรอบ → กำหนดเอง",
                 Toast.LENGTH_LONG
             ).show()
             finish(); return
@@ -88,7 +88,7 @@ class CropActivity : Activity() {
         row.addView(button("✔ ใช้กรอบนี้", 0xFF4F46E5.toInt()) {
             val f = crop.frac
             Prefs.setCropRect(this, f.left, f.top, f.right, f.bottom)
-            Prefs.setCropMode(this, Cropper.CUSTOM)
+            Prefs.setCropPreset(this, "custom")
             Toast.makeText(this, "ตั้งกรอบแล้ว ภาพต่อไปจะเก็บเฉพาะในกรอบนี้", Toast.LENGTH_SHORT).show()
             finish()
         }, lp())

@@ -30,9 +30,12 @@ import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import android.view.ViewConfiguration
 import android.view.WindowManager
 import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.FrameLayout
 import android.widget.TextView
 import android.widget.Toast
 import kotlin.math.abs
@@ -74,20 +77,21 @@ class CaptureService : Service() {
     @Volatile private var latestAt = 0L
     private var quitting = false
 
-    // ---------- ปุ่มลอย ----------
-    private var root: LinearLayout? = null
+    // ---------- ปุ่มลอย / เมนู / กรอบบนจอ ----------
+    private var root: FrameLayout? = null          // หน้าต่างปุ่มลอย
     private lateinit var lp: WindowManager.LayoutParams
     private lateinit var bubble: TextView
-    private lateinit var menu: LinearLayout
-    private lateinit var btnInterval: TextView
-    private lateinit var btnCrop: TextView
-    private lateinit var btnMax: TextView
-    private lateinit var btnView: TextView
+    private var menuWin: ScrollView? = null        // หน้าต่างเมนู (แยกจากปุ่ม ขนาดพอดีเนื้อหา)
+    private lateinit var menuLp: WindowManager.LayoutParams
+    private lateinit var menuBox: LinearLayout
+    private var menuPage = 0                       // 0 = เมนูหลัก, 1 = เลือกกรอบ
+    private var guide: GuideView? = null           // กรอบที่แสดงบนจอ (กดทะลุได้)
     private var menuOpen = false
-    private var menuAbove = false
-    private var anchorY = 0
+    private var lastOutsideClose = 0L
     private var screenW = 0
     private var screenH = 0
+    private val bubbleSize: Int get() = dp(56f)
+    @Volatile private var videoRatio: String? = null      // สัดส่วนวิดีโอที่ตรวจได้ล่าสุด
     private val fadeRunnable = Runnable { if (!menuOpen && !recording) root?.alpha = 0.45f }
 
     // ---------- การอัดต่อเนื่อง ----------
@@ -210,6 +214,7 @@ class CaptureService : Service() {
                 val now = java.util.Calendar.getInstance()
                 val msOfDay = ((now.get(java.util.Calendar.HOUR_OF_DAY) * 60 + now.get(java.util.Calendar.MINUTE)) * 60 +
                     now.get(java.util.Calendar.SECOND)) * 1000L + now.get(java.util.Calendar.MILLISECOND)
+                updateGuideFrom(bmp)
                 val out = Cropper.apply(bmp, Cropper.rectFor(this, bmp))
                 try { FrameStore.save(this, out, 's', msOfDay); ok = true } catch (e: Exception) { }
                 if (out !== bmp) out.recycle()
@@ -302,7 +307,7 @@ class CaptureService : Service() {
         )
     }
 
-    // ---------- ปุ่มลอย ----------
+    // ---------- ปุ่มลอย / เมนู / กรอบบนจอ ----------
     private fun dp(v: Float): Int =
         TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, resources.displayMetrics).roundToInt()
 
@@ -310,18 +315,27 @@ class CaptureService : Service() {
         setColor(color); cornerRadius = radius
     }
 
-    private fun menuItem(text: String, onClick: () -> Unit) = TextView(this).apply {
-        this.text = text
-        setTextColor(Color.WHITE)
-        textSize = 15f
-        setPadding(dp(14f), dp(10f), dp(18f), dp(10f))
-        background = pill(Color.TRANSPARENT, dp(10f).toFloat())
-        setOnClickListener { onClick() }
-    }
+    private fun overlayParams(w: Int, h: Int, extra: Int = 0) = WindowManager.LayoutParams(
+        w, h,
+        WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or extra,
+        PixelFormat.TRANSLUCENT
+    ).apply { gravity = Gravity.TOP or Gravity.START }
 
     @SuppressLint("ClickableViewAccessibility")
     private fun addOverlay() {
-        val r = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.START }
+        // กรอบบนจอ: เต็มจอ กดทะลุได้ อยู่ใต้ปุ่มลอย
+        val g = GuideView(this)
+        val glp = overlayParams(
+            WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+        ).apply { layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES }
+        g.visibility = View.INVISIBLE
+        wm.addView(g, glp)
+        guide = g
+
+        // ปุ่มลอย
+        val r = FrameLayout(this)
         bubble = TextView(this).apply {
             text = "🎞️"
             textSize = 24f
@@ -329,72 +343,61 @@ class CaptureService : Service() {
             background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0xE64F46E5.toInt()) }
             elevation = dp(6f).toFloat()
         }
-        val size = dp(56f)
-        r.addView(bubble, LinearLayout.LayoutParams(size, size).apply { setMargins(dp(4f), dp(4f), dp(4f), dp(4f)) })
-
-        menu = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            background = pill(0xF2181A22.toInt(), dp(14f).toFloat())
-            setPadding(dp(6f), dp(6f), dp(6f), dp(6f))
-            elevation = dp(8f).toFloat()
-        }
-        btnInterval = menuItem("") { cycleInterval() }
-        btnMax = menuItem("") { cycleMax() }
-        btnView = menuItem("") { openViewer() }
-        menu.addView(menuItem("📸  จับภาพนี้") { captureOne() })
-        menu.addView(menuItem("⏺  อัดต่อเนื่อง") { startRecording() })
-        btnCrop = menuItem("") { cycleCrop() }
-        menu.addView(btnCrop)
-        menu.addView(menuItem("✏️  ตั้งกรอบจากจอนี้") { captureForCrop() })
-        menu.addView(btnInterval)
-        menu.addView(btnMax)
-        menu.addView(btnView)
-        menu.addView(menuItem("✕  ปิดปุ่มลอย") { quit() })
-        refreshMenuLabels()
-
-        lp = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
+        r.addView(bubble, FrameLayout.LayoutParams(bubbleSize, bubbleSize, Gravity.CENTER))
+        val win = bubbleSize + dp(8f)
+        lp = overlayParams(win, win).apply {
             val sx = Prefs.bubbleX(this@CaptureService)
             val sy = Prefs.bubbleY(this@CaptureService)
-            x = if (sx >= 0) sx else screenW - size - dp(8f)
-            y = if (sy >= 0) sy else screenH / 3
+            x = if (sx >= 0) sx.coerceIn(0, max(0, screenW - win)) else screenW - win
+            y = if (sy >= 0) sy.coerceIn(0, max(0, screenH - win)) else screenH / 3
         }
-        anchorY = lp.y
+
+        // เมนู (หน้าต่างแยก กำหนดขนาดเองให้พอดีตัวหนังสือ ไม่ถูกบีบ)
+        menuBox = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(6f), dp(6f), dp(6f), dp(6f))
+        }
+        menuWin = ScrollView(this).apply {
+            background = pill(0xF2181A22.toInt(), dp(14f).toFloat())
+            isVerticalScrollBarEnabled = false
+            addView(menuBox)
+            setOnTouchListener { _, e ->
+                if (e.actionMasked == MotionEvent.ACTION_OUTSIDE) {
+                    lastOutsideClose = SystemClock.uptimeMillis(); closeMenu(); true
+                } else false
+            }
+        }
+        menuLp = overlayParams(
+            WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
+        )
 
         val slop = ViewConfiguration.get(this).scaledTouchSlop
         var downX = 0f; var downY = 0f; var startX = 0; var startY = 0; var moved = false
         bubble.setOnTouchListener { _, e ->
             when (e.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
-                    downX = e.rawX; downY = e.rawY; startX = lp.x; startY = anchorY; moved = false
+                    downX = e.rawX; downY = e.rawY; startX = lp.x; startY = lp.y; moved = false
                     wake()
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = e.rawX - downX; val dy = e.rawY - downY
                     if (!moved && (abs(dx) > slop || abs(dy) > slop)) { moved = true; closeMenu() }
                     if (moved) {
-                        lp.x = (startX + dx).roundToInt().coerceIn(0, max(0, screenW - size))
-                        anchorY = (startY + dy).roundToInt().coerceIn(0, max(0, screenH - size))
-                        lp.y = anchorY
+                        lp.x = (startX + dx).roundToInt().coerceIn(0, max(0, screenW - win))
+                        lp.y = (startY + dy).roundToInt().coerceIn(0, max(0, screenH - win))
                         root?.let { wm.updateViewLayout(it, lp) }
                     }
                 }
                 MotionEvent.ACTION_UP -> {
                     if (moved) {
-                        // ชิดขอบซ้ายหรือขวา
-                        lp.x = if (lp.x + size / 2 < screenW / 2) 0 else screenW - size - dp(8f)
+                        lp.x = if (lp.x + win / 2 < screenW / 2) 0 else screenW - win // ชิดขอบ
                         root?.let { wm.updateViewLayout(it, lp) }
-                        Prefs.setBubble(this, lp.x, anchorY)
+                        Prefs.setBubble(this, lp.x, lp.y)
                     } else if (recording) {
                         stopRecording(0)
-                    } else {
-                        toggleMenu()
+                    } else if (SystemClock.uptimeMillis() - lastOutsideClose > 300) {
+                        if (menuOpen) closeMenu() else openMenu()
                     }
                     scheduleFade()
                 }
@@ -404,20 +407,176 @@ class CaptureService : Service() {
         root = r
         wm.addView(r, lp)
         scheduleFade()
+        refreshGuide()
     }
 
-    private fun cycleCrop() {
-        val next = (Prefs.cropMode(this) + 1) % 3
-        if (next == Cropper.CUSTOM && !Prefs.hasCustomCrop(this)) {
-            Prefs.setCropMode(this, Cropper.FULL)
-            toast("ยังไม่ได้ตั้งกรอบ แตะ ✏️ ตั้งกรอบจากจอนี้ ก่อน")
-        } else Prefs.setCropMode(this, next)
-        refreshMenuLabels()
+    private fun removeOverlays() {
+        closeMenu()
+        removeOverlays()
+        guide?.let { try { wm.removeView(it) } catch (e: Exception) { } }
+        guide = null
+    }
+
+    // ---------- เมนู ----------
+    private fun menuRow(text: String, onClick: () -> Unit) = TextView(this).apply {
+        this.text = text
+        setTextColor(Color.WHITE)
+        textSize = 15f
+        isSingleLine = true
+        setPadding(dp(14f), dp(11f), dp(18f), dp(11f))
+        setOnClickListener { onClick() }
+    }
+
+    /** รูปตัวอย่างสัดส่วนกรอบ (สี่เหลี่ยมมุมมนสีเทา แบบเมนูของ Grok) */
+    private fun shapeIcon(rw: Int, rh: Int): View {
+        val box = FrameLayout(this)
+        val s = dp(22f)
+        val w = if (rw >= rh) s else (s * rw / rh.toFloat()).roundToInt()
+        val h = if (rh >= rw) s else (s * rh / rw.toFloat()).roundToInt()
+        box.addView(View(this).apply { background = pill(0xFF9E9E9E.toInt(), dp(3f).toFloat()) },
+            FrameLayout.LayoutParams(w, h, Gravity.CENTER))
+        return box
+    }
+
+    private fun textIcon(t: String) = TextView(this).apply { text = t; textSize = 16f; gravity = Gravity.CENTER }
+
+    private fun presetRow(icon: View, label: String, checked: Boolean, onClick: () -> Unit) =
+        LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(14f), dp(9f), dp(16f), dp(9f))
+            addView(icon, LinearLayout.LayoutParams(dp(28f), dp(28f)))
+            addView(TextView(this@CaptureService).apply {
+                text = label; setTextColor(Color.WHITE); textSize = 15f; isSingleLine = true
+                minWidth = dp(120f)
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(14f) })
+            addView(TextView(this@CaptureService).apply {
+                text = if (checked) "✓" else ""; setTextColor(Color.WHITE); textSize = 16f; minWidth = dp(20f)
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(12f) })
+            setOnClickListener { onClick() }
+        }
+
+    private fun buildMenu() {
+        menuBox.removeAllViews()
+        val preset = Prefs.cropPreset(this)
+        if (menuPage == 0) {
+            videoRatio?.let { r ->
+                menuBox.addView(TextView(this).apply {
+                    text = "📐  วิดีโอตอนนี้: $r"
+                    setTextColor(0xFFB8BCCB.toInt()); textSize = 13f; isSingleLine = true
+                    setPadding(dp(14f), dp(8f), dp(18f), dp(6f))
+                })
+            }
+            menuBox.addView(menuRow("📸  จับภาพนี้") { captureOne() })
+            menuBox.addView(menuRow("⏺  อัดต่อเนื่อง") { startRecording() })
+            menuBox.addView(menuRow("✂️  กรอบ: ${Cropper.presetLabel(preset)}  ›") { menuPage = 1; buildMenu(); layoutMenu() })
+            menuBox.addView(menuRow("🔲  แสดงกรอบบนจอ: ${if (Prefs.showGuide(this)) "เปิด" else "ปิด"}") {
+                Prefs.setShowGuide(this, !Prefs.showGuide(this))
+                closeMenu()
+                refreshGuide()
+            })
+            menuBox.addView(menuRow("⏱  ทุก ${Prefs.intervalLabel(Prefs.interval(this))} วิ") { cycleInterval() })
+            menuBox.addView(menuRow("⌛  นานสุด ${Prefs.maxLabel(Prefs.maxSeconds(this))}") { cycleMax() })
+            menuBox.addView(menuRow("🖼  ดูภาพ (${FrameStore.count(this)})") { openViewer() })
+            menuBox.addView(menuRow("⚙️  ตั้งค่า / เปิดแอป") { openApp() })
+            menuBox.addView(menuRow("✕  ปิดปุ่มลอย") { quit() })
+        } else {
+            menuBox.addView(menuRow("‹  เลือกกรอบ") { menuPage = 0; buildMenu(); layoutMenu() })
+            for (p in Cropper.PRESETS) {
+                val icon = when {
+                    p.rw > 0 -> shapeIcon(p.rw, p.rh)
+                    p.id == "full" -> shapeIcon(screenW.coerceAtLeast(1), screenH.coerceAtLeast(1))
+                    p.id == "auto" -> textIcon("✨")
+                    else -> textIcon("✏️")
+                }
+                menuBox.addView(presetRow(icon, p.label, p.id == preset) { choosePreset(p.id) })
+            }
+            if (Prefs.hasCustomCrop(this)) {
+                menuBox.addView(menuRow("✏️  ลากกรอบใหม่จากจอนี้") { captureForCrop() })
+            }
+        }
+    }
+
+    private fun choosePreset(id: String) {
+        if (id == "custom" && !Prefs.hasCustomCrop(this)) { captureForCrop(); return }
+        Prefs.setCropPreset(this, id)
+        menuPage = 0
+        closeMenu()
+        if (id != "full" && !Prefs.showGuide(this)) Prefs.setShowGuide(this, true)
+        refreshGuide()
+        toast("✂️ กรอบ: ${Cropper.presetLabel(id)}")
+    }
+
+    /** วัดขนาดเมนูแล้ววางข้างปุ่มลอย ไม่ให้ล้นจอ */
+    private fun layoutMenu() {
+        val mw = menuWin ?: return
+        val maxW = screenW - dp(16f)
+        val maxH = (screenH * 0.8f).toInt()
+        mw.measure(
+            View.MeasureSpec.makeMeasureSpec(maxW, View.MeasureSpec.AT_MOST),
+            View.MeasureSpec.makeMeasureSpec(maxH, View.MeasureSpec.AT_MOST)
+        )
+        val w = mw.measuredWidth.coerceAtMost(maxW)
+        val h = mw.measuredHeight.coerceAtMost(maxH)
+        menuLp.width = w
+        menuLp.height = h
+        val onRight = lp.x + bubbleSize / 2 > screenW / 2
+        menuLp.x = if (onRight) screenW - w - dp(8f) else dp(8f)
+        val below = lp.y + bubbleSize + dp(14f)
+        menuLp.y = if (below + h < screenH - dp(24f)) below else lp.y - h - dp(6f)
+        menuLp.y = menuLp.y.coerceIn(dp(24f), max(dp(24f), screenH - h - dp(24f)))
+        if (menuOpen) wm.updateViewLayout(mw, menuLp)
+    }
+
+    private fun openMenu() {
+        if (menuOpen || menuWin == null) return
+        work.post {
+            grabBitmap()?.let { noteRatio(it); it.recycle() }
+            main.post { showMenuNow() }
+        }
+    }
+
+    private fun showMenuNow() {
+        val mw = menuWin ?: return
+        if (menuOpen || root?.visibility != View.VISIBLE) return
+        menuPage = 0
+        buildMenu()
+        layoutMenu()
+        wm.addView(mw, menuLp)
+        menuOpen = true
+        wake()
+    }
+
+    private fun closeMenu() {
+        if (!menuOpen) return
+        menuWin?.let { try { wm.removeView(it) } catch (e: Exception) { } }
+        menuOpen = false
+        scheduleFade()
+    }
+
+    private fun cycleInterval() {
+        val cur = Prefs.interval(this)
+        val i = Prefs.INTERVALS.indexOfFirst { it == cur }
+        Prefs.setInterval(this, Prefs.INTERVALS[(i + 1) % Prefs.INTERVALS.size])
+        buildMenu(); layoutMenu()
+    }
+
+    private fun cycleMax() {
+        val cur = Prefs.maxSeconds(this)
+        val i = Prefs.MAX_SECONDS.indexOfFirst { it == cur }
+        Prefs.setMaxSeconds(this, Prefs.MAX_SECONDS[(i + 1) % Prefs.MAX_SECONDS.size])
+        buildMenu(); layoutMenu()
+    }
+
+    private fun openApp() {
+        closeMenu()
+        startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
     /** ถ่ายจอปัจจุบัน (ไม่มีปุ่มลอย) แล้วเปิดหน้าลากกรอบ */
     private fun captureForCrop() {
         if (recording) return
+        menuPage = 0
         closeMenu()
         hideOverlay()
         val hiddenAt = SystemClock.uptimeMillis()
@@ -439,61 +598,54 @@ class CaptureService : Service() {
         }
     }
 
-    private fun refreshMenuLabels() {
-        btnCrop.text = "✂️  เก็บ: ${Cropper.modeLabel(Prefs.cropMode(this))}"
-        btnInterval.text = "⏱  ทุก ${Prefs.intervalLabel(Prefs.interval(this))} วิ"
-        btnMax.text = "⌛  นานสุด ${Prefs.maxLabel(Prefs.maxSeconds(this))}"
-        btnView.text = "🖼  ดูภาพ (${FrameStore.count(this)})"
-    }
-
-    private fun cycleInterval() {
-        val cur = Prefs.interval(this)
-        val i = Prefs.INTERVALS.indexOfFirst { it == cur }
-        Prefs.setInterval(this, Prefs.INTERVALS[(i + 1) % Prefs.INTERVALS.size])
-        refreshMenuLabels()
-    }
-
-    private fun cycleMax() {
-        val cur = Prefs.maxSeconds(this)
-        val i = Prefs.MAX_SECONDS.indexOfFirst { it == cur }
-        Prefs.setMaxSeconds(this, Prefs.MAX_SECONDS[(i + 1) % Prefs.MAX_SECONDS.size])
-        refreshMenuLabels()
-    }
-
-    private fun toggleMenu() = if (menuOpen) closeMenu() else openMenu()
-
-    private fun openMenu() {
-        val r = root ?: return
-        refreshMenuLabels()
-        menu.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED)
-        val bubbleH = bubble.height + dp(8f)
-        menuAbove = anchorY + bubbleH + menu.measuredHeight > screenH - dp(24f)
-        if (menuAbove) {
-            r.addView(menu, 0)
-            lp.y = max(0, anchorY - menu.measuredHeight)
-        } else {
-            r.addView(menu)
-            lp.y = anchorY
+    // ---------- กรอบบนจอ ----------
+    /** คำนวณกรอบจากภาพที่ไม่มีปุ่มของเรา (เรียกจากเธรดทำงาน) */
+    private fun updateGuideFrom(bmp: Bitmap) {
+        noteRatio(bmp)
+        val preset = Prefs.cropPreset(this)
+        val r = Cropper.rectFor(this, bmp)
+        val sx = screenW / bmp.width.toFloat()
+        val sy = screenH / bmp.height.toFloat()
+        val full = r.left <= 0 && r.top <= 0 && r.right >= bmp.width && r.bottom >= bmp.height
+        val rect = if (full || preset == "full") null
+            else android.graphics.RectF(r.left * sx, r.top * sy, r.right * sx, r.bottom * sy)
+        main.post {
+            guide?.let { g ->
+                g.rect = rect
+                g.label = Cropper.presetLabel(preset)
+                g.invalidate()
+                g.visibility = if (shouldShowGuide()) View.VISIBLE else View.INVISIBLE
+            }
         }
-        // เมนูชิดฝั่งเดียวกับปุ่ม
-        r.gravity = if (lp.x + dp(28f) > screenW / 2) Gravity.END else Gravity.START
-        if (r.gravity == Gravity.END) lp.x = max(0, screenW - max(menu.measuredWidth, bubble.width + dp(8f)))
-        menuOpen = true
-        wake()
-        wm.updateViewLayout(r, lp)
     }
 
-    private fun closeMenu() {
-        val r = root ?: return
-        if (!menuOpen) return
-        r.removeView(menu)
-        menuOpen = false
-        lp.y = anchorY
-        val size = dp(56f)
-        if (r.gravity == Gravity.END) lp.x = screenW - size - dp(8f)
-        wm.updateViewLayout(r, lp)
-        scheduleFade()
+    /** วัดสัดส่วนวิดีโอจากภาพ แล้วอัปเดตแจ้งเตือนถ้าเปลี่ยน (เรียกจากเธรดทำงาน) */
+    private fun noteRatio(bmp: Bitmap) {
+        val r = try { Cropper.detectVideoRatio(this, bmp) } catch (e: Exception) { return }
+        if (r != videoRatio) {
+            videoRatio = r
+            main.post { updateNotification() }
+        }
     }
+
+    /** ซ่อนปุ่มแป๊บหนึ่ง ถ่ายจอ แล้วคำนวณกรอบใหม่ */
+    private fun refreshGuide() {
+        if (recording || root == null) return
+        if (!Prefs.showGuide(this) || Prefs.cropPreset(this) == "full") {
+            guide?.visibility = View.INVISIBLE
+            return
+        }
+        hideOverlay()
+        val hiddenAt = SystemClock.uptimeMillis()
+        work.post {
+            val bmp = grabFresh(hiddenAt + 60)
+            if (bmp != null) { updateGuideFrom(bmp); bmp.recycle() }
+            main.post { showOverlay() }
+        }
+    }
+
+    private fun shouldShowGuide(): Boolean =
+        Prefs.showGuide(this) && !recording && root?.visibility == View.VISIBLE && guide?.rect != null
 
     private fun wake() {
         main.removeCallbacks(fadeRunnable)
@@ -505,7 +657,10 @@ class CaptureService : Service() {
         main.postDelayed(fadeRunnable, 2500)
     }
 
+    /** ซ่อนทุกอย่างของเราก่อนจับภาพ */
     private fun hideOverlay() {
+        closeMenu()
+        guide?.visibility = View.INVISIBLE
         val r = root ?: return
         r.visibility = View.INVISIBLE
         lp.flags = lp.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
@@ -517,10 +672,12 @@ class CaptureService : Service() {
         r.visibility = View.VISIBLE
         lp.flags = lp.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
         wm.updateViewLayout(r, lp)
+        guide?.visibility = if (shouldShowGuide()) View.VISIBLE else View.INVISIBLE
         scheduleFade()
     }
 
     private fun showStopButton() {
+        guide?.visibility = View.INVISIBLE
         bubble.text = "■"
         bubble.setTextColor(Color.WHITE)
         (bubble.background as? GradientDrawable)?.setColor(0xE6DC2626.toInt())
@@ -561,8 +718,8 @@ class CaptureService : Service() {
                 this, 2, Intent(this, CaptureService::class.java).setAction(ACTION_QUIT),
                 PendingIntent.FLAG_IMMUTABLE
             )
-            b.setContentTitle("ปุ่มลอยจับเฟรมทำงานอยู่")
-                .setContentText("แตะปุ่ม 🎞️ บนจอเพื่อจับภาพ")
+            b.setContentTitle(videoRatio?.let { "📐 วิดีโอที่เล่นอยู่: $it" } ?: "ปุ่มลอยจับเฟรมทำงานอยู่")
+                .setContentText("กรอบ: ${Cropper.presetLabel(Prefs.cropPreset(this))} · แตะปุ่ม 🎞️ บนจอเพื่อจับภาพ")
                 .addAction(Notification.Action.Builder(
                     Icon.createWithResource(this, android.R.drawable.ic_menu_close_clear_cancel), "ปิด", quit
                 ).build())
