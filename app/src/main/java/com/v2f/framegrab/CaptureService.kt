@@ -498,23 +498,39 @@ class CaptureService : Service() {
 
         val slop = ViewConfiguration.get(this).scaledTouchSlop
         var downX = 0f; var downY = 0f; var startX = 0; var startY = 0; var moved = false
+        var longFired = false
+        // กดค้างปุ่มลอย = เริ่มอัดทันที
+        val longPress = Runnable {
+            if (!moved && !recording) {
+                longFired = true
+                bubble.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+                closeMenu()
+                startRecording()
+            }
+        }
         bubble.setOnTouchListener { _, e ->
             when (e.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     downX = e.rawX; downY = e.rawY; startX = lp.x; startY = lp.y; moved = false
+                    longFired = false
                     wake()
+                    if (!recording) main.postDelayed(longPress, ViewConfiguration.getLongPressTimeout().toLong())
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = e.rawX - downX; val dy = e.rawY - downY
-                    if (!moved && (abs(dx) > slop || abs(dy) > slop)) { moved = true; closeMenu() }
+                    if (!moved && !longFired && (abs(dx) > slop || abs(dy) > slop)) { moved = true; main.removeCallbacks(longPress); closeMenu() }
                     if (moved) {
                         lp.x = (startX + dx).roundToInt().coerceIn(0, max(0, screenW - win))
                         lp.y = (startY + dy).roundToInt().coerceIn(0, max(0, screenH - win))
                         root?.let { wm.updateViewLayout(it, lp) }
                     }
                 }
+                MotionEvent.ACTION_CANCEL -> main.removeCallbacks(longPress)
                 MotionEvent.ACTION_UP -> {
-                    if (moved) {
+                    main.removeCallbacks(longPress)
+                    if (longFired) {
+                        // เพิ่งเริ่มอัดจากการกดค้าง: ปล่อยนิ้วไม่ต้องทำอะไร
+                    } else if (moved) {
                         lp.x = if (lp.x + win / 2 < screenW / 2) 0 else screenW - win // ชิดขอบ
                         root?.let { wm.updateViewLayout(it, lp) }
                         Prefs.setBubble(this, lp.x, lp.y)
@@ -615,7 +631,7 @@ class CaptureService : Service() {
                 }.apply { setTextColor(0xFFFFC266.toInt()) })
             }
             menuBox.addView(menuRow("📸  จับภาพนี้") { captureOne() })
-            menuBox.addView(menuRow("⏺  อัดต่อเนื่อง") { startRecording() })
+            menuBox.addView(menuRow("⏺  อัดต่อเนื่อง  (กดค้างปุ่มลอยก็ได้)") { startRecording() })
             menuBox.addView(menuRow("✂️  กรอบ: ${Cropper.presetLabel(this, preset)}  ›") { menuPage = 1; buildMenu(); layoutMenu() })
             menuBox.addView(menuRow("✋  ปรับกรอบด้วยมือ") { startGuideEdit() })
             menuBox.addView(menuRow("🔲  แสดงกรอบบนจอ: ${if (Prefs.showGuide(this)) "เปิด" else "ปิด"}") {
