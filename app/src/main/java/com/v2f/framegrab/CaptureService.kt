@@ -873,9 +873,8 @@ class CaptureService : Service() {
         val t = thumb(bmp); val o = prevThumb; prevThumb = t
         val jump = o != null && t.indices.sumOf { kotlin.math.abs(t[it] - o[it]) } / t.size >= 30
         if (overrideRect != null) {
-            // ลากกรอบเองอยู่: หยุดจับอัตโนมัติอย่างน้อย 5 วิ (แม้เปลี่ยนสตอรี่) แล้วรอจนขึ้นสตอรี่ใหม่
-            if (jump) jumpAfterDrag = true
-            if (!jumpAfterDrag || SystemClock.uptimeMillis() - overrideAt < 5000) return
+            // ลากกรอบเอง: หยุดจับอัตโนมัติ 5 วิ แล้วกลับไปตามวิดีโอเอง
+            if (SystemClock.uptimeMillis() - overrideAt < 5000) return
             overrideRect = null; resetLock()
         } else if (locked) {
             // ล็อกแล้ว: ไม่ขยับตามทุกรอบ แต่ถ้าตรวจได้ตรงกันอีก 3 รอบว่ากรอบผิด
@@ -1160,9 +1159,6 @@ class CaptureService : Service() {
                     // อัตโนมัติ/สัดส่วน: ปรับชั่วคราวเฉพาะวิดีโอนี้ เลื่อนไปวิดีโอใหม่แล้วกรอบจะตามวิดีโอเอง
                     overrideAt = SystemClock.uptimeMillis(); jumpAfterDrag = false
                     overrideRect = android.graphics.RectF(r)
-                    // 1.5 วิหลังปล่อยนิ้ว: ตัดขอบดำในกรอบที่ลากออกให้พอดีภาพ 1 ครั้ง
-                    main.removeCallbacks(refineDrag)
-                    main.postDelayed(refineDrag, 1500)
                 }
                 g.showRatio = false
                 g.label = Cropper.ratioTag(r.width().toInt(), r.height().toInt())
