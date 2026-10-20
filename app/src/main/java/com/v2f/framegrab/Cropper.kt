@@ -260,6 +260,23 @@ object Cropper {
         return Rect(left, top.coerceAtLeast(0), right, bottom.coerceAtMost(h))
     }
 
+    /**
+     * ตัดขอบดำ/แถบ UI ที่อยู่ "ข้างใน" กรอบ r ออก (กรอบที่ผู้ใช้ลากมาคร่าว ๆ → พอดีภาพ)
+     * ไล่จากแต่ละขอบเข้าไปตราบที่ยังเป็นแถว/คอลัมน์มืด ไม่เกิน 45% ของกรอบ
+     */
+    fun trimDark(bmp: Bitmap, r: Rect): Rect {
+        val w = bmp.width; val h = bmp.height
+        var left = r.left.coerceIn(0, w - 1); var right = r.right.coerceIn(left + 1, w)
+        var top = r.top.coerceIn(0, h - 1); var bottom = r.bottom.coerceIn(top + 1, h)
+        val skip = (w * 0.066f).toInt().coerceAtLeast(24)
+        val rh = bottom - top; val rw = right - left
+        top = scan(top, top + (rh * 0.45f).toInt(), 2, skip) { darkRow(bmp, it, left, right) }
+        bottom = scan(bottom, maxOf(bottom - (rh * 0.45f).toInt(), top + 32), -2, skip) { darkRow(bmp, it - 1, left, right) }
+        left = scan(left, left + (rw * 0.35f).toInt(), 2, skip) { darkCol(bmp, it, top, bottom) }
+        right = scan(right, maxOf(right - (rw * 0.35f).toInt(), left + 32), -2, skip) { darkCol(bmp, it - 1, top, bottom) }
+        return Rect(left, top, right, bottom)
+    }
+
     private fun lum(p: Int) = (((p shr 16) and 0xFF) * 299 + ((p shr 8) and 0xFF) * 587 + (p and 0xFF) * 114) / 1000
 
     /**

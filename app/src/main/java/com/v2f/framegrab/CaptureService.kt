@@ -873,9 +873,9 @@ class CaptureService : Service() {
         val t = thumb(bmp); val o = prevThumb; prevThumb = t
         val jump = o != null && t.indices.sumOf { kotlin.math.abs(t[it] - o[it]) } / t.size >= 30
         if (overrideRect != null) {
-            // ลากกรอบเองอยู่: หยุดจับแบบเรียลไทม์ จนกว่าจะขึ้นสตอรี่ใหม่ (และผ่านไปอย่างน้อย 2.5 วิ)
+            // ลากกรอบเองอยู่: หยุดจับอัตโนมัติอย่างน้อย 5 วิ (แม้เปลี่ยนสตอรี่) แล้วรอจนขึ้นสตอรี่ใหม่
             if (jump) jumpAfterDrag = true
-            if (!jumpAfterDrag || SystemClock.uptimeMillis() - overrideAt < 2500) return
+            if (!jumpAfterDrag || SystemClock.uptimeMillis() - overrideAt < 5000) return
             overrideRect = null; resetLock()
         } else if (locked) {
             // ล็อกแล้ว: ไม่ขยับตามทุกรอบ แต่ถ้าตรวจได้ตรงกันอีก 3 รอบว่ากรอบผิด
@@ -1160,11 +1160,45 @@ class CaptureService : Service() {
                     // อัตโนมัติ/สัดส่วน: ปรับชั่วคราวเฉพาะวิดีโอนี้ เลื่อนไปวิดีโอใหม่แล้วกรอบจะตามวิดีโอเอง
                     overrideAt = SystemClock.uptimeMillis(); jumpAfterDrag = false
                     overrideRect = android.graphics.RectF(r)
+                    // 1.5 วิหลังปล่อยนิ้ว: ตัดขอบดำในกรอบที่ลากออกให้พอดีภาพ 1 ครั้ง
+                    main.removeCallbacks(refineDrag)
+                    main.postDelayed(refineDrag, 1500)
                 }
                 g.showRatio = false
                 g.label = Cropper.ratioTag(r.width().toInt(), r.height().toInt())
                 g.invalidate()
                 updateNotification()
+            }
+        }
+    }
+
+    // ---------- ปรับกรอบที่ลากเองให้พอดีภาพ 1 ครั้ง ----------
+    private val refineDrag = Runnable {
+        val o = overrideRect ?: return@Runnable
+        if (draggingGuide || recording || screenW <= 0) return@Runnable
+        val at = overrideAt
+        work.post {
+            val bmp = grabBitmap() ?: return@post
+            val sx = bmp.width / screenW.toFloat(); val sy = bmp.height / screenH.toFloat()
+            val br = android.graphics.Rect((o.left * sx).roundToInt(), (o.top * sy).roundToInt(),
+                (o.right * sx).roundToInt(), (o.bottom * sy).roundToInt())
+            val t = try { Cropper.trimDark(bmp, br) } catch (e: Exception) { br }
+            bmp.recycle()
+            val n = android.graphics.RectF(t.left / sx, t.top / sy, t.right / sx, t.bottom / sy)
+            // เปลี่ยนน้อยกว่า 1% ของจอ = พอดีอยู่แล้ว
+            val tol = minOf(screenW, screenH) * 0.01f
+            if (abs(n.left - o.left) < tol && abs(n.top - o.top) < tol && abs(n.right - o.right) < tol && abs(n.bottom - o.bottom) < tol) return@post
+            main.post {
+                // ระหว่างนี้ผู้ใช้ลากใหม่หรือกรอบถูกยกเลิก → ไม่ทำ
+                if (overrideAt != at || overrideRect == null || draggingGuide) return@post
+                overrideRect = n
+                lastDetected = n
+                guide?.let { g ->
+                    g.rect = n
+                    g.invalidate()
+                    syncHandles()
+                }
+                wakeGuide()
             }
         }
     }
