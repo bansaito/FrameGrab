@@ -92,12 +92,15 @@ object Cropper {
         return if (w <= h) "9:" + f(9.0 * h / w) else f(9.0 * w / h) + ":9"
     }
 
-    /** ชื่อสัดส่วน: ตรงมาตรฐาน (±1.5%) = "9:16", ไม่ตรง = ค่าจริง เช่น "9:15.7" */
+    /**
+     * ชื่อสัดส่วน: ใกล้มาตรฐาน (±4%) = "9:16", ไกลกว่านั้น = "≈9:16"
+     * (การวัดจากจอคลาดได้ไม่กี่พิกเซล จึงไม่แสดงทศนิยมแปลก ๆ อย่าง 9:15.7)
+     */
     fun ratioName(w: Int, h: Int): String {
         if (w <= 0 || h <= 0) return "?"
         val r = w / h.toDouble()
         val best = COMMON.minByOrNull { kotlin.math.abs(it.second - r) / it.second }!!
-        return if (kotlin.math.abs(best.second - r) / best.second <= 0.015) best.first else precise(w, h)
+        return if (kotlin.math.abs(best.second - r) / best.second <= 0.04) best.first else "≈" + best.first
     }
 
     fun ratioTag(w: Int, h: Int): String = ratioName(w, h)
