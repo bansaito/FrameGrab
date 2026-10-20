@@ -298,7 +298,7 @@ class CaptureService : Service() {
                 val rr = recRect
                 if (seamFeeding && rr != null) {
                     val t = SystemClock.uptimeMillis() - recStart
-                    try { seam.feed(t, img, rr) } catch (e: Exception) { }
+                    // จับจังหวะเลื่อนสตอรี่ (SeamDetector) ปิดไว้ก่อน ใช้แค่แถบด้านบน
                     try { storyBar.feed(t, img) } catch (e: Exception) { }
                     // เจอแล้วหยุดทันที ไม่ต้องรอรอบจับภาพถัดไป
                     val sAt = seam.seamAtMs; val bAt = storyBar.advancedAtMs
