@@ -856,7 +856,7 @@ class CaptureService : Service() {
 
     /** เริ่มตรวจกรอบใหม่ (เปลี่ยนวิดีโอ/เปลี่ยนตั้งค่า/กลับมาจากหน้าฟีด) — เรียกบนเธรดทำงาน */
     private fun resetLock() {
-        samples.clear(); locked = false; lockedRect = null; lastDetected = null
+        samples.clear(); fixSamples.clear(); locked = false; lockedRect = null; lastDetected = null
     }
 
     /** ค่ากลางของแต่ละขอบ (ถ้าส่วนใหญ่ไม่เจอกรอบ = ทั้งจอ) */
@@ -878,8 +878,9 @@ class CaptureService : Service() {
             if (!jumpAfterDrag || SystemClock.uptimeMillis() - overrideAt < 2500) return
             overrideRect = null; resetLock()
         } else if (locked) {
-            // ล็อกแล้ว: ไม่ตรวจกรอบซ้ำ จนกว่าจะขึ้นวิดีโอใหม่
-            if (!jump) return
+            // ล็อกแล้ว: ไม่ขยับตามทุกรอบ แต่ถ้าตรวจได้ตรงกันอีก 3 รอบว่ากรอบผิด
+            // (เช่นกรอบกินแถบชื่อ/พื้นดำที่สีต่างจากวิดีโอ) → ย้ายกรอบไปหาวิดีโอ
+            if (!jump) { recheckLocked(bmp); return }
             resetLock()
         }
         noteRatio(bmp)
@@ -889,12 +890,7 @@ class CaptureService : Service() {
             main.post { lastBase = base }
         }
         val preset = Prefs.cropPreset(this)
-        val r = Cropper.rectFor(this, bmp)
-        val sx = screenW / bmp.width.toFloat()
-        val sy = screenH / bmp.height.toFloat()
-        val full = r.left <= 0 && r.top <= 0 && r.right >= bmp.width && r.bottom >= bmp.height
-        val detected = if (full || preset == "full") null
-            else android.graphics.RectF(r.left * sx, r.top * sy, r.right * sx, r.bottom * sy)
+        val detected = detectRect(bmp, preset)
         samples.add(detected)
         var show = detected
         if (samples.size >= 3) {
@@ -904,7 +900,37 @@ class CaptureService : Service() {
         // ขยับนิดเดียว (≤3% ของจอ) ไม่ต้องย้ายกรอบ
         if (!changed(show, lastDetected) && !(locked && samples.size == 3)) return
         lastDetected = show
-        val rect = overrideRect ?: show
+        postGuide(overrideRect ?: show, preset)
+    }
+
+    /** กรอบวิดีโอที่ตรวจได้จากภาพนี้ (พิกัดจอ) หรือ null = ทั้งจอ */
+    private fun detectRect(bmp: Bitmap, preset: String): android.graphics.RectF? {
+        val r = Cropper.rectFor(this, bmp)
+        val sx = screenW / bmp.width.toFloat()
+        val sy = screenH / bmp.height.toFloat()
+        val full = r.left <= 0 && r.top <= 0 && r.right >= bmp.width && r.bottom >= bmp.height
+        return if (full || preset == "full") null
+            else android.graphics.RectF(r.left * sx, r.top * sy, r.right * sx, r.bottom * sy)
+    }
+
+    private val fixSamples = ArrayList<android.graphics.RectF?>()
+
+    /** ตรวจกรอบที่ล็อกไว้ซ้ำ: ผิดตรงกัน 3 รอบติด → ย้ายกรอบ (ไม่กระตุกเพราะต้องตรงกันทุกรอบ) */
+    private fun recheckLocked(bmp: Bitmap) {
+        val preset = Prefs.cropPreset(this)
+        val d = detectRect(bmp, preset)
+        if (!changed(d, lockedRect)) { fixSamples.clear(); return }
+        if (fixSamples.isNotEmpty() && changed(d, fixSamples.last())) fixSamples.clear()
+        fixSamples.add(d)
+        if (fixSamples.size < 3) return
+        val m = median(fixSamples)
+        fixSamples.clear()
+        lockedRect = m; lastDetected = m
+        noteRatio(bmp)
+        postGuide(m, preset)
+    }
+
+    private fun postGuide(rect: android.graphics.RectF?, preset: String) {
         main.post {
             if (draggingGuide) return@post
             wakeGuide()   // กรอบเพิ่งย้าย: ชัดขึ้นให้เห็นแป๊บหนึ่งแล้วจางลง
