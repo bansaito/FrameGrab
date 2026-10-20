@@ -38,6 +38,7 @@ class MainActivity : Activity() {
     private lateinit var maxBtn: TextView
     private lateinit var crashBox: TextView
     private lateinit var cropBtn: TextView
+    private lateinit var clearBtn: TextView
 
     private fun dp(v: Float): Int =
         TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, resources.displayMetrics).roundToInt()
@@ -93,6 +94,8 @@ class MainActivity : Activity() {
         col.addView(startBtn, gap(12f))
         viewBtn = button("", 0xFF2A2D3A.toInt()) { startActivity(Intent(this, ViewerActivity::class.java)) }
         col.addView(viewBtn, gap(10f))
+        clearBtn = button("", 0xFF3A2026.toInt()) { FrameStore.confirmClear(this) { refresh() } }
+        col.addView(clearBtn, gap(10f))
 
         col.addView(label("ส่วนที่จะเก็บ", 16f, Color.WHITE), gap(26f))
         cropBtn = button("", 0xFF2A2D3A.toInt()) {
@@ -152,7 +155,8 @@ class MainActivity : Activity() {
             "   📸 จับภาพนี้ — จับภาพทีละภาพ\n" +
             "   ⏺ อัดต่อเนื่อง — เล่นคลิปไปเรื่อย ๆ แล้วจับทุก 0.25 วิ\n" +
             "4. อัดเสร็จจะเปิดหน้าดูภาพให้เอง: ถ่างนิ้วซูม, ปัดซ้าย/ขวาเปลี่ยนภาพ\n" +
-            "   💾 บันทึกภาพนี้ (กดค้าง = ทั้งหมด) · ↗ เปิดด้วยแอปอื่น/เบราว์เซอร์ · 📤 แชร์ทั้งหมด\n\n" +
+            "   💾 บันทึกภาพนี้ (กดค้าง = ทั้งหมด) · ↗ เปิดด้วยแอปอื่น/เบราว์เซอร์ · 📤 แชร์ทั้งหมด\n" +
+            "   🗑 ลบภาพนี้ (กดค้าง = ล้างทั้งหมด)\n\n" +
             "ภาพมาจากการจับหน้าจอ จึงได้ความละเอียดเท่าจอ และอาจมีข้อความหรือปุ่มของแอปนั้นติดมาด้วย", 13.5f
         ), gap(6f))
 
@@ -177,7 +181,10 @@ class MainActivity : Activity() {
             else -> "พร้อมใช้งาน"
         }
         startBtn.text = if (CaptureService.running) "■ ปิดปุ่มลอย" else "▶ เปิดปุ่มลอย"
-        viewBtn.text = "🖼 ดูภาพที่จับไว้ (${FrameStore.count(this)})"
+        val n = FrameStore.count(this)
+        viewBtn.text = "🖼 ดูภาพที่จับไว้ ($n)"
+        clearBtn.text = if (n > 0) "🧹 ล้างภาพทั้งหมด ($n ภาพ · ${FrameStore.sizeLabel(FrameStore.totalBytes(this))})" else "🧹 ล้างภาพทั้งหมด"
+        clearBtn.alpha = if (n > 0) 1f else 0.5f
         intervalBtn.text = "⏱ จับทุก ${Prefs.intervalLabel(Prefs.interval(this))} วินาที  (แตะเพื่อเปลี่ยน)"
         cropBtn.text = "✂️ เก็บ: ${Cropper.modeLabel(Prefs.cropMode(this))}  (แตะเพื่อเปลี่ยน)"
         maxBtn.text = "⌛ อัดนานสุด ${Prefs.maxLabel(Prefs.maxSeconds(this))}  (แตะเพื่อเปลี่ยน)"

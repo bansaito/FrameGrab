@@ -112,7 +112,14 @@ class ViewerActivity : Activity() {
         row.addView(iconBtn("💾") { saveCurrent() }.apply {
             setOnLongClickListener { saveAll(); true }
         })
-        row.addView(iconBtn("🗑") { deleteCurrent() })
+        // แตะ = ลบภาพนี้, กดค้าง = ล้างทั้งหมด
+        row.addView(iconBtn("🗑") { deleteCurrent() }.apply {
+            setOnLongClickListener {
+                setPlaying(false)
+                FrameStore.confirmClear(this@ViewerActivity) { thumbs.evictAll(); reload(keepIndex = false) }
+                true
+            }
+        })
         row.addView(iconBtn("✕") { finish() })
         top.addView(row)
         root.addView(top, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP))

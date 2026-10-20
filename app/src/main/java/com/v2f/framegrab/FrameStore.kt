@@ -44,6 +44,34 @@ object FrameStore {
         dir(c).listFiles()?.forEach { it.delete() }
     }
 
+    /** ขนาดรวมของภาพทั้งหมด (ไบต์) */
+    fun totalBytes(c: Context): Long = dir(c).listFiles()?.sumOf { it.length() } ?: 0L
+
+    fun sizeLabel(bytes: Long): String = when {
+        bytes >= 1024L * 1024 -> String.format(Locale.US, "%.1f MB", bytes / 1024.0 / 1024.0)
+        bytes >= 1024 -> String.format(Locale.US, "%.0f KB", bytes / 1024.0)
+        else -> "$bytes B"
+    }
+
+    /** ถามยืนยันแล้วล้างภาพทั้งหมดในแอป (ภาพที่บันทึกลงแกลเลอรีแล้วไม่ถูกลบ) */
+    fun confirmClear(a: android.app.Activity, onDone: () -> Unit) {
+        val n = count(a)
+        if (n == 0) {
+            android.widget.Toast.makeText(a, "ไม่มีภาพให้ล้าง", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+        android.app.AlertDialog.Builder(a)
+            .setTitle("ล้างภาพทั้งหมด $n ภาพ?")
+            .setMessage("ลบภาพที่จับไว้ในแอป (${sizeLabel(totalBytes(a))})\nภาพที่บันทึกลงแกลเลอรีแล้วจะยังอยู่")
+            .setPositiveButton("ล้างทั้งหมด") { _, _ ->
+                clear(a)
+                android.widget.Toast.makeText(a, "🧹 ล้างภาพแล้ว", android.widget.Toast.LENGTH_SHORT).show()
+                onDone()
+            }
+            .setNegativeButton("ยกเลิก", null)
+            .show()
+    }
+
     @Synchronized
     fun save(c: Context, bmp: Bitmap, kind: Char, tMs: Long, quality: Int = 92): File {
         val next = (list(c).maxOfOrNull { it.index } ?: 0) + 1
