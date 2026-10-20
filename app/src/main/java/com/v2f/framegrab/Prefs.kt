@@ -44,6 +44,10 @@ object Prefs {
     fun onlyInVideoApps(c: Context): Boolean = sp(c).getBoolean("onlyInApps", true)
     fun setOnlyInVideoApps(c: Context, v: Boolean) = sp(c).edit().putBoolean("onlyInApps", v).apply()
 
+    /** ภาพที่ดูค้างไว้ในหน้าดูภาพ (ชื่อไฟล์) */
+    fun viewerLast(c: Context): String? = sp(c).getString("viewerLast", null)
+    fun setViewerLast(c: Context, v: String?) = sp(c).edit().putString("viewerLast", v).apply()
+
     fun hasCustomCrop(c: Context): Boolean = sp(c).contains("cropL")
     fun cropRect(c: Context): FloatArray = sp(c).let {
         floatArrayOf(it.getFloat("cropL", 0f), it.getFloat("cropT", 0f), it.getFloat("cropR", 1f), it.getFloat("cropB", 1f))

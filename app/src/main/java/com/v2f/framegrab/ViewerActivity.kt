@@ -176,9 +176,20 @@ class ViewerActivity : Activity() {
         } catch (e: Exception) { }
     }
 
+    companion object {
+        /** เปิดหลังอัดเสร็จ: เริ่มที่ภาพแรก */
+        const val EXTRA_FROM_START = "fromStart"
+    }
+
     override fun onResume() {
         super.onResume()
-        reload(keepIndex = false)
+        frames = FrameStore.list(this)
+        // กลับมาที่ภาพที่ดูค้างไว้ (ยกเว้นเพิ่งอัดเสร็จ)
+        val fromStart = intent.getBooleanExtra(EXTRA_FROM_START, false)
+        intent.removeExtra(EXTRA_FROM_START)
+        val last = if (fromStart) null else Prefs.viewerLast(this)
+        idx = frames.indexOfFirst { it.file.name == last }.coerceAtLeast(0)
+        reload(keepIndex = true)
     }
 
     override fun onPause() {
@@ -230,6 +241,7 @@ class ViewerActivity : Activity() {
         if (frames.isEmpty() || i !in frames.indices) return
         idx = i
         val f = frames[i]
+        Prefs.setViewerLast(this, f.file.name)
         count.text = "${i + 1} / ${frames.size}"
         time.text = f.label
         bars.set(frames.size, i)

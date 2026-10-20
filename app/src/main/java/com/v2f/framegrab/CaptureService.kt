@@ -117,6 +117,7 @@ class CaptureService : Service() {
     private var recRect: android.graphics.Rect? = null
     private var recBmpW = 0
     private var recBmpH = 0
+    private var recentlyRecorded = false
     @Volatile private var stopOverlaps = false          // ปุ่ม ■ อยู่ในกรอบ (กรอบเต็มจอ)
     private var savedBubblePos: Pair<Int, Int>? = null
     @Volatile private var recording = false
@@ -340,7 +341,7 @@ class CaptureService : Service() {
                 showOverlay()
                 updateNotification()
                 toast((reason?.let { "$it · " } ?: "") + "ได้ $n ภาพ")
-                if (n > 0) openViewer()
+                if (n > 0) { recentlyRecorded = true; openViewer(); recentlyRecorded = false }
             }
         }
     }
@@ -350,6 +351,7 @@ class CaptureService : Service() {
         startActivity(
             Intent(this, ViewerActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                .putExtra(ViewerActivity.EXTRA_FROM_START, recentlyRecorded)
         )
     }
 
