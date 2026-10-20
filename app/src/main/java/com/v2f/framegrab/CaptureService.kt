@@ -117,7 +117,9 @@ class CaptureService : Service() {
     private val samples = ArrayList<android.graphics.RectF?>()
     @Volatile private var locked = false
     @Volatile private var lockedRect: android.graphics.RectF? = null
-    private var lockThumb: IntArray? = null
+    private var prevThumb: IntArray? = null        // ภาพย่อรอบก่อน ใช้ดูว่าภาพเปลี่ยนกะทันหัน (= สตอรี่ใหม่)
+    @Volatile private var overrideAt = 0L           // เวลาที่ลากกรอบเอง
+    @Volatile private var jumpAfterDrag = false     // ลากแล้วเจอภาพเปลี่ยนกะทันหันหรือยัง
     @Volatile private var feedHidden = false    // ไม่ได้อยู่หน้าสตอรี่ และตั้งให้แสดงเฉพาะสตอรี่
     private var storyMiss = 0                   // นับครั้งที่ไม่เจอหน้าสตอรี่ติดกัน (กันกะพริบ)
     @Volatile private var capturedAppVisible = true // Android 14+ อัด "แอปเดียว": แอปนั้นอยู่บนจอไหม
@@ -726,7 +728,7 @@ class CaptureService : Service() {
 
     /** เริ่มตรวจกรอบใหม่ (เปลี่ยนวิดีโอ/เปลี่ยนตั้งค่า/กลับมาจากหน้าฟีด) — เรียกบนเธรดทำงาน */
     private fun resetLock() {
-        samples.clear(); locked = false; lockedRect = null; lockThumb = null; lastDetected = null
+        samples.clear(); locked = false; lockedRect = null; lastDetected = null
     }
 
     /** ค่ากลางของแต่ละขอบ (ถ้าส่วนใหญ่ไม่เจอกรอบ = ทั้งจอ) */
@@ -738,12 +740,19 @@ class CaptureService : Service() {
     }
 
     private fun updateGuideFrom(bmp: Bitmap) {
-        if (locked) {
-            // ล็อกแล้ว: ไม่ตรวจกรอบซ้ำ ดูแค่ว่าภาพเปลี่ยนเป็นวิดีโออื่นหรือยัง
-            val t = thumb(bmp); val o = lockThumb
-            val diff = if (o == null) 999 else t.indices.sumOf { kotlin.math.abs(t[it] - o[it]) } / t.size
-            if (diff < 30) return
-            resetLock(); overrideRect = null   // วิดีโอใหม่ → ยกเลิกกรอบที่ลากชั่วคราว
+        // ภาพเปลี่ยนกะทันหันจากรอบก่อน = ขึ้นสตอรี่/วิดีโอใหม่
+        // (ทดสอบ: ในวิดีโอเดียวกันต่างกัน ≤14, คนละหน้าจอ ≥44)
+        val t = thumb(bmp); val o = prevThumb; prevThumb = t
+        val jump = o != null && t.indices.sumOf { kotlin.math.abs(t[it] - o[it]) } / t.size >= 30
+        if (overrideRect != null) {
+            // ลากกรอบเองอยู่: หยุดจับแบบเรียลไทม์ จนกว่าจะขึ้นสตอรี่ใหม่ (และผ่านไปอย่างน้อย 2.5 วิ)
+            if (jump) jumpAfterDrag = true
+            if (!jumpAfterDrag || SystemClock.uptimeMillis() - overrideAt < 2500) return
+            overrideRect = null; resetLock()
+        } else if (locked) {
+            // ล็อกแล้ว: ไม่ตรวจกรอบซ้ำ จนกว่าจะขึ้นวิดีโอใหม่
+            if (!jump) return
+            resetLock()
         }
         noteRatio(bmp)
         if (!inOwnApp) Cropper.autoRect(this, bmp).let { a ->
@@ -762,7 +771,7 @@ class CaptureService : Service() {
         var show = detected
         if (samples.size >= 3) {
             show = median(samples)
-            lockedRect = show; locked = true; lockThumb = thumb(bmp)
+            lockedRect = show; locked = true
         }
         // ขยับนิดเดียว (≤3% ของจอ) ไม่ต้องย้ายกรอบ
         if (!changed(show, lastDetected) && !(locked && samples.size == 3)) return
@@ -989,6 +998,7 @@ class CaptureService : Service() {
                     Prefs.setCropPreset(this, "custom")
                 } else {
                     // อัตโนมัติ/สัดส่วน: ปรับชั่วคราวเฉพาะวิดีโอนี้ เลื่อนไปวิดีโอใหม่แล้วกรอบจะตามวิดีโอเอง
+                    overrideAt = SystemClock.uptimeMillis(); jumpAfterDrag = false
                     overrideRect = android.graphics.RectF(r)
                 }
                 g.showRatio = false
