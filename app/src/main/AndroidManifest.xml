@@ -30,6 +30,12 @@
             android:taskAffinity="com.v2f.framegrab.viewer"
             android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen" />
 
+        <provider
+            android:name=".FrameProvider"
+            android:authorities="com.v2f.framegrab.frames"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+
         <service
             android:name=".CaptureService"
             android:exported="false"

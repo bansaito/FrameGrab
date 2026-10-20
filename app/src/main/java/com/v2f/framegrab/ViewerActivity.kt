@@ -1,6 +1,8 @@
 package com.v2f.framegrab
 
 import android.app.Activity
+import android.content.ClipData
+import android.content.Intent
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -74,13 +76,8 @@ class ViewerActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Crash.install(this)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        if (Build.VERSION.SDK_INT >= 30) {
-            window.setDecorFitsSystemWindows(false)
-            window.insetsController?.hide(WindowInsets.Type.statusBars())
-        } else {
-            @Suppress("DEPRECATION") window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
-        }
 
         val root = FrameLayout(this).apply { setBackgroundColor(0xFF121212.toInt()) }
 
@@ -109,6 +106,8 @@ class ViewerActivity : Activity() {
         row.addView(titles, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         playBtn = iconBtn("▶") { setPlaying(!playing) }
         row.addView(playBtn)
+        row.addView(iconBtn("📤") { shareAll() })
+        row.addView(iconBtn("↗") { openWith() })
         row.addView(iconBtn("💾") { saveAll() })
         row.addView(iconBtn("🗑") { deleteCurrent() })
         row.addView(iconBtn("✕") { finish() })
@@ -136,6 +135,15 @@ class ViewerActivity : Activity() {
         root.addView(empty, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
 
         setContentView(root)
+        // ต้องเรียกหลัง setContentView ไม่งั้น Android 11 บางเครื่องแอปเด้ง
+        try {
+            if (Build.VERSION.SDK_INT >= 30) {
+                window.setDecorFitsSystemWindows(false)
+                window.insetsController?.hide(WindowInsets.Type.statusBars())
+            } else {
+                @Suppress("DEPRECATION") window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+            }
+        } catch (e: Exception) { }
     }
 
     override fun onResume() {
@@ -237,6 +245,39 @@ class ViewerActivity : Activity() {
             main.post {
                 Toast.makeText(this, "บันทึก $n ภาพลงแกลเลอรีแล้ว (โฟลเดอร์ Pictures/FrameGrab)", Toast.LENGTH_LONG).show()
             }
+        }
+    }
+
+    /** เปิดภาพนี้ด้วยแอปอื่น เช่น Chrome, แกลเลอรี, Google Lens */
+    private fun openWith() {
+        if (frames.isEmpty()) return
+        val uri = FrameProvider.uriFor(frames[idx].file)
+        val view = Intent(Intent.ACTION_VIEW)
+            .setDataAndType(uri, "image/jpeg")
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        view.clipData = ClipData.newRawUri("frame", uri)
+        try {
+            startActivity(Intent.createChooser(view, "เปิดภาพด้วย…"))
+        } catch (e: Exception) {
+            Toast.makeText(this, "ไม่พบแอปที่เปิดภาพได้", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /** แชร์ทุกภาพไปแอปอื่น (ไลน์, ไดรฟ์, แกลเลอรี ฯลฯ) */
+    private fun shareAll() {
+        if (frames.isEmpty()) return
+        val uris = ArrayList(frames.map { FrameProvider.uriFor(it.file) })
+        val clip = ClipData.newRawUri("frames", uris[0])
+        for (u in uris.drop(1)) clip.addItem(ClipData.Item(u))
+        val send = Intent(Intent.ACTION_SEND_MULTIPLE)
+            .setType("image/jpeg")
+            .putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        send.clipData = clip
+        try {
+            startActivity(Intent.createChooser(send, "แชร์ ${uris.size} ภาพ…"))
+        } catch (e: Exception) {
+            Toast.makeText(this, "ไม่พบแอปที่รับภาพได้", Toast.LENGTH_SHORT).show()
         }
     }
 

@@ -2,6 +2,8 @@ package com.v2f.framegrab
 
 import android.Manifest
 import android.app.Activity
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -34,6 +36,7 @@ class MainActivity : Activity() {
     private lateinit var viewBtn: TextView
     private lateinit var intervalBtn: TextView
     private lateinit var maxBtn: TextView
+    private lateinit var crashBox: TextView
 
     private fun dp(v: Float): Int =
         TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, resources.displayMetrics).roundToInt()
@@ -57,6 +60,7 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Crash.install(this)
         val col = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20f), dp(36f), dp(20f), dp(28f))
@@ -68,6 +72,21 @@ class MainActivity : Activity() {
 
         status = label("", 14f)
         col.addView(status, gap(18f))
+
+        // ถ้าครั้งก่อนแอปเด้ง แสดงสาเหตุให้คัดลอกส่งต่อได้
+        crashBox = label("", 12f, Color.WHITE).apply {
+            setPadding(dp(12f), dp(10f), dp(12f), dp(10f))
+            background = GradientDrawable().apply { setColor(0xFF7F1D1D.toInt()); cornerRadius = dp(10f).toFloat() }
+            setOnClickListener {
+                val txt = Crash.read(this@MainActivity) ?: return@setOnClickListener
+                getSystemService(ClipboardManager::class.java)
+                    .setPrimaryClip(ClipData.newPlainText("FrameGrab crash", txt))
+                Toast.makeText(this@MainActivity, "คัดลอกแล้ว วางส่งให้ Claude ได้เลย", Toast.LENGTH_LONG).show()
+                Crash.clear(this@MainActivity)
+                refresh()
+            }
+        }
+        col.addView(crashBox, gap(10f))
 
         startBtn = button("", 0xFF4F46E5.toInt()) { onStartClicked() }
         col.addView(startBtn, gap(12f))
@@ -87,6 +106,13 @@ class MainActivity : Activity() {
             Prefs.setMaxSeconds(this, Prefs.MAX_SECONDS[(i + 1) % Prefs.MAX_SECONDS.size]); refresh()
         }
         col.addView(maxBtn, gap(8f))
+        val auto = CheckBox(this).apply {
+            text = "หยุดอัดเองเมื่อคลิปจบ (วนกลับมาต้น)"
+            setTextColor(Color.WHITE)
+            isChecked = Prefs.autoStop(this@MainActivity)
+            setOnCheckedChangeListener { _, v -> Prefs.setAutoStop(this@MainActivity, v) }
+        }
+        col.addView(auto, gap(8f))
         val keep = CheckBox(this).apply {
             text = "แสดงปุ่ม ■ หยุด ระหว่างอัด"
             setTextColor(Color.WHITE)
@@ -106,7 +132,8 @@ class MainActivity : Activity() {
             "3. เปิด TikTok / IG / Facebook แล้วแตะปุ่ม 🎞️\n" +
             "   📸 จับภาพนี้ — จับภาพทีละภาพ\n" +
             "   ⏺ อัดต่อเนื่อง — เล่นคลิปไปเรื่อย ๆ แล้วจับทุก 0.25 วิ\n" +
-            "4. อัดเสร็จจะเปิดหน้าดูภาพให้เอง: ถ่างนิ้วซูม, ปัดซ้าย/ขวาเปลี่ยนภาพ, 💾 บันทึกลงแกลเลอรี\n\n" +
+            "4. อัดเสร็จจะเปิดหน้าดูภาพให้เอง: ถ่างนิ้วซูม, ปัดซ้าย/ขวาเปลี่ยนภาพ\n" +
+            "   💾 บันทึกลงแกลเลอรี · ↗ เปิดด้วยแอปอื่น/เบราว์เซอร์ · 📤 แชร์ทั้งหมด\n\n" +
             "ภาพมาจากการจับหน้าจอ จึงได้ความละเอียดเท่าจอ และอาจมีข้อความหรือปุ่มของแอปนั้นติดมาด้วย", 13.5f
         ), gap(6f))
 
@@ -120,6 +147,10 @@ class MainActivity : Activity() {
     }
 
     private fun refresh() {
+        val crash = Crash.read(this)
+        crashBox.visibility = if (crash != null) android.view.View.VISIBLE else android.view.View.GONE
+        if (crash != null) crashBox.text = "⚠️ ครั้งก่อนแอปปิดเอง — แตะเพื่อคัดลอกรายละเอียด แล้ววางส่งให้ Claude\n\n" +
+            crash.lineSequence().take(6).joinToString("\n")
         val overlayOk = Settings.canDrawOverlays(this)
         status.text = when {
             CaptureService.running -> "✅ ปุ่มลอยทำงานอยู่ — เปิดแอปที่ต้องการแล้วแตะปุ่ม 🎞️"

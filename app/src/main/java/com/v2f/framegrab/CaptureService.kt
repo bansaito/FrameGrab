@@ -90,14 +90,17 @@ class CaptureService : Service() {
     private val fadeRunnable = Runnable { if (!menuOpen && !recording) root?.alpha = 0.45f }
 
     // ---------- การอัดต่อเนื่อง ----------
+    private val loop = LoopDetector()
+    @Volatile private var loopFeeding = false
     @Volatile private var recording = false
-    private var recStart = 0L
+    @Volatile private var recStart = 0L
     private var recCount = 0
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
+        Crash.install(this)
         wm = getSystemService(WindowManager::class.java)
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(
@@ -150,10 +153,16 @@ class CaptureService : Service() {
         val r = ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 3)
         r.setOnImageAvailableListener({ ir ->
             val img = try { ir.acquireLatestImage() } catch (e: Exception) { null }
-            if (img != null) synchronized(lock) {
-                latest?.close()
-                latest = img
-                latestAt = SystemClock.uptimeMillis()
+            if (img != null) {
+                // ตรวจการวนคลิปจากทุกเฟรม (อ่านแค่ 576 จุด เร็วมาก)
+                if (loopFeeding) {
+                    try { loop.feed(SystemClock.uptimeMillis() - recStart, LoopDetector.signature(img)) } catch (e: Exception) { }
+                }
+                synchronized(lock) {
+                    latest?.close()
+                    latest = img
+                    latestAt = SystemClock.uptimeMillis()
+                }
             }
         }, imgHandler)
         reader = r
@@ -221,6 +230,8 @@ class CaptureService : Service() {
         val intervalMs = (Prefs.interval(this) * 1000).roundToInt().toLong().coerceAtLeast(100)
         val maxSec = Prefs.maxSeconds(this)
         val maxMs = if (maxSec == 0) MAX_UNLIMITED_MS else maxSec * 1000L
+        val autoStop = Prefs.autoStop(this)
+        loop.reset()
         toast("⏺ เริ่มอัด ทุก ${Prefs.intervalLabel(Prefs.interval(this))} วิ · หยุดได้ที่แถบแจ้งเตือน")
         val hiddenAt = SystemClock.uptimeMillis()
         work.post {
@@ -228,11 +239,18 @@ class CaptureService : Service() {
             val end = hiddenAt + 500
             while (latestAt <= hiddenAt + 60 && SystemClock.uptimeMillis() < end) SystemClock.sleep(10)
             recStart = SystemClock.uptimeMillis()
+            loopFeeding = autoStop
             work.post(object : Runnable {
                 override fun run() {
                     if (!recording) return
                     val el = SystemClock.uptimeMillis() - recStart
-                    if (el >= maxMs) { main.post { stopRecording(0) }; return }
+                    if (el >= maxMs) { main.post { stopRecording(0, reason = "ครบเวลาที่ตั้งไว้") }; return }
+                    // คลิปวนกลับมาจุดเริ่มอัดแล้ว (= เล่นครบหนึ่งรอบ)
+                    val cut = loop.loopAtMs
+                    if (autoStop && cut >= 0) {
+                        main.post { stopRecording(0, cutAtMs = cut, reason = "คลิปจบแล้ว หยุดอัดอัตโนมัติ") }
+                        return
+                    }
                     val bmp = grabBitmap()
                     if (bmp != null) {
                         try { FrameStore.save(this@CaptureService, bmp, 'c', el, 90); recCount++ } catch (e: Exception) { }
@@ -248,18 +266,20 @@ class CaptureService : Service() {
         updateNotification()
     }
 
-    private fun stopRecording(dropLastMs: Long) {
+    private fun stopRecording(dropLastMs: Long, cutAtMs: Long = -1, reason: String? = null) {
         if (!recording) return
         recording = false
+        loopFeeding = false
         val el = SystemClock.uptimeMillis() - recStart
         work.post {
             if (dropLastMs > 0) FrameStore.dropAfter(this, el - dropLastMs)
+            if (cutAtMs >= 0) FrameStore.dropAfter(this, cutAtMs - 1) // ตัดภาพที่ซ้ำรอบสอง
             val n = FrameStore.count(this)
             main.post {
                 restoreBubble()
                 showOverlay()
                 updateNotification()
-                toast("เสร็จแล้ว ได้ $n ภาพ")
+                toast((reason?.let { "$it · " } ?: "") + "ได้ $n ภาพ")
                 if (n > 0) openViewer()
             }
         }

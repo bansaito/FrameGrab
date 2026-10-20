@@ -19,6 +19,10 @@ object Prefs {
     fun keepStopButton(c: Context): Boolean = sp(c).getBoolean("keepStop", false)
     fun setKeepStopButton(c: Context, v: Boolean) = sp(c).edit().putBoolean("keepStop", v).apply()
 
+    /** หยุดอัดเองเมื่อคลิปวนกลับมาต้น */
+    fun autoStop(c: Context): Boolean = sp(c).getBoolean("autoStop", true)
+    fun setAutoStop(c: Context, v: Boolean) = sp(c).edit().putBoolean("autoStop", v).apply()
+
     fun bubbleX(c: Context): Int = sp(c).getInt("bx", -1)
     fun bubbleY(c: Context): Int = sp(c).getInt("by", -1)
     fun setBubble(c: Context, x: Int, y: Int) = sp(c).edit().putInt("bx", x).putInt("by", y).apply()
