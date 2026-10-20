@@ -27,11 +27,21 @@ class StoryBar {
     private var pendingAt = -1L
     private var pendingSize = -1
     private var fullAt = -1L
+    @Volatile private var lastRuns = 0
+    @Volatile private var lastEnd = 0
+    @Volatile private var maxEnd = 0
+
+    /** สถานะสำหรับแสดงในแจ้งเตือนระหว่างอัด (ไว้ดูว่าทำไมไม่หยุด) */
+    fun status(): String = when {
+        advancedAtMs >= 0 -> "จบสตอรี่แล้ว"
+        y < 0 -> "ยังไม่พบแถบ"
+        else -> "พบ · $lastRuns ช่อง · ขาวถึง ${lastEnd * 100 / N}% (สูงสุด ${maxEnd * 100 / N}%)"
+    }
     /** เวลาที่ขึ้นช่องถัดไป (ms นับจากเริ่มอัด) หรือ -1 */
     var advancedAtMs = -1L
         private set
 
-    @Synchronized fun reset() { fullAt = -1L; lastLocateAt = -1000L; y = -1; prev = null; pendingAt = -1L; pendingSize = -1; advancedAtMs = -1L }
+    @Synchronized fun reset() { lastRuns = 0; lastEnd = 0; maxEnd = 0; fullAt = -1L; lastLocateAt = -1000L; y = -1; prev = null; pendingAt = -1L; pendingSize = -1; advancedAtMs = -1L }
 
     /** อ่านพิกเซลจาก Image (RGBA) ตรง ๆ — ตรวจได้ทุกเฟรมที่จอแสดง */
     private class Px(img: Image) : Pix {
@@ -105,6 +115,12 @@ class StoryBar {
             if (!locate(b)) return
         }
         val r = runs(whiteMask(b, y))
+        if (r.isEmpty() && maxEnd >= N * 0.88f) {
+            // แถบหายไปหลังเกือบเต็ม (กำลังเลื่อนไปคนถัดไป)
+            if (fullAt < 0) fullAt = tMs
+            if (tMs - fullAt >= 60 && fullAt >= 2000) advancedAtMs = fullAt
+            return
+        }
         val p = prev
         prev = r
         if (p == null || r.isEmpty()) return
@@ -112,7 +128,10 @@ class StoryBar {
         // ต้องค่อย ๆ เต็มมาจริง (รอบก่อนเกือบถึงแล้ว) ไม่ใช่กระโดดเต็มเพราะวิดีโอข้างหลังสว่าง
         val end = r[r.size - 1][1]
         val pEnd = if (p.isEmpty()) 0 else p[p.size - 1][1]
-        if (end >= N * 0.95f && (fullAt >= 0 || pEnd >= N * 0.95f - 4)) {
+        lastRuns = r.size; lastEnd = end; maxEnd = maxOf(maxEnd, end)
+        // เกือบเต็มแล้ว (≥88%) แล้วแถบหาย/เหลือสั้นทันที = ข้ามไปสตอรี่ของคนถัดไป (ช่องสุดท้ายจบ)
+        val dropped = maxEnd >= N * 0.88f && end < N * 0.5f
+        if ((end >= N * 0.92f && (fullAt >= 0 || pEnd >= N * 0.92f - 4)) || dropped) {
             if (fullAt < 0) fullAt = tMs
             if (tMs - fullAt >= 60 && fullAt >= 2000) { advancedAtMs = fullAt; return }
         } else fullAt = -1L

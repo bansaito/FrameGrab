@@ -1456,9 +1456,8 @@ class CaptureService : Service() {
         val bottom = screenH - sysDimen("navigation_bar_height") - win - m
         val cands = listOf(
             (lp.x + offX) to (lp.y + offY),
-            // มุมล่างก่อน: มุมบนจะบังแถบความคืบหน้าของสตอรี่ (ใช้ตรวจว่าจบสตอรี่)
-            (screenW - win - m) to bottom, m to bottom,
             (screenW - win - m) to top, m to top,
+            (screenW - win - m) to bottom, m to bottom,
         )
         val pick = if (full) null else cands.firstOrNull { (x, y) ->
             !android.graphics.RectF.intersects(
@@ -1539,7 +1538,9 @@ class CaptureService : Service() {
                 PendingIntent.FLAG_IMMUTABLE
             )
             b.setContentTitle("⏺ กำลังอัด… $recCount ภาพ")
-                .setContentText("แตะ ■ บนจอ หรือปุ่มด้านล่างเพื่อหยุด")
+                .setContentText("แถบสตอรี่: ${storyBar.status()}")
+                .setStyle(Notification.BigTextStyle().bigText(
+                    "แถบสตอรี่: ${storyBar.status()}\nแตะ ■ บนจอ หรือปุ่มด้านล่างเพื่อหยุด"))
                 .addAction(Notification.Action.Builder(
                     Icon.createWithResource(this, android.R.drawable.ic_media_pause), "■ หยุดอัด", stop
                 ).build())
