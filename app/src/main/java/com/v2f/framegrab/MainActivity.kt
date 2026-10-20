@@ -214,11 +214,12 @@ class MainActivity : Activity() {
         }
         val overlayOk = Settings.canDrawOverlays(this)
         status.text = when {
+            CaptureService.running && CaptureService.parked -> "💤 ปุ่มลอยซ่อนอยู่ — กด ▶ เปิดได้ทันที ไม่ต้องกดยืนยัน"
             CaptureService.running -> "✅ ปุ่มลอยทำงานอยู่ — เปิดแอปที่ต้องการแล้วแตะปุ่ม 🎞️"
             !overlayOk -> "⚠️ ยังไม่ได้อนุญาต \"แสดงทับแอปอื่น\""
             else -> "พร้อมใช้งาน"
         }
-        startBtn.text = if (CaptureService.running) "■ ปิดปุ่มลอย" else "▶ เปิดปุ่มลอย"
+        startBtn.text = if (CaptureService.running && !CaptureService.parked) "■ ปิดปุ่มลอย" else "▶ เปิดปุ่มลอย"
         val n = FrameStore.count(this)
         viewBtn.text = "🖼 ดูภาพที่จับไว้ ($n)"
         clearBtn.text = if (n > 0) "🧹 ล้างภาพทั้งหมด ($n ภาพ · ${FrameStore.sizeLabel(FrameStore.totalBytes(this))})" else "🧹 ล้างภาพทั้งหมด"
@@ -259,8 +260,9 @@ class MainActivity : Activity() {
 
     private fun onStartClicked() {
         if (CaptureService.running) {
-            // ปิดจากหน้าแอป: ปิดปุ่มลอยและกรอบ แต่หน้าแอปยังเปิดอยู่
-            startService(Intent(this, CaptureService::class.java).setAction(CaptureService.ACTION_QUIT)
+            // ยังจับหน้าจอค้างอยู่: เปิด/ซ่อนปุ่มลอยได้ทันที ไม่ต้องกดยืนยันใหม่
+            val act = if (CaptureService.parked) CaptureService.ACTION_UNPARK else CaptureService.ACTION_PARK
+            startService(Intent(this, CaptureService::class.java).setAction(act)
                 .putExtra(CaptureService.EXTRA_EXIT_APP, false))
             status.postDelayed({ refresh() }, 300)
             return
@@ -282,7 +284,11 @@ class MainActivity : Activity() {
     private fun askCapture() {
         val mpm = getSystemService(MediaProjectionManager::class.java)
         @Suppress("DEPRECATION")
-        startActivityForResult(mpm.createScreenCaptureIntent(), REQ_CAPTURE)
+        // Android 14+: ขอแบบทั้งหน้าจอเลย ไม่ต้องเลือก "แอปเดียว/ทั้งจอ" และไม่ต้องเลือกแอป
+        val i = if (Build.VERSION.SDK_INT >= 34)
+            mpm.createScreenCaptureIntent(android.media.projection.MediaProjectionConfig.createConfigForDefaultDisplay())
+        else mpm.createScreenCaptureIntent()
+        startActivityForResult(i, REQ_CAPTURE)
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {

@@ -53,6 +53,9 @@ class CaptureService : Service() {
         const val ACTION_START = "com.v2f.framegrab.START"
         const val ACTION_STOP_REC = "com.v2f.framegrab.STOP_REC"
         const val ACTION_QUIT = "com.v2f.framegrab.QUIT"
+        /** ซ่อนปุ่มลอย/กรอบ แต่ยังจับหน้าจอค้างไว้ (เปิดใหม่ไม่ต้องกดยืนยัน) */
+        const val ACTION_PARK = "com.v2f.framegrab.PARK"
+        const val ACTION_UNPARK = "com.v2f.framegrab.UNPARK"
         const val EXTRA_EXIT_APP = "exitApp"
         /** หน้าดูภาพ/หน้าลากกรอบของแอปเปิดอยู่ → ซ่อนปุ่มลอยและกรอบ */
         const val ACTION_OWN_UI = "com.v2f.framegrab.OWN_UI"
@@ -71,6 +74,8 @@ class CaptureService : Service() {
         private const val NOTIF_ID = 7
         private const val MAX_UNLIMITED_MS = 5 * 60 * 1000L
         @Volatile var running = false
+        /** ซ่อนปุ่มลอยอยู่ (การจับหน้าจอยังค้างไว้) */
+        @Volatile var parked = false
             private set
     }
 
@@ -173,12 +178,14 @@ class CaptureService : Service() {
                 main.post(appTick)
             }
             ACTION_QUIT -> quit(exitApp = intent.getBooleanExtra(EXTRA_EXIT_APP, true))
+            ACTION_PARK -> park(exitApp = intent.getBooleanExtra(EXTRA_EXIT_APP, false))
+            ACTION_UNPARK -> unpark()
         }
         return START_NOT_STICKY
     }
 
     private fun start(intent: Intent) {
-        if (projection != null) return
+        if (projection != null) { unpark(); return }
         // Android 14+: ต้องเริ่มบริการเบื้องหน้าแบบ mediaProjection ก่อนขอ MediaProjection
         startForeground(NOTIF_ID, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
         val code = intent.getIntExtra(EXTRA_CODE, 0)
@@ -204,7 +211,34 @@ class CaptureService : Service() {
         setupDisplay(p)
         AppWatch.reset()
         addOverlay()
+        parked = false
         running = true
+    }
+
+    // ---------- ซ่อนปุ่มลอยแต่จับหน้าจอค้างไว้ ----------
+    /** ✕ = ซ่อนปุ่มลอย กรอบ และแอป แต่ไม่ปิดการจับหน้าจอ เปิดใหม่ได้ทันทีไม่ต้องกดยืนยัน */
+    private fun park(exitApp: Boolean) {
+        if (projection == null) { quit(exitApp); return }
+        if (recording) stopRecording(dropLastMs = 0)
+        if (guideEditing) finishGuideEdit(false)
+        closeMenu()
+        parked = true
+        display?.surface = null   // หยุดส่งภาพระหว่างซ่อน (ประหยัดแบต)
+        main.removeCallbacks(appTick); main.post(appTick)
+        updateNotification()
+        if (exitApp) {
+            try {
+                getSystemService(android.app.ActivityManager::class.java).appTasks.forEach { it.finishAndRemoveTask() }
+            } catch (e: Exception) { }
+        }
+    }
+
+    private fun unpark() {
+        if (!parked) { main.removeCallbacks(appTick); main.post(appTick); return }
+        parked = false
+        display?.surface = reader?.surface
+        main.removeCallbacks(appTick); main.post(appTick)
+        updateNotification()
     }
 
     // ---------- จับภาพหน้าจอ ----------
@@ -593,7 +627,7 @@ class CaptureService : Service() {
             menuBox.addView(menuRow("⌛  นานสุด ${Prefs.maxLabel(Prefs.maxSeconds(this))}") { cycleMax() })
             menuBox.addView(menuRow("🖼  ดูภาพ (${FrameStore.count(this)})") { openViewer() })
             menuBox.addView(menuRow("⚙️  ตั้งค่า / เปิดแอป") { openApp() })
-            menuBox.addView(menuRow("✕  ปิดปุ่มลอยและแอป") { quit() })
+            menuBox.addView(menuRow("✕  ปิดปุ่มลอยและแอป") { park(exitApp = true) })
         } else {
             menuBox.addView(menuRow("‹  เลือกกรอบ") { menuPage = 0; buildMenu(); layoutMenu() })
             for (p in Cropper.PRESETS) {
@@ -858,7 +892,7 @@ class CaptureService : Service() {
             }
             if (newLabel != fgLabel) { fgLabel = newLabel; updateNotification() }
             // หน้าตั้งค่าของ FrameGrab แสดงได้ (จะได้เห็นกรอบ) แต่หน้าดูภาพ/ลากกรอบ ซ่อน
-            val hide = ownUiHidden || !capturedAppVisible || feedHidden ||
+            val hide = parked || ownUiHidden || !capturedAppVisible || feedHidden ||
                 (enabled && fg != null && fg !in AppWatch.VIDEO_APPS && fg != packageName)
             if (hide != appHidden) {
                 appHidden = hide
@@ -880,7 +914,7 @@ class CaptureService : Service() {
             if (root == null) return
             val svc = this@CaptureService
             val visibleOrFeedHidden = root?.visibility == View.VISIBLE || (feedHidden && !holdHidden)
-            if (!recording && !menuOpen && !guideEditing && !draggingGuide && !inOwnApp && visibleOrFeedHidden) {
+            if (!parked && !recording && !menuOpen && !guideEditing && !draggingGuide && !inOwnApp && visibleOrFeedHidden) {
                 val preset = Prefs.cropPreset(svc)
                 val guideLive = Prefs.showGuide(svc) && preset != "full" && preset != "custom"
                 val storyOnly = Prefs.storyOnly(svc)
@@ -1352,6 +1386,24 @@ class CaptureService : Service() {
                 .addAction(Notification.Action.Builder(
                     Icon.createWithResource(this, android.R.drawable.ic_menu_preferences), "⚙️ เปิดแอป", openApp
                 ).build())
+        } else if (parked) {
+            val show = PendingIntent.getService(
+                this, 4, Intent(this, CaptureService::class.java).setAction(ACTION_UNPARK),
+                PendingIntent.FLAG_IMMUTABLE
+            )
+            val quit = PendingIntent.getService(
+                this, 2, Intent(this, CaptureService::class.java).setAction(ACTION_QUIT),
+                PendingIntent.FLAG_IMMUTABLE
+            )
+            b.setContentTitle("ปุ่มลอยซ่อนอยู่")
+                .setContentText("แตะ ▶ เพื่อเปิดปุ่มลอย (ไม่ต้องกดยืนยันใหม่)")
+                .setContentIntent(show)
+                .addAction(Notification.Action.Builder(
+                    Icon.createWithResource(this, android.R.drawable.ic_media_play), "▶ เปิดปุ่มลอย", show
+                ).build())
+                .addAction(Notification.Action.Builder(
+                    Icon.createWithResource(this, android.R.drawable.ic_menu_close_clear_cancel), "■ หยุดจับหน้าจอ", quit
+                ).build())
         } else {
             val quit = PendingIntent.getService(
                 this, 2, Intent(this, CaptureService::class.java).setAction(ACTION_QUIT),
@@ -1394,6 +1446,7 @@ class CaptureService : Service() {
         quitting = true
         recording = false
         running = false
+        parked = false
         main.removeCallbacks(fadeRunnable)
         removeOverlays()
         display?.release(); display = null
