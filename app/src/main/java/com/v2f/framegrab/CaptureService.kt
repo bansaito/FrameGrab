@@ -86,6 +86,10 @@ class CaptureService : Service() {
     private lateinit var menuBox: LinearLayout
     private var menuPage = 0                       // 0 = เมนูหลัก, 1 = เลือกกรอบ
     private var guide: GuideView? = null           // กรอบที่แสดงบนจอ (กดทะลุได้)
+    private lateinit var guideLp: WindowManager.LayoutParams
+    private var editBar: LinearLayout? = null      // แถบปุ่มตอนปรับกรอบด้วยมือ
+    @Volatile private var guideEditing = false
+    private var editBackup: android.graphics.RectF? = null
     private var menuOpen = false
     private var lastOutsideClose = 0L
     private var screenW = 0
@@ -333,6 +337,7 @@ class CaptureService : Service() {
         g.visibility = View.INVISIBLE
         wm.addView(g, glp)
         guide = g
+        guideLp = glp
 
         // ปุ่มลอย
         val r = FrameLayout(this)
@@ -414,6 +419,9 @@ class CaptureService : Service() {
 
     private fun removeOverlays() {
         main.removeCallbacks(liveTick)
+        editBar?.let { try { wm.removeView(it) } catch (e: Exception) { } }
+        editBar = null
+        guideEditing = false
         closeMenu()
         removeOverlays()
         guide?.let { try { wm.removeView(it) } catch (e: Exception) { } }
@@ -473,6 +481,7 @@ class CaptureService : Service() {
             menuBox.addView(menuRow("📸  จับภาพนี้") { captureOne() })
             menuBox.addView(menuRow("⏺  อัดต่อเนื่อง") { startRecording() })
             menuBox.addView(menuRow("✂️  กรอบ: ${Cropper.presetLabel(preset)}  ›") { menuPage = 1; buildMenu(); layoutMenu() })
+            menuBox.addView(menuRow("✋  ปรับกรอบด้วยมือ") { startGuideEdit() })
             menuBox.addView(menuRow("🔲  แสดงกรอบบนจอ: ${if (Prefs.showGuide(this)) "เปิด" else "ปิด"}") {
                 Prefs.setShowGuide(this, !Prefs.showGuide(this))
                 closeMenu()
@@ -494,14 +503,13 @@ class CaptureService : Service() {
                 }
                 menuBox.addView(presetRow(icon, p.label, p.id == preset) { choosePreset(p.id) })
             }
-            if (Prefs.hasCustomCrop(this)) {
-                menuBox.addView(menuRow("✏️  ลากกรอบใหม่จากจอนี้") { captureForCrop() })
-            }
+            menuBox.addView(menuRow("✋  ปรับกรอบด้วยมือบนจอ") { startGuideEdit() })
+            menuBox.addView(menuRow("🖼️  ลากกรอบบนภาพหน้าจอ") { captureForCrop() })
         }
     }
 
     private fun choosePreset(id: String) {
-        if (id == "custom" && !Prefs.hasCustomCrop(this)) { captureForCrop(); return }
+        if (id == "custom" && !Prefs.hasCustomCrop(this)) { startGuideEdit(); return }
         Prefs.setCropPreset(this, id)
         menuPage = 0
         closeMenu()
@@ -649,7 +657,7 @@ class CaptureService : Service() {
     private val liveTick = object : Runnable {
         override fun run() {
             if (root == null) return
-            if (!recording && !menuOpen && root?.visibility == View.VISIBLE) {
+            if (!recording && !menuOpen && !guideEditing && root?.visibility == View.VISIBLE) {
                 val preset = Prefs.cropPreset(this@CaptureService)
                 val guideLive = Prefs.showGuide(this@CaptureService) && preset != "full" && preset != "custom"
                 work.post {
@@ -679,7 +687,130 @@ class CaptureService : Service() {
     }
 
     private fun shouldShowGuide(): Boolean =
-        Prefs.showGuide(this) && !recording && root?.visibility == View.VISIBLE && guide?.rect != null
+        guideEditing || (Prefs.showGuide(this) && !recording && root?.visibility == View.VISIBLE && guide?.rect != null)
+
+    // ---------- ปรับกรอบด้วยมือบนจอ ----------
+    private fun ratioOf(preset: String): Float? =
+        Cropper.PRESETS.firstOrNull { it.id == preset && it.rw > 0 }?.let { it.rw / it.rh.toFloat() }
+
+    private fun startGuideEdit() {
+        val g = guide ?: return
+        if (recording || guideEditing) return
+        menuPage = 0
+        closeMenu()
+        val preset = Prefs.cropPreset(this)
+        g.bounds.set(0f, 0f, screenW.toFloat(), screenH.toFloat())
+        editBackup = g.rect?.let { android.graphics.RectF(it) }
+        if (g.rect == null) {
+            // ยังไม่มีกรอบ: เริ่มจากกรอบที่เคยตั้งเอง หรือกลางจอ 80%
+            g.rect = if (Prefs.hasCustomCrop(this)) {
+                val f = Prefs.cropRect(this)
+                android.graphics.RectF(f[0] * screenW, f[1] * screenH, f[2] * screenW, f[3] * screenH)
+            } else android.graphics.RectF(screenW * 0.1f, screenH * 0.15f, screenW * 0.9f, screenH * 0.85f)
+        }
+        g.lockRatio = ratioOf(preset)
+        g.label = "ลากเพื่อปรับ"
+        guideEditing = true
+        g.editing = true
+        g.visibility = View.VISIBLE
+        guideLp.flags = guideLp.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+        wm.updateViewLayout(g, guideLp)
+        root?.let { // ซ่อนปุ่มลอยไม่ให้บังการลาก
+            it.visibility = View.INVISIBLE
+            lp.flags = lp.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+            wm.updateViewLayout(it, lp)
+        }
+        showEditBar()
+    }
+
+    private fun showEditBar() {
+        editBar?.let { try { wm.removeView(it) } catch (e: Exception) { } }
+        val g = guide ?: return
+        val bar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = pill(0xF2181A22.toInt(), dp(22f).toFloat())
+            setPadding(dp(6f), dp(4f), dp(6f), dp(4f))
+        }
+        fun barBtn(t: String, on: () -> Unit) = TextView(this).apply {
+            text = t; setTextColor(Color.WHITE); textSize = 14f; isSingleLine = true
+            setPadding(dp(12f), dp(10f), dp(12f), dp(10f))
+            setOnClickListener { on() }
+        }
+        val lockText = { g.lockRatio?.let { "🔒 ${Cropper.ratioName((it * 1000).roundToInt(), 1000)}" } ?: "🔓 อิสระ" }
+        val lockBtn = barBtn(lockText()) { }
+        lockBtn.setOnClickListener {
+            val r = g.rect
+            g.lockRatio = if (g.lockRatio != null || r == null) null else r.width() / r.height()
+            lockBtn.text = lockText()
+        }
+        bar.addView(lockBtn)
+        bar.addView(barBtn("✨ พอดีวิดีโอ") { fitGuideToVideo() })
+        bar.addView(barBtn("✕") { finishGuideEdit(false) })
+        bar.addView(barBtn("✔ ใช้กรอบนี้") { finishGuideEdit(true) }.apply {
+            background = pill(0xFF4F46E5.toInt(), dp(18f).toFloat())
+        })
+        bar.measure(
+            View.MeasureSpec.makeMeasureSpec(screenW - dp(16f), View.MeasureSpec.AT_MOST),
+            View.MeasureSpec.makeMeasureSpec(dp(80f), View.MeasureSpec.AT_MOST)
+        )
+        val blp = overlayParams(bar.measuredWidth, bar.measuredHeight).apply {
+            x = (screenW - bar.measuredWidth) / 2
+            y = dp(48f)
+        }
+        wm.addView(bar, blp)
+        editBar = bar
+    }
+
+    /** ให้กรอบพอดีกับวิดีโอที่เล่นอยู่ (ซ่อนกรอบแป๊บหนึ่งเพื่อถ่ายจอ) */
+    private fun fitGuideToVideo() {
+        val g = guide ?: return
+        g.visibility = View.INVISIBLE
+        editBar?.visibility = View.INVISIBLE
+        val hiddenAt = SystemClock.uptimeMillis()
+        work.post {
+            val bmp = grabFresh(hiddenAt + 60)
+            val r = bmp?.let {
+                val a = Cropper.autoRect(this, it)
+                val lock = g.lockRatio
+                val rr = if (lock != null) Cropper.fitRatio(a, (lock * 1000).roundToInt(), 1000) else a
+                val sx = screenW / it.width.toFloat(); val sy = screenH / it.height.toFloat()
+                android.graphics.RectF(rr.left * sx, rr.top * sy, rr.right * sx, rr.bottom * sy).also { _ -> it.recycle() }
+            }
+            main.post {
+                if (r != null) g.rect = r
+                g.visibility = View.VISIBLE
+                editBar?.visibility = View.VISIBLE
+                g.invalidate()
+            }
+        }
+    }
+
+    private fun finishGuideEdit(apply: Boolean) {
+        val g = guide ?: return
+        if (!guideEditing) return
+        editBar?.let { try { wm.removeView(it) } catch (e: Exception) { } }
+        editBar = null
+        guideEditing = false
+        g.editing = false
+        guideLp.flags = guideLp.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        wm.updateViewLayout(g, guideLp)
+        val r = g.rect
+        if (apply && r != null && screenW > 0 && screenH > 0) {
+            Prefs.setCropRect(this, r.left / screenW, r.top / screenH, r.right / screenW, r.bottom / screenH)
+            Prefs.setCropPreset(this, "custom")
+            Prefs.setShowGuide(this, true)
+            g.label = Cropper.presetLabel("custom")
+            toast("✔ ใช้กรอบนี้แล้ว (${Cropper.ratioName(r.width().toInt(), r.height().toInt())})")
+        } else {
+            g.rect = editBackup
+            g.label = Cropper.presetLabel(Prefs.cropPreset(this))
+        }
+        g.invalidate()
+        root?.visibility = View.VISIBLE
+        showOverlay()
+        updateNotification()
+    }
 
     private fun wake() {
         main.removeCallbacks(fadeRunnable)
@@ -693,6 +824,7 @@ class CaptureService : Service() {
 
     /** ซ่อนทุกอย่างของเราก่อนจับภาพ */
     private fun hideOverlay() {
+        if (guideEditing) finishGuideEdit(false)
         closeMenu()
         guide?.visibility = View.INVISIBLE
         val r = root ?: return
