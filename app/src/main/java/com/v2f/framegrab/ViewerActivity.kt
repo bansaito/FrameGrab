@@ -85,7 +85,14 @@ class ViewerActivity : Activity() {
 
         image = ZoomImageView(this).apply {
             onSwipe = { d -> setPlaying(false); show(idx + d) }
-            onTap = { setUiVisible(!uiVisible) }
+            // แตะแบบสตอรี่: ซ้าย 1/3 = ก่อนหน้า, ขวา 1/3 = ถัดไป, กลาง = ซ่อน/แสดงปุ่ม (ซูมอยู่ = ซ่อน/แสดงปุ่มอย่างเดียว)
+            onTap = { fx ->
+                when {
+                    isZoomed || fx in 0.33f..0.67f -> setUiVisible(!uiVisible)
+                    fx < 0.33f -> { setPlaying(false); show(idx - 1) }
+                    else -> { setPlaying(false); show(idx + 1) }
+                }
+            }
             onLongPress = { saveCurrent() } // กดค้าง = บันทึกภาพนี้
             onZoomChanged = { z -> setUiVisible(!z); if (z) setPlaying(false) }
         }
@@ -288,6 +295,25 @@ class ViewerActivity : Activity() {
         }
     }
 
+    // ---------- ป้ายแจ้งในหน้าดูภาพ (แทน Toast ที่ต้องรอคิวทีละอัน) ----------
+    private var noticeView: TextView? = null
+    private val hideNotice = Runnable { noticeView?.animate()?.alpha(0f)?.setDuration(200)?.start() }
+    private fun notice(text: String, long: Boolean = false) {
+        val root = window.decorView as ViewGroup
+        val v = noticeView ?: TextView(this).apply {
+            setTextColor(Color.WHITE); textSize = 14f
+            setPadding(dp(16f), dp(8f), dp(16f), dp(8f))
+            background = android.graphics.drawable.GradientDrawable().apply { setColor(0xD9202020.toInt()); cornerRadius = dp(20f).toFloat() }
+            elevation = dp(6f).toFloat()
+            root.addView(this, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply { bottomMargin = dp(120f) })
+        }.also { noticeView = it }
+        v.text = text
+        v.animate().cancel(); v.alpha = 1f; v.bringToFront()
+        main.removeCallbacks(hideNotice)
+        main.postDelayed(hideNotice, if (long) 2500 else 1200)
+    }
+
     private fun saveCurrent() {
         if (frames.isEmpty()) return
         val f = frames[idx]
@@ -295,11 +321,7 @@ class ViewerActivity : Activity() {
         exec.execute {
             val ok = FrameStore.saveOneToGallery(this, f)
             main.post {
-                Toast.makeText(
-                    this,
-                    if (ok) "💾 บันทึกภาพที่ $n ลงแกลเลอรีแล้ว" else "บันทึกไม่สำเร็จ",
-                    Toast.LENGTH_SHORT
-                ).show()
+                notice(if (ok) "💾 บันทึกภาพที่ $n แล้ว" else "บันทึกไม่สำเร็จ")
             }
         }
     }
@@ -307,11 +329,11 @@ class ViewerActivity : Activity() {
     private fun saveAll() {
         if (frames.isEmpty()) return
         val list = frames
-        Toast.makeText(this, "กำลังบันทึก ${list.size} ภาพ…", Toast.LENGTH_SHORT).show()
+        notice("กำลังบันทึก ${list.size} ภาพ…")
         exec.execute {
             val n = FrameStore.saveAllToGallery(this, list)
             main.post {
-                Toast.makeText(this, "บันทึก $n ภาพลงแกลเลอรีแล้ว (โฟลเดอร์ Pictures/FrameGrab)", Toast.LENGTH_LONG).show()
+                notice("บันทึก $n ภาพลงแกลเลอรีแล้ว (โฟลเดอร์ Pictures/FrameGrab)", long = true)
             }
         }
     }
@@ -327,7 +349,7 @@ class ViewerActivity : Activity() {
         try {
             startActivity(Intent.createChooser(view, "เปิดภาพด้วย…"))
         } catch (e: Exception) {
-            Toast.makeText(this, "ไม่พบแอปที่เปิดภาพได้", Toast.LENGTH_SHORT).show()
+            notice("ไม่พบแอปที่เปิดภาพได้")
         }
     }
 
@@ -345,7 +367,7 @@ class ViewerActivity : Activity() {
         try {
             startActivity(Intent.createChooser(send, "แชร์ ${uris.size} ภาพ…"))
         } catch (e: Exception) {
-            Toast.makeText(this, "ไม่พบแอปที่รับภาพได้", Toast.LENGTH_SHORT).show()
+            notice("ไม่พบแอปที่รับภาพได้")
         }
     }
 

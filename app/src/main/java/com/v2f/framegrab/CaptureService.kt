@@ -1377,7 +1377,12 @@ class CaptureService : Service() {
         getSystemService(NotificationManager::class.java).notify(NOTIF_ID, buildNotification())
     }
 
-    private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_SHORT).show()
+    // ยกเลิกอันเก่าก่อน จะได้ขึ้นทันทีไม่ต้องรอคิว (กด 📸 รัว ๆ)
+    private var lastToast: Toast? = null
+    private fun toast(s: String) {
+        lastToast?.cancel()
+        lastToast = Toast.makeText(this, s, Toast.LENGTH_SHORT).also { it.show() }
+    }
 
     // ---------- ปิด ----------
     /**

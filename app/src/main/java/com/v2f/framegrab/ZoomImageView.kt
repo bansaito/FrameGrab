@@ -18,7 +18,8 @@ import kotlin.math.abs
 class ZoomImageView(ctx: Context) : ImageView(ctx) {
 
     var onSwipe: ((Int) -> Unit)? = null
-    var onTap: (() -> Unit)? = null
+    /** แตะครั้งเดียว: ส่งตำแหน่งแนวนอน 0..1 (ซ้าย→ขวา) */
+    var onTap: ((Float) -> Unit)? = null
     var onLongPress: (() -> Unit)? = null
     var onZoomChanged: ((Boolean) -> Unit)? = null
 
@@ -135,7 +136,7 @@ class ZoomImageView(ctx: Context) : ImageView(ctx) {
 
         // ไม่มีแตะสองครั้งเพื่อซูมแล้ว (ซูมสองนิ้วแทน) แตะครั้งเดียวจึงตอบสนองทันที
         override fun onSingleTapUp(e: MotionEvent): Boolean {
-            onTap?.invoke()
+            onTap?.invoke(if (width > 0) e.x / width else 0.5f)
             return true
         }
     })
