@@ -27,6 +27,7 @@ class StoryBar {
     private var pendingAt = -1L
     private var pendingSize = -1
     private var fullAt = -1L
+    private var segAt0 = -1L
     @Volatile private var lastRuns = 0
     @Volatile private var lastEnd = 0
     @Volatile private var maxEnd = 0
@@ -35,13 +36,14 @@ class StoryBar {
     fun status(): String = when {
         advancedAtMs >= 0 -> "จบสตอรี่แล้ว"
         y < 0 -> "ยังไม่พบแถบ"
-        else -> "พบ · $lastRuns ช่อง · ขาวถึง ${lastEnd * 100 / N}% (สูงสุด ${maxEnd * 100 / N}%)"
+        else -> "พบ · ${layout.size} ช่อง · อยู่ช่อง ${curSeg + 1}" +
+            (layout.getOrNull(curSeg)?.let { " (ขาว ${lastEnd * 100 / N}% / จบที่ ${it[1] * 100 / N}%)" } ?: " (ขาว ${lastEnd * 100 / N}%)")
     }
     /** เวลาที่ขึ้นช่องถัดไป (ms นับจากเริ่มอัด) หรือ -1 */
     var advancedAtMs = -1L
         private set
 
-    @Synchronized fun reset() { lastRuns = 0; lastEnd = 0; maxEnd = 0; fullAt = -1L; lastLocateAt = -1000L; y = -1; prev = null; pendingAt = -1L; pendingSize = -1; advancedAtMs = -1L }
+    @Synchronized fun reset() { segAt0 = -1L; curSeg = -1; layout = emptyList(); lastRuns = 0; lastEnd = 0; maxEnd = 0; fullAt = -1L; lastLocateAt = -1000L; y = -1; prev = null; pendingAt = -1L; pendingSize = -1; advancedAtMs = -1L }
 
     /** อ่านพิกเซลจาก Image (RGBA) ตรง ๆ — ตรวจได้ทุกเฟรมที่จอแสดง */
     private class Px(img: Image) : Pix {
@@ -97,10 +99,37 @@ class StoryBar {
             if (whiteMask(b, maxOf(yy - d, 0)).count { it } > cnt * 0.4f) continue
             if (whiteMask(b, minOf(yy + d, h - 1)).count { it } > cnt * 0.4f) continue
             y = yy
+            layout = segLayout(b, yy)
             return true
         }
         return false
     }
+
+    /** ช่องของแถบ (ทั้งที่ขาวแล้วและยังไม่ขาว): แถบสว่างกว่าแถวเหนือ/ใต้ ส่วนช่องว่างระหว่างช่องไม่ */
+    private var layout: List<IntArray> = emptyList()
+    private var curSeg = -1
+
+    private fun segLayout(b: Pix, yy: Int): List<IntArray> {
+        val d = maxOf((b.height * 0.006f).toInt(), 3)
+        fun l(x: Int, y: Int): Int { val p = b.rgb(x, y); return (((p shr 16) and 0xFF) * 299 + ((p shr 8) and 0xFF) * 587 + (p and 0xFF) * 114) / 1000 }
+        val m = BooleanArray(N) { i ->
+            val x = (b.width - 1) * i / (N - 1)
+            l(x, yy) - (l(x, maxOf(yy - d, 0)) + l(x, minOf(yy + d, b.height - 1))) / 2 >= 12
+        }
+        val out = ArrayList<IntArray>()
+        var i = 0
+        while (i < N) {
+            if (!m[i]) { i++; continue }
+            var j = i
+            while (j < N && m[j]) j++
+            if (j - i >= 3) out.add(intArrayOf(i, j))
+            i = j
+        }
+        return out
+    }
+
+    /** ช่องที่จุด x (ตำแหน่งปลายสีขาว) อยู่ */
+    private fun segAt(x: Int): Int = layout.indexOfFirst { x >= it[0] && x <= it[1] + 2 }
 
     private var lastLocateAt = -1000L
 
@@ -129,6 +158,20 @@ class StoryBar {
         val end = r[r.size - 1][1]
         val pEnd = if (p.isEmpty()) 0 else p[p.size - 1][1]
         lastRuns = r.size; lastEnd = end; maxEnd = maxOf(maxEnd, end)
+        // หลัก: รู้ตำแหน่งแต่ละช่องแล้ว (ยาวไม่เท่ากันก็ได้) → สีขาวเต็มช่องปัจจุบัน หรือข้ามไปช่องถัดไป = จบสตอรี่นี้
+        if (layout.isNotEmpty()) {
+            val s = segAt(end - 1)
+            if (curSeg < 0 && s >= 0) curSeg = s
+            if (curSeg >= 0) {
+                val segEnd = layout[curSeg][1]
+                val filled = end >= segEnd - 2 && pEnd >= segEnd - 8   // ค่อย ๆ เต็มมาจริง
+                val moved = s > curSeg
+                if (filled || moved) {
+                    if (segAt0 < 0) segAt0 = tMs
+                    if (tMs - segAt0 >= 60 && segAt0 >= 2000) { advancedAtMs = segAt0; return }
+                } else segAt0 = -1L
+            }
+        }
         // เกือบเต็มแล้ว (≥88%) แล้วแถบหาย/เหลือสั้นทันที = ข้ามไปสตอรี่ของคนถัดไป (ช่องสุดท้ายจบ)
         val dropped = maxEnd >= N * 0.88f && end < N * 0.5f
         if ((end >= N * 0.92f && (fullAt >= 0 || pEnd >= N * 0.92f - 4)) || dropped) {
