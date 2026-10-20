@@ -78,10 +78,7 @@ class GuideView(ctx: Context) : View(ctx) {
                 canvas.drawLine(x, y, x, y + L * sy, corner)
             }
         }
-        val tag = if (editing) {
-            val w = r.width().toInt(); val h = r.height().toInt()
-            "$label · ${Cropper.ratioName(w, h)}"
-        } else label
+        val tag = if (editing || showRatio) Cropper.ratioTag(r.width().toInt(), r.height().toInt()) else label
         if (tag.isNotEmpty()) {
             val pad = 6f * d
             val w = tagText.measureText(tag) + pad * 2
@@ -114,7 +111,7 @@ class GuideView(ctx: Context) : View(ctx) {
                 if (abs(y - r.top) < tol && inX) mode = mode or 2
                 if (abs(y - r.bottom) < tol && inX) mode = mode or 8
                 if (mode == 0 && r.contains(x, y)) mode = 16
-                lastX = x; lastY = y
+                beginDrag(mode, x, y)
             }
             MotionEvent.ACTION_MOVE -> dragTo(x, y)
         }
@@ -122,11 +119,56 @@ class GuideView(ctx: Context) : View(ctx) {
     }
 
     /** เริ่มลากจากจุดจับภายนอก (mode เป็นบิตแบบเดียวกับข้างบน) */
-    fun beginDrag(m: Int, x: Float, y: Float) { mode = m; lastX = x; lastY = y }
+    // ---------- ดูดเข้าสัดส่วนมาตรฐาน ----------
+    private val SNAPS = floatArrayOf(9 / 16f, 2 / 3f, 3 / 4f, 4 / 5f, 1f, 5 / 4f, 4 / 3f, 3 / 2f, 16 / 9f)
+    private var raw: RectF? = null      // กรอบตามนิ้วจริง (ก่อนดูด)
+    private var snapped: Float? = null  // สัดส่วนที่ดูดอยู่
+    /** แสดงสัดส่วนบนป้ายแทนชื่อกรอบ */
+    var showRatio = false
+
+    private fun inBounds(n: RectF) = n.left >= bounds.left - 0.5f && n.top >= bounds.top - 0.5f &&
+        n.right <= bounds.right + 0.5f && n.bottom <= bounds.bottom + 0.5f
+
+    /** เข้าใกล้สัดส่วนมาตรฐาน (≤4%) = ดูดเข้า, ดูดแล้วต้องลากเกิน 8% ถึงจะหลุด */
+    private fun snap(n: RectF): RectF {
+        if (lockRatio != null || n.height() <= 0f) { snapped = null; return n }
+        val r = n.width() / n.height()
+        val cur = snapped
+        val target = if (cur != null && abs(r - cur) / cur < 0.08f) cur
+            else SNAPS.filter { abs(r - it) / it < 0.04f }.minByOrNull { abs(r - it) / it }
+        snapped = target
+        if (target == null) return n
+        val out = RectF(n)
+        if (mode and 10 != 0 || mode == 16) { // ลากขอบบน/ล่าง/มุม/ย้าย: ปรับความสูง
+            val h = out.width() / target
+            if (mode and 2 != 0) out.top = out.bottom - h else out.bottom = out.top + h
+        } else { // ลากขอบซ้าย/ขวา: ปรับความกว้าง
+            val w = out.height() * target
+            if (mode and 1 != 0) out.left = out.right - w else out.right = out.left + w
+        }
+        if (!inBounds(out)) { // ชนขอบจอ ลองปรับอีกด้านแทน
+            val alt = RectF(n)
+            val w = alt.height() * target
+            val cx = alt.centerX()
+            alt.left = cx - w / 2; alt.right = cx + w / 2
+            if (inBounds(alt)) return alt
+            snapped = null
+            return n
+        }
+        return out
+    }
+
+    fun beginDrag(m: Int, x: Float, y: Float) {
+        mode = m; lastX = x; lastY = y
+        raw = rect?.let { RectF(it) }
+        val r = rect
+        snapped = if (r != null && r.height() > 0) SNAPS.firstOrNull { abs(r.width() / r.height() - it) / it < 0.005f } else null
+        showRatio = true
+    }
 
     /** ลากไปที่ (x, y) ในพิกัดจอ */
     fun dragTo(x: Float, y: Float) {
-        val r = rect ?: return
+        val r = raw ?: rect ?: return
         run {
                 val dx = x - lastX; val dy = y - lastY
                 lastX = x; lastY = y
@@ -175,7 +217,8 @@ class GuideView(ctx: Context) : View(ctx) {
                     n.right <= bounds.right + 0.5f && n.bottom <= bounds.bottom + 0.5f &&
                     n.width() >= minS - 0.5f && n.height() >= minS - 0.5f
                 ) {
-                    rect = n
+                    raw = n
+                    rect = snap(n)
                     invalidate()
                 }
         }

@@ -218,7 +218,7 @@ class MainActivity : Activity() {
         clearBtn.text = if (n > 0) "🧹 ล้างภาพทั้งหมด ($n ภาพ · ${FrameStore.sizeLabel(FrameStore.totalBytes(this))})" else "🧹 ล้างภาพทั้งหมด"
         clearBtn.alpha = if (n > 0) 1f else 0.5f
         intervalBtn.text = "⏱ จับทุก ${Prefs.intervalLabel(Prefs.interval(this))} วินาที  (แตะเพื่อเปลี่ยน)"
-        cropBtn.text = "✂️ กรอบ: ${Cropper.presetLabel(Prefs.cropPreset(this))}  (แตะเพื่อเลือก)"
+        cropBtn.text = "✂️ กรอบ: ${Cropper.presetLabel(this, Prefs.cropPreset(this))}  (แตะเพื่อเลือก)"
         maxBtn.text = "⌛ อัดนานสุด ${Prefs.maxLabel(Prefs.maxSeconds(this))}  (แตะเพื่อเปลี่ยน)"
     }
 

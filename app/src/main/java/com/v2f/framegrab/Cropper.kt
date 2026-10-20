@@ -79,6 +79,23 @@ object Cropper {
         else String.format(java.util.Locale.US, "%.2f:1", r)
     }
 
+    /** ชื่อสัดส่วนมาตรฐานที่ใกล้ที่สุด: ตรง (±1.5%) = "3:4", ไม่ตรง = "≈3:4" */
+    fun ratioTag(w: Int, h: Int): String {
+        if (w <= 0 || h <= 0) return "?"
+        val r = w / h.toDouble()
+        val best = COMMON.minByOrNull { kotlin.math.abs(it.second - r) / it.second }!!
+        return if (kotlin.math.abs(best.second - r) / best.second < 0.015) best.first else "≈" + best.first
+    }
+
+    /** ชื่อกรอบสำหรับแสดง: กรอบที่ลากเอง แสดงเป็นสัดส่วน (เช่น 3:4) แทน "กำหนดเอง" */
+    fun presetLabel(c: Context, id: String): String {
+        if (id != "custom" || !Prefs.hasCustomCrop(c)) return presetLabel(id)
+        val m = DisplayMetrics()
+        @Suppress("DEPRECATION") c.getSystemService(WindowManager::class.java).defaultDisplay.getRealMetrics(m)
+        val f = Prefs.cropRect(c)
+        return ratioTag(((f[2] - f[0]) * m.widthPixels).toInt(), ((f[3] - f[1]) * m.heightPixels).toInt())
+    }
+
     /** สัดส่วนของวิดีโอที่กำลังเล่น วัดจากขอบดำรอบวิดีโอ */
     fun detectVideoRatio(c: Context, bmp: Bitmap): String {
         val r = autoRect(c, bmp)

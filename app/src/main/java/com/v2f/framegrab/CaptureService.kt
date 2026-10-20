@@ -533,7 +533,7 @@ class CaptureService : Service() {
             }
             menuBox.addView(menuRow("📸  จับภาพนี้") { captureOne() })
             menuBox.addView(menuRow("⏺  อัดต่อเนื่อง") { startRecording() })
-            menuBox.addView(menuRow("✂️  กรอบ: ${Cropper.presetLabel(preset)}  ›") { menuPage = 1; buildMenu(); layoutMenu() })
+            menuBox.addView(menuRow("✂️  กรอบ: ${Cropper.presetLabel(this, preset)}  ›") { menuPage = 1; buildMenu(); layoutMenu() })
             menuBox.addView(menuRow("✋  ปรับกรอบด้วยมือ") { startGuideEdit() })
             menuBox.addView(menuRow("🔲  แสดงกรอบบนจอ: ${if (Prefs.showGuide(this)) "เปิด" else "ปิด"}") {
                 Prefs.setShowGuide(this, !Prefs.showGuide(this))
@@ -554,7 +554,8 @@ class CaptureService : Service() {
                     p.id == "auto" -> textIcon("✨")
                     else -> textIcon("✏️")
                 }
-                menuBox.addView(presetRow(icon, p.label, p.id == preset) { choosePreset(p.id) })
+                val lbl = if (p.id == "custom" && Prefs.hasCustomCrop(this)) "กรอบที่ลากไว้ · ${Cropper.presetLabel(this, "custom")}" else p.label
+                menuBox.addView(presetRow(icon, lbl, p.id == preset) { choosePreset(p.id) })
             }
             menuBox.addView(menuRow("✋  ปรับกรอบด้วยมือบนจอ") { startGuideEdit() })
             menuBox.addView(menuRow("🖼️  ลากกรอบบนภาพหน้าจอ") { captureForCrop() })
@@ -568,7 +569,7 @@ class CaptureService : Service() {
         closeMenu()
         if (id != "full" && !Prefs.showGuide(this)) Prefs.setShowGuide(this, true)
         refreshGuide()
-        toast("✂️ กรอบ: ${Cropper.presetLabel(id)}")
+        toast("✂️ กรอบ: ${Cropper.presetLabel(this, id)}")
     }
 
     /** วัดขนาดเมนูแล้ววางข้างปุ่มลอย ไม่ให้ล้นจอ */
@@ -681,7 +682,7 @@ class CaptureService : Service() {
         main.post {
             guide?.let { g ->
                 g.rect = rect
-                g.label = Cropper.presetLabel(preset)
+                g.label = Cropper.presetLabel(this, preset)
                 g.invalidate()
                 g.visibility = if (shouldShowGuide()) View.VISIBLE else View.INVISIBLE
                 syncHandles()
@@ -777,7 +778,7 @@ class CaptureService : Service() {
             }
             else -> { refreshGuide(); return }
         }
-        g.label = Cropper.presetLabel(preset)
+        g.label = Cropper.presetLabel(this, preset)
         g.invalidate()
         g.visibility = if (shouldShowGuide()) View.VISIBLE else View.INVISIBLE
         syncHandles()
@@ -842,7 +843,8 @@ class CaptureService : Service() {
                 // ปล่อยนิ้ว = บันทึกเป็นกรอบกำหนดเองทันที
                 Prefs.setCropRect(this, r.left / screenW, r.top / screenH, r.right / screenW, r.bottom / screenH)
                 Prefs.setCropPreset(this, "custom")
-                g.label = Cropper.presetLabel("custom") + " · " + Cropper.ratioName(r.width().toInt(), r.height().toInt())
+                g.showRatio = false
+                g.label = Cropper.ratioTag(r.width().toInt(), r.height().toInt())
                 g.invalidate()
                 updateNotification()
             }
@@ -984,11 +986,11 @@ class CaptureService : Service() {
             Prefs.setCropRect(this, r.left / screenW, r.top / screenH, r.right / screenW, r.bottom / screenH)
             Prefs.setCropPreset(this, "custom")
             Prefs.setShowGuide(this, true)
-            g.label = Cropper.presetLabel("custom")
+            g.label = Cropper.presetLabel(this, "custom")
             toast("✔ ใช้กรอบนี้แล้ว (${Cropper.ratioName(r.width().toInt(), r.height().toInt())})")
         } else {
             g.rect = editBackup
-            g.label = Cropper.presetLabel(Prefs.cropPreset(this))
+            g.label = Cropper.presetLabel(this, Prefs.cropPreset(this))
         }
         g.invalidate()
         root?.visibility = View.VISIBLE
@@ -1156,7 +1158,7 @@ class CaptureService : Service() {
                 PendingIntent.FLAG_IMMUTABLE
             )
             b.setContentTitle(videoRatio?.let { "📐 วิดีโอที่เล่นอยู่: $it" } ?: "ปุ่มลอยจับเฟรมทำงานอยู่")
-                .setContentText("กรอบ: ${Cropper.presetLabel(Prefs.cropPreset(this))} · แตะปุ่ม 🎞️ บนจอเพื่อจับภาพ")
+                .setContentText("กรอบ: ${Cropper.presetLabel(this, Prefs.cropPreset(this))} · แตะปุ่ม 🎞️ บนจอเพื่อจับภาพ")
                 .addAction(Notification.Action.Builder(
                     Icon.createWithResource(this, android.R.drawable.ic_menu_preferences), "⚙️ เปิดแอป", openApp
                 ).build())
