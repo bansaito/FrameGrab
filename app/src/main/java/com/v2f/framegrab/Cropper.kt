@@ -50,7 +50,13 @@ object Cropper {
         val p = PRESETS.firstOrNull { it.id == id }
         return when {
             id == "auto" -> autoRect(c, bmp)
-            p != null && p.rw > 0 -> fitRatio(autoRect(c, bmp), p.rw, p.rh)
+            p != null && p.rw > 0 -> {
+                // วิดีโอสัดส่วนใกล้กรอบมาก (≤3%) → ชิดขอบวิดีโอพอดี ไม่ต้องบีบให้เป๊ะจนเหลือช่องว่างข้าง ๆ
+                val base = autoRect(c, bmp)
+                val target = p.rw / p.rh.toFloat()
+                val br = base.width() / base.height().coerceAtLeast(1).toFloat()
+                if (kotlin.math.abs(br - target) / target <= 0.03f) base else fitRatio(base, p.rw, p.rh)
+            }
             id == "custom" -> {
                 val r = Prefs.cropRect(c)
                 val out = Rect(
