@@ -80,6 +80,7 @@ class CaptureService : Service() {
     private lateinit var bubble: TextView
     private lateinit var menu: LinearLayout
     private lateinit var btnInterval: TextView
+    private lateinit var btnCrop: TextView
     private lateinit var btnMax: TextView
     private lateinit var btnView: TextView
     private var menuOpen = false
@@ -92,6 +93,7 @@ class CaptureService : Service() {
     // ---------- การอัดต่อเนื่อง ----------
     private val loop = LoopDetector()
     @Volatile private var loopFeeding = false
+    private var recRect: android.graphics.Rect? = null
     @Volatile private var recording = false
     @Volatile private var recStart = 0L
     private var recCount = 0
@@ -208,7 +210,9 @@ class CaptureService : Service() {
                 val now = java.util.Calendar.getInstance()
                 val msOfDay = ((now.get(java.util.Calendar.HOUR_OF_DAY) * 60 + now.get(java.util.Calendar.MINUTE)) * 60 +
                     now.get(java.util.Calendar.SECOND)) * 1000L + now.get(java.util.Calendar.MILLISECOND)
-                try { FrameStore.save(this, bmp, 's', msOfDay); ok = true } catch (e: Exception) { }
+                val out = Cropper.apply(bmp, Cropper.rectFor(this, bmp))
+                try { FrameStore.save(this, out, 's', msOfDay); ok = true } catch (e: Exception) { }
+                if (out !== bmp) out.recycle()
                 bmp.recycle()
             }
             main.post {
@@ -225,6 +229,7 @@ class CaptureService : Service() {
         FrameStore.clear(this) // อัดคลิปใหม่ ล้างภาพเก่าทันที
         recording = true
         recCount = 0
+        recRect = null
         val keepStop = Prefs.keepStopButton(this)
         if (keepStop) showStopButton() else hideOverlay()
         val intervalMs = (Prefs.interval(this) * 1000).roundToInt().toLong().coerceAtLeast(100)
@@ -253,7 +258,11 @@ class CaptureService : Service() {
                     }
                     val bmp = grabBitmap()
                     if (bmp != null) {
-                        try { FrameStore.save(this@CaptureService, bmp, 'c', el, 90); recCount++ } catch (e: Exception) { }
+                        // ใช้กรอบเดียวกันทั้งคลิป (คำนวณจากภาพแรก) ภาพจะได้ขนาดเท่ากันทุกภาพ
+                        val rect = recRect ?: Cropper.rectFor(this@CaptureService, bmp).also { recRect = it }
+                        val out = Cropper.apply(bmp, rect)
+                        try { FrameStore.save(this@CaptureService, out, 'c', el, 90); recCount++ } catch (e: Exception) { }
+                        if (out !== bmp) out.recycle()
                         bmp.recycle()
                     }
                     if (recCount % 4 == 0) main.post { updateNotification() }
@@ -334,6 +343,9 @@ class CaptureService : Service() {
         btnView = menuItem("") { openViewer() }
         menu.addView(menuItem("📸  จับภาพนี้") { captureOne() })
         menu.addView(menuItem("⏺  อัดต่อเนื่อง") { startRecording() })
+        btnCrop = menuItem("") { cycleCrop() }
+        menu.addView(btnCrop)
+        menu.addView(menuItem("✏️  ตั้งกรอบจากจอนี้") { captureForCrop() })
         menu.addView(btnInterval)
         menu.addView(btnMax)
         menu.addView(btnView)
@@ -394,7 +406,41 @@ class CaptureService : Service() {
         scheduleFade()
     }
 
+    private fun cycleCrop() {
+        val next = (Prefs.cropMode(this) + 1) % 3
+        if (next == Cropper.CUSTOM && !Prefs.hasCustomCrop(this)) {
+            Prefs.setCropMode(this, Cropper.FULL)
+            toast("ยังไม่ได้ตั้งกรอบ แตะ ✏️ ตั้งกรอบจากจอนี้ ก่อน")
+        } else Prefs.setCropMode(this, next)
+        refreshMenuLabels()
+    }
+
+    /** ถ่ายจอปัจจุบัน (ไม่มีปุ่มลอย) แล้วเปิดหน้าลากกรอบ */
+    private fun captureForCrop() {
+        if (recording) return
+        closeMenu()
+        hideOverlay()
+        val hiddenAt = SystemClock.uptimeMillis()
+        work.post {
+            val bmp = grabFresh(hiddenAt + 60)
+            var ok = false
+            if (bmp != null) {
+                try {
+                    java.io.FileOutputStream(Cropper.refFile(this)).use { bmp.compress(Bitmap.CompressFormat.JPEG, 90, it) }
+                    ok = true
+                } catch (e: Exception) { }
+                bmp.recycle()
+            }
+            main.post {
+                showOverlay()
+                if (ok) startActivity(Intent(this, CropActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                else toast("จับภาพหน้าจอไม่สำเร็จ")
+            }
+        }
+    }
+
     private fun refreshMenuLabels() {
+        btnCrop.text = "✂️  เก็บ: ${Cropper.modeLabel(Prefs.cropMode(this))}"
         btnInterval.text = "⏱  ทุก ${Prefs.intervalLabel(Prefs.interval(this))} วิ"
         btnMax.text = "⌛  นานสุด ${Prefs.maxLabel(Prefs.maxSeconds(this))}"
         btnView.text = "🖼  ดูภาพ (${FrameStore.count(this)})"

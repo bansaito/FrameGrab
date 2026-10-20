@@ -23,6 +23,16 @@ object Prefs {
     fun autoStop(c: Context): Boolean = sp(c).getBoolean("autoStop", true)
     fun setAutoStop(c: Context, v: Boolean) = sp(c).edit().putBoolean("autoStop", v).apply()
 
+    /** ส่วนที่จะเก็บ: 0 ทั้งจอ, 1 ตัดขอบอัตโนมัติ, 2 กรอบที่ตั้งเอง */
+    fun cropMode(c: Context): Int = sp(c).getInt("cropMode", 0)
+    fun setCropMode(c: Context, v: Int) = sp(c).edit().putInt("cropMode", v).apply()
+    fun hasCustomCrop(c: Context): Boolean = sp(c).contains("cropL")
+    fun cropRect(c: Context): FloatArray = sp(c).let {
+        floatArrayOf(it.getFloat("cropL", 0f), it.getFloat("cropT", 0f), it.getFloat("cropR", 1f), it.getFloat("cropB", 1f))
+    }
+    fun setCropRect(c: Context, l: Float, t: Float, r: Float, b: Float) =
+        sp(c).edit().putFloat("cropL", l).putFloat("cropT", t).putFloat("cropR", r).putFloat("cropB", b).apply()
+
     fun bubbleX(c: Context): Int = sp(c).getInt("bx", -1)
     fun bubbleY(c: Context): Int = sp(c).getInt("by", -1)
     fun setBubble(c: Context, x: Int, y: Int) = sp(c).edit().putInt("bx", x).putInt("by", y).apply()

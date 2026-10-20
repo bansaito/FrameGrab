@@ -37,6 +37,7 @@ class MainActivity : Activity() {
     private lateinit var intervalBtn: TextView
     private lateinit var maxBtn: TextView
     private lateinit var crashBox: TextView
+    private lateinit var cropBtn: TextView
 
     private fun dp(v: Float): Int =
         TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, resources.displayMetrics).roundToInt()
@@ -92,6 +93,24 @@ class MainActivity : Activity() {
         col.addView(startBtn, gap(12f))
         viewBtn = button("", 0xFF2A2D3A.toInt()) { startActivity(Intent(this, ViewerActivity::class.java)) }
         col.addView(viewBtn, gap(10f))
+
+        col.addView(label("ส่วนที่จะเก็บ", 16f, Color.WHITE), gap(26f))
+        cropBtn = button("", 0xFF2A2D3A.toInt()) {
+            var next = (Prefs.cropMode(this) + 1) % 3
+            if (next == Cropper.CUSTOM && !Prefs.hasCustomCrop(this)) {
+                next = Cropper.FULL
+                Toast.makeText(this, "ยังไม่ได้ตั้งกรอบ กด ✏️ ตั้งกรอบเอง ก่อน", Toast.LENGTH_SHORT).show()
+            }
+            Prefs.setCropMode(this, next); refresh()
+        }
+        col.addView(cropBtn, gap(8f))
+        col.addView(button("✏️ ตั้งกรอบเอง (ลากกรอบบนภาพหน้าจอ)", 0xFF2A2D3A.toInt()) {
+            if (Cropper.refFile(this).isFile) startActivity(Intent(this, CropActivity::class.java))
+            else Toast.makeText(this, "เปิดแอปวิดีโอก่อน แล้วแตะปุ่มลอย 🎞️ → ✏️ ตั้งกรอบจากจอนี้", Toast.LENGTH_LONG).show()
+        }, gap(8f))
+        col.addView(label(
+            "ตัดได้เฉพาะส่วนที่อยู่นอกวิดีโอ (แถบสถานะ, แถบเมนูล่าง, ขอบดำ) ปุ่มหรือตัวหนังสือที่แอปวาดทับบนวิดีโอตัดออกไม่ได้", 12.5f
+        ), gap(2f))
 
         col.addView(label("ตั้งค่าการอัดต่อเนื่อง", 16f, Color.WHITE), gap(26f))
         intervalBtn = button("", 0xFF2A2D3A.toInt()) {
@@ -160,6 +179,7 @@ class MainActivity : Activity() {
         startBtn.text = if (CaptureService.running) "■ ปิดปุ่มลอย" else "▶ เปิดปุ่มลอย"
         viewBtn.text = "🖼 ดูภาพที่จับไว้ (${FrameStore.count(this)})"
         intervalBtn.text = "⏱ จับทุก ${Prefs.intervalLabel(Prefs.interval(this))} วินาที  (แตะเพื่อเปลี่ยน)"
+        cropBtn.text = "✂️ เก็บ: ${Cropper.modeLabel(Prefs.cropMode(this))}  (แตะเพื่อเปลี่ยน)"
         maxBtn.text = "⌛ อัดนานสุด ${Prefs.maxLabel(Prefs.maxSeconds(this))}  (แตะเพื่อเปลี่ยน)"
     }
 

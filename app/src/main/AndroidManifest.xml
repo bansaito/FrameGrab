@@ -30,6 +30,13 @@
             android:taskAffinity="com.v2f.framegrab.viewer"
             android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen" />
 
+        <activity
+            android:name=".CropActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity="com.v2f.framegrab.crop"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar" />
+
         <provider
             android:name=".FrameProvider"
             android:authorities="com.v2f.framegrab.frames"
