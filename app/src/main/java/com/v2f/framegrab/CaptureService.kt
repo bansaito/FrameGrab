@@ -110,6 +110,7 @@ class CaptureService : Service() {
     @Volatile private var holdHidden = false    // กำลังซ่อนเพื่อจับภาพ ห้ามโผล่กลับเอง
     @Volatile private var inOwnApp = false      // กำลังเปิดหน้าแอป FrameGrab เอง
     @Volatile private var ownUiHidden = false   // หน้าดูภาพ/หน้าลากกรอบเปิดอยู่
+    @Volatile private var feedHidden = false    // อยู่หน้าฟีด TikTok และตั้งให้ซ่อน
     @Volatile private var capturedAppVisible = true // Android 14+ อัด "แอปเดียว": แอปนั้นอยู่บนจอไหม
     @Volatile private var fgLabel: String? = null   // แอปที่ตรวจเจอ (แสดงในแจ้งเตือน)
     private var lastBase: android.graphics.RectF? = null // พื้นที่วิดีโอล่าสุด (พิกัดจอ)
@@ -722,7 +723,9 @@ class CaptureService : Service() {
         main.post {
             guide?.let { g ->
                 g.rect = rect
-                g.label = Cropper.presetLabel(this, preset)
+                // ป้ายบอกสัดส่วนจริงของกรอบ (เช่น 9:15.7) ไม่ใช่แค่ชื่อที่เลือก
+                g.label = rect?.let { Cropper.ratioName(it.width().roundToInt(), it.height().roundToInt()) }
+                    ?: Cropper.presetLabel(this, preset)
                 g.invalidate()
                 g.visibility = if (shouldShowGuide()) View.VISIBLE else View.INVISIBLE
                 syncHandles()
@@ -769,7 +772,7 @@ class CaptureService : Service() {
             }
             if (newLabel != fgLabel) { fgLabel = newLabel; updateNotification() }
             // หน้าตั้งค่าของ FrameGrab แสดงได้ (จะได้เห็นกรอบ) แต่หน้าดูภาพ/ลากกรอบ ซ่อน
-            val hide = ownUiHidden || !capturedAppVisible ||
+            val hide = ownUiHidden || !capturedAppVisible || feedHidden ||
                 (enabled && fg != null && fg !in AppWatch.VIDEO_APPS && fg != packageName)
             if (hide != appHidden) {
                 appHidden = hide
@@ -789,14 +792,25 @@ class CaptureService : Service() {
     private val liveTick = object : Runnable {
         override fun run() {
             if (root == null) return
-            if (!recording && !menuOpen && !guideEditing && !draggingGuide && !inOwnApp && root?.visibility == View.VISIBLE) {
-                val preset = Prefs.cropPreset(this@CaptureService)
-                val guideLive = Prefs.showGuide(this@CaptureService) && preset != "full" && preset != "custom"
+            val svc = this@CaptureService
+            val visibleOrFeedHidden = root?.visibility == View.VISIBLE || (feedHidden && !holdHidden)
+            if (!recording && !menuOpen && !guideEditing && !draggingGuide && !inOwnApp && visibleOrFeedHidden) {
+                val preset = Prefs.cropPreset(svc)
+                val guideLive = Prefs.showGuide(svc) && preset != "full" && preset != "custom"
+                val checkFeed = Prefs.hideOnFeed(svc)
                 work.post {
                     val b = grabBitmap() ?: return@post
-                    if (guideLive) updateGuideFrom(b) else noteRatio(b)
+                    val onFeed = checkFeed && Cropper.isTikTokFeed(b)
+                    if (onFeed != feedHidden) {
+                        feedHidden = onFeed
+                        main.post { main.removeCallbacks(appTick); main.post(appTick) }
+                    }
+                    if (!onFeed) { if (guideLive) updateGuideFrom(b) else noteRatio(b) }
                     b.recycle()
                 }
+            } else if (feedHidden && !Prefs.hideOnFeed(svc)) {
+                feedHidden = false
+                main.removeCallbacks(appTick); main.post(appTick)
             }
             main.postDelayed(this, 1000)
         }

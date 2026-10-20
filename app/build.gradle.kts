@@ -11,8 +11,8 @@ android {
         applicationId = "com.v2f.framegrab"
         minSdk = 29
         targetSdk = 34
-        versionCode = 20
-        versionName = "2.9"
+        versionCode = 21
+        versionName = "3.0"
     }
 
     // ใช้กุญแจเซ็นชุดเดิมทุกครั้ง เพื่อให้ติดตั้งเวอร์ชันใหม่ทับของเดิมได้

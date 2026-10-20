@@ -85,24 +85,22 @@ object Cropper {
 
     fun isPrimary(id: String) = PRIMARY.any { it.first == id }
 
-    fun ratioName(w: Int, h: Int): String {
-        if (w > 0 && h > 0) primaryOf(w / h.toDouble())?.let { return it }
+    /** สัดส่วนตามจริง เช่น "9:15.7" หรือ "16.4:9" */
+    fun precise(w: Int, h: Int): String {
         if (w <= 0 || h <= 0) return "?"
-        val r = w / h.toDouble()
-        val best = COMMON.minByOrNull { kotlin.math.abs(it.second - r) / it.second }!!
-        return if (kotlin.math.abs(best.second - r) / best.second < 0.04) best.first
-        else if (r < 1) String.format(java.util.Locale.US, "1:%.2f", 1 / r)
-        else String.format(java.util.Locale.US, "%.2f:1", r)
+        fun f(v: Double) = String.format(java.util.Locale.US, "%.1f", v).removeSuffix(".0")
+        return if (w <= h) "9:" + f(9.0 * h / w) else f(9.0 * w / h) + ":9"
     }
 
-    /** ชื่อสัดส่วนมาตรฐานที่ใกล้ที่สุด: ตรง (±1.5%) = "3:4", ไม่ตรง = "≈3:4" */
-    fun ratioTag(w: Int, h: Int): String {
-        if (w > 0 && h > 0) primaryOf(w / h.toDouble())?.let { return it }
+    /** ชื่อสัดส่วน: ตรงมาตรฐาน (±1.5%) = "9:16", ไม่ตรง = ค่าจริง เช่น "9:15.7" */
+    fun ratioName(w: Int, h: Int): String {
         if (w <= 0 || h <= 0) return "?"
         val r = w / h.toDouble()
         val best = COMMON.minByOrNull { kotlin.math.abs(it.second - r) / it.second }!!
-        return if (kotlin.math.abs(best.second - r) / best.second < 0.015) best.first else "≈" + best.first
+        return if (kotlin.math.abs(best.second - r) / best.second <= 0.015) best.first else precise(w, h)
     }
+
+    fun ratioTag(w: Int, h: Int): String = ratioName(w, h)
 
     /** ชื่อกรอบสำหรับแสดง: กรอบที่ลากเอง แสดงเป็นสัดส่วน (เช่น 3:4) แทน "กำหนดเอง" */
     fun presetLabel(c: Context, id: String): String {
@@ -111,6 +109,33 @@ object Cropper {
         @Suppress("DEPRECATION") c.getSystemService(WindowManager::class.java).defaultDisplay.getRealMetrics(m)
         val f = Prefs.cropRect(c)
         return ratioTag(((f[2] - f[0]) * m.widthPixels).toInt(), ((f[3] - f[1]) * m.heightPixels).toInt())
+    }
+
+    /**
+     * หน้าฟีด TikTok (สำหรับคุณ / กำลังติดตาม): มีปุ่ม + สีเทาอ่อน ขอบฟ้า/ชมพู กลางแถบเมนูล่าง
+     * (ทดสอบกับภาพจริง: หน้าฟีด 2/2 ใช่, สตอรี่/หน้าโฮม/หน้าดูภาพ 7/7 ไม่ใช่)
+     */
+    fun isTikTokFeed(b: Bitmap): Boolean {
+        val w = b.width; val h = b.height
+        var grey = 0; var cyan = 0; var pink = 0; var n = 0
+        val stepY = (h / 700).coerceAtLeast(1) * 3
+        val stepX = (w / 360).coerceAtLeast(1) * 3
+        var y = (h * 0.88f).toInt()
+        while (y < (h * 0.995f).toInt()) {
+            var x = (w * 0.38f).toInt()
+            while (x < (w * 0.62f).toInt()) {
+                val p = b.getPixel(x, y)
+                val r = (p shr 16) and 0xFF; val g = (p shr 8) and 0xFF; val bl = p and 0xFF
+                n++
+                if (r > 170 && g > 170 && bl > 170 && maxOf(r, g, bl) - minOf(r, g, bl) < 30) grey++
+                else if (r < 90 && g > 120 && bl > 130 && kotlin.math.abs(g - bl) < 50) cyan++
+                else if (r > 160 && g < 130 && bl in 81..179 && r - g > 60) pink++
+                x += stepX
+            }
+            y += stepY
+        }
+        if (n == 0) return false
+        return grey >= n * 0.08 && cyan >= n * 0.004 && pink >= n * 0.004
     }
 
     /** สัดส่วนของวิดีโอที่กำลังเล่น วัดจากขอบดำรอบวิดีโอ */

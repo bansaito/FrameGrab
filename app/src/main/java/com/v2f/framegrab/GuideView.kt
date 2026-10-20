@@ -134,11 +134,11 @@ class GuideView(ctx: Context) : View(ctx) {
         if (lockRatio != null || n.height() <= 0f) { snapped = null; return n }
         val r = n.width() / n.height()
         val cur = snapped
-        // 9:16 กับ 3:4 (เจอบ่อย) ดูดแรงกว่า: เข้า 6% หลุดเมื่อเกิน 10%
+        // ดูดเบา ๆ: เข้าใกล้ ≤3% ดูด, ลากเกิน 5% หลุด (9:16 / 3:4 ได้สิทธิ์ก่อนถ้าใกล้พอ ๆ กัน)
         fun primary(t: Float) = abs(t - 9 / 16f) < 0.001f || abs(t - 3 / 4f) < 0.001f
-        val target = if (cur != null && abs(r - cur) / cur < (if (primary(cur)) 0.10f else 0.08f)) cur
-            else SNAPS.filter { abs(r - it) / it < (if (primary(it)) 0.06f else 0.04f) }
-                .minByOrNull { abs(r - it) / it * (if (primary(it)) 0.6f else 1f) }
+        val target = if (cur != null && abs(r - cur) / cur < 0.05f) cur
+            else SNAPS.filter { abs(r - it) / it < 0.03f }
+                .minByOrNull { abs(r - it) / it * (if (primary(it)) 0.8f else 1f) }
         snapped = target
         if (target == null) return n
         val out = RectF(n)
