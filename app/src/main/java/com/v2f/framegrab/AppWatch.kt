@@ -30,12 +30,16 @@ object AppWatch {
         Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS, Uri.parse("package:${c.packageName}"))
 
     private var lastPkg: String? = null
+    private var lastQuery = 0L
 
     /** แอปที่อยู่หน้าจอตอนนี้ (null = ยังไม่รู้) */
     fun foreground(c: Context): String? {
         val usm = c.getSystemService(UsageStatsManager::class.java) ?: return lastPkg
         val now = System.currentTimeMillis()
-        val events = try { usm.queryEvents(now - 20_000, now) } catch (e: Exception) { return lastPkg }
+        // ครั้งแรกดูย้อนหลัง 12 ชม. (เผื่อเปิดแอปนั้นค้างไว้นาน) ครั้งต่อไปดูเฉพาะช่วงที่ยังไม่ได้ดู
+        val from = if (lastQuery == 0L) now - 12 * 3600_000L else lastQuery - 2_000
+        val events = try { usm.queryEvents(from, now) } catch (e: Exception) { return lastPkg }
+        lastQuery = now
         val ev = UsageEvents.Event()
         var pkg: String? = null
         while (events.hasNextEvent()) {
@@ -45,4 +49,6 @@ object AppWatch {
         if (pkg != null) lastPkg = pkg
         return lastPkg
     }
+
+    fun reset() { lastPkg = null; lastQuery = 0L }
 }

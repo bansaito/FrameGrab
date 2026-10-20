@@ -54,6 +54,17 @@ class CaptureService : Service() {
         const val ACTION_STOP_REC = "com.v2f.framegrab.STOP_REC"
         const val ACTION_QUIT = "com.v2f.framegrab.QUIT"
         const val EXTRA_EXIT_APP = "exitApp"
+        /** หน้าดูภาพ/หน้าลากกรอบของแอปเปิดอยู่ → ซ่อนปุ่มลอยและกรอบ */
+        const val ACTION_OWN_UI = "com.v2f.framegrab.OWN_UI"
+        const val EXTRA_HIDE = "hide"
+
+        /** เรียกจากหน้าจอของแอป (ปลอดภัยแม้ปุ่มลอยไม่ได้เปิดอยู่) */
+        fun setOwnUiHidden(c: android.content.Context, hide: Boolean) {
+            if (!running) return
+            try {
+                c.startService(Intent(c, CaptureService::class.java).setAction(ACTION_OWN_UI).putExtra(EXTRA_HIDE, hide))
+            } catch (e: Exception) { }
+        }
         const val EXTRA_CODE = "code"
         const val EXTRA_DATA = "data"
         private const val CHANNEL = "capture"
@@ -98,6 +109,7 @@ class CaptureService : Service() {
     @Volatile private var appHidden = false     // ไม่ได้อยู่ใน TikTok/IG/FB → ซ่อนทุกอย่าง
     @Volatile private var holdHidden = false    // กำลังซ่อนเพื่อจับภาพ ห้ามโผล่กลับเอง
     @Volatile private var inOwnApp = false      // กำลังเปิดหน้าแอป FrameGrab เอง
+    @Volatile private var ownUiHidden = false   // หน้าดูภาพ/หน้าลากกรอบเปิดอยู่
     private var lastBase: android.graphics.RectF? = null // พื้นที่วิดีโอล่าสุด (พิกัดจอ)
     private val prefListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         if (key in setOf("cropPreset", "showGuide", "cropL", "cropT", "cropR", "cropB")) main.post { applyGuidePrefs() }
@@ -140,6 +152,11 @@ class CaptureService : Service() {
         when (intent?.action) {
             ACTION_START -> start(intent)
             ACTION_STOP_REC -> stopRecording(dropLastMs = 1500) // ตัดภาพตอนดึงแถบแจ้งเตือนลงมา
+            ACTION_OWN_UI -> {
+                ownUiHidden = intent.getBooleanExtra(EXTRA_HIDE, false)
+                main.removeCallbacks(appTick)
+                main.post(appTick)
+            }
             ACTION_QUIT -> quit(exitApp = intent.getBooleanExtra(EXTRA_EXIT_APP, true))
         }
         return START_NOT_STICKY
@@ -164,6 +181,7 @@ class CaptureService : Service() {
             override fun onStop() { main.post { quit() } }
         }, main)
         setupDisplay(p)
+        AppWatch.reset()
         addOverlay()
         running = true
     }
@@ -531,6 +549,16 @@ class CaptureService : Service() {
                     setPadding(dp(14f), dp(8f), dp(18f), dp(6f))
                 })
             }
+            if (Prefs.onlyInVideoApps(this) && !AppWatch.hasPermission(this)) {
+                menuBox.addView(menuRow("🔓  ให้ซ่อนเองนอก TikTok/IG/FB") {
+                    closeMenu()
+                    toast("เลือก FrameGrab แล้วเปิด \"อนุญาตการเข้าถึงข้อมูลการใช้งาน\"")
+                    try { startActivity(AppWatch.permissionIntent(this).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                    catch (e: Exception) {
+                        startActivity(Intent(android.provider.Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    }
+                }.apply { setTextColor(0xFFFFC266.toInt()) })
+            }
             menuBox.addView(menuRow("📸  จับภาพนี้") { captureOne() })
             menuBox.addView(menuRow("⏺  อัดต่อเนื่อง") { startRecording() })
             menuBox.addView(menuRow("✂️  กรอบ: ${Cropper.presetLabel(this, preset)}  ›") { menuPage = 1; buildMenu(); layoutMenu() })
@@ -720,9 +748,9 @@ class CaptureService : Service() {
             val svc = this@CaptureService
             val enabled = Prefs.onlyInVideoApps(svc) && AppWatch.hasPermission(svc)
             val fg = if (enabled) AppWatch.foreground(svc) else null
-            inOwnApp = fg == packageName
-            // หน้าแอป FrameGrab เองก็แสดงได้ จะได้เห็นกรอบตอนตั้งค่า
-            val hide = enabled && fg != null && fg !in AppWatch.VIDEO_APPS && fg != packageName
+            inOwnApp = fg == packageName || ownUiHidden
+            // หน้าตั้งค่าของ FrameGrab แสดงได้ (จะได้เห็นกรอบ) แต่หน้าดูภาพ/ลากกรอบ ซ่อน
+            val hide = ownUiHidden || (enabled && fg != null && fg !in AppWatch.VIDEO_APPS && fg != packageName)
             if (hide != appHidden) {
                 appHidden = hide
                 if (hide) {

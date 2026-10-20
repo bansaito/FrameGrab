@@ -183,6 +183,7 @@ class ViewerActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        CaptureService.setOwnUiHidden(this, true) // ไม่ให้ปุ่มลอย/กรอบทับหน้านี้
         frames = FrameStore.list(this)
         // กลับมาที่ภาพที่ดูค้างไว้ (ยกเว้นเพิ่งอัดเสร็จ)
         val fromStart = intent.getBooleanExtra(EXTRA_FROM_START, false)
@@ -193,6 +194,7 @@ class ViewerActivity : Activity() {
     }
 
     override fun onPause() {
+        CaptureService.setOwnUiHidden(this, false)
         setPlaying(false)
         super.onPause()
     }

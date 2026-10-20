@@ -96,6 +96,16 @@ class CropActivity : Activity() {
         setContentView(col)
     }
 
+    override fun onResume() {
+        super.onResume()
+        CaptureService.setOwnUiHidden(this, true) // ไม่ให้ปุ่มลอย/กรอบทับหน้านี้
+    }
+
+    override fun onPause() {
+        CaptureService.setOwnUiHidden(this, false)
+        super.onPause()
+    }
+
     /** แสดงภาพ + กรอบที่ลากได้ */
     class CropView(ctx: Context) : View(ctx) {
         var bitmap: Bitmap? = null
