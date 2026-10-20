@@ -36,7 +36,7 @@ class GuideView(ctx: Context) : View(ctx) {
         color = 0xCCFFFFFF.toInt(); style = Paint.Style.STROKE; strokeWidth = 1.5f * d
     }
     private val corner = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.WHITE; style = Paint.Style.STROKE; strokeWidth = 4f * d; strokeCap = Paint.Cap.ROUND
+        color = Color.WHITE; style = Paint.Style.STROKE; strokeWidth = 3f * d; strokeCap = Paint.Cap.ROUND
     }
     private val handle = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE }
     private val handleRing = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -78,7 +78,8 @@ class GuideView(ctx: Context) : View(ctx) {
                 canvas.drawLine(x, y, x, y + L * sy, corner)
             }
         }
-        val tag = if (editing || showRatio) Cropper.ratioTag(r.width().toInt(), r.height().toInt()) else label
+        // ป้ายสัดส่วนแสดงเฉพาะตอนลาก/แก้กรอบ (ปกติดูที่ปุ่มลอย)
+        val tag = if (editing || showRatio) Cropper.ratioTag(r.width().toInt(), r.height().toInt()) else ""
         if (tag.isNotEmpty()) {
             val pad = 6f * d
             val w = tagText.measureText(tag) + pad * 2

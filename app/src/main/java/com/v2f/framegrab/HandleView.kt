@@ -20,6 +20,8 @@ class HandleView(ctx: Context, private val move: Boolean, private val edge: Int 
 
     override fun onDraw(canvas: Canvas) {
         val cx = width / 2f; val cy = height / 2f
+        // มุม: ไม่วาดอะไร (เส้นตัว L ของกรอบคือมุมที่เห็น) เป็นแค่พื้นที่ให้แตะลาก
+        if (!move && edge == 0) return
         if (edge != 0) {
             // จุดจับกลางขอบ: ขีดเล็ก ๆ บอกว่าลากได้
             val horiz = edge == 2 || edge == 8

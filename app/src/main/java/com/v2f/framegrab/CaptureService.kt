@@ -779,6 +779,7 @@ class CaptureService : Service() {
         val rect = overrideRect ?: show
         main.post {
             if (draggingGuide) return@post
+            wakeGuide()   // กรอบเพิ่งย้าย: ชัดขึ้นให้เห็นแป๊บหนึ่งแล้วจางลง
             guide?.let { g ->
                 g.rect = rect
                 g.label = rect?.let { Cropper.ratioName(it.width().roundToInt(), it.height().roundToInt()) }
@@ -981,6 +982,7 @@ class CaptureService : Service() {
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 draggingGuide = true
+                wakeGuide(stay = true)
                 closeMenu()
                 g.bounds.set(0f, 0f, screenW.toFloat(), screenH.toFloat())
                 // กรอบแบบสัดส่วน: ลากแล้วยังคงสัดส่วนเดิม
@@ -993,6 +995,7 @@ class CaptureService : Service() {
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 draggingGuide = false
+                wakeGuide()
                 val r = g.rect ?: return
                 val preset = Prefs.cropPreset(this)
                 if (preset == "custom" || preset == "full") {
@@ -1012,6 +1015,18 @@ class CaptureService : Service() {
         }
     }
 
+    // ---------- กรอบจางเมื่อไม่ได้แตะ ----------
+    private val fadeGuide = Runnable { setGuideAlpha(0.3f) }
+    private fun setGuideAlpha(a: Float) {
+        guide?.animate()?.alpha(a)?.setDuration(250)?.start()
+    }
+    /** ทำให้กรอบชัดขึ้นชั่วคราว แล้วค่อยจางลงหลัง 2 วิ */
+    private fun wakeGuide(stay: Boolean = false) {
+        main.removeCallbacks(fadeGuide)
+        guide?.animate()?.cancel(); guide?.alpha = 1f
+        if (!stay) main.postDelayed(fadeGuide, 2000)
+    }
+
     /** วางจุดจับให้ตรงมุมกรอบ และซ่อน/แสดงตามกรอบ */
     private fun syncHandles() {
         val g = guide
@@ -1022,8 +1037,8 @@ class CaptureService : Service() {
         for ((i, h) in handles.withIndex()) {
             val (v, hl) = h
             if (!show) { if (v.visibility != View.GONE) v.visibility = View.GONE; continue }
-            // ขีดกลางขอบซ้าย/ขวาเอาออก (รก) เหลือแค่ขอบบน/ล่าง
-            if (i == 7 || i == 8) { if (v.visibility != View.GONE) v.visibility = View.GONE; continue }
+            // เหลือแค่มุม 4 จุด (ปุ่มย้าย ✥ และขีดกลางขอบเอาออก ลดความรก)
+            if (i >= 4) { if (v.visibility != View.GONE) v.visibility = View.GONE; continue }
             if (i >= 5) {
                 // จุดจับกลางขอบ: เล็ก ๆ แค่ตรงกลางขอบ (ไม่ทั้งแนว จะได้ไม่แย่งที่แตะดูสตอรี่ถัดไป)
                 // ซ้าย/ขวาเลี่ยงขอบจอ (ปัดย้อนกลับของระบบ)
@@ -1078,7 +1093,7 @@ class CaptureService : Service() {
         }
         g.lockRatio = ratioOf(preset)
         g.label = "ลากเพื่อปรับ"
-        guideEditing = true
+        guideEditing = true; wakeGuide(stay = true)
         g.editing = true
         g.visibility = View.VISIBLE
         syncHandles()
@@ -1162,7 +1177,7 @@ class CaptureService : Service() {
         if (!guideEditing) return
         editBar?.let { try { wm.removeView(it) } catch (e: Exception) { } }
         editBar = null
-        guideEditing = false
+        guideEditing = false; wakeGuide()
         g.editing = false
         guideLp.flags = guideLp.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
         wm.updateViewLayout(g, guideLp)
