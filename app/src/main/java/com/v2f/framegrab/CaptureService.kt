@@ -110,6 +110,10 @@ class CaptureService : Service() {
     private val loop = LoopDetector()
     @Volatile private var loopFeeding = false
     private var recRect: android.graphics.Rect? = null
+    private var recBmpW = 0
+    private var recBmpH = 0
+    @Volatile private var stopOverlaps = false          // ปุ่ม ■ อยู่ในกรอบ → ซ่อนแวบเดียวตอนจับแต่ละภาพ
+    private var savedBubblePos: Pair<Int, Int>? = null
     @Volatile private var recording = false
     @Volatile private var recStart = 0L
     private var recCount = 0
@@ -257,19 +261,31 @@ class CaptureService : Service() {
         recording = true
         recCount = 0
         recRect = null
-        val keepStop = Prefs.keepStopButton(this)
-        if (keepStop) showStopButton() else hideOverlay()
+        stopOverlaps = false
+        val showStop = Prefs.keepStopButton(this)
+        hideOverlay() // ซ่อนก่อน เพื่อวัดกรอบจากภาพที่ไม่มีปุ่มของเรา
         val intervalMs = (Prefs.interval(this) * 1000).roundToInt().toLong().coerceAtLeast(100)
         val maxSec = Prefs.maxSeconds(this)
         val maxMs = if (maxSec == 0) MAX_UNLIMITED_MS else maxSec * 1000L
         val autoStop = Prefs.autoStop(this)
         loop.reset()
-        toast("⏺ เริ่มอัด ทุก ${Prefs.intervalLabel(Prefs.interval(this))} วิ · หยุดได้ที่แถบแจ้งเตือน")
+        toast("⏺ เริ่มอัด ทุก ${Prefs.intervalLabel(Prefs.interval(this))} วิ · " +
+            if (showStop) "แตะ ■ เพื่อหยุด" else "หยุดได้ที่แถบแจ้งเตือน")
         val hiddenAt = SystemClock.uptimeMillis()
         work.post {
             // รอให้ปุ่มลอยหายจากจอก่อนเริ่มนับเวลา
             val end = hiddenAt + 500
             while (latestAt <= hiddenAt + 60 && SystemClock.uptimeMillis() < end) SystemClock.sleep(10)
+            // วัดกรอบจากภาพแรก (ใช้ทั้งคลิป) แล้ววางปุ่ม ■ ไว้นอกกรอบถ้าทำได้
+            grabBitmap()?.let { b ->
+                recRect = Cropper.rectFor(this@CaptureService, b); recBmpW = b.width; recBmpH = b.height
+                b.recycle()
+            }
+            if (showStop) {
+                val latch = java.util.concurrent.CountDownLatch(1)
+                main.post { placeStopButton(); showStopButton(); latch.countDown() }
+                latch.await(500, java.util.concurrent.TimeUnit.MILLISECONDS)
+            }
             recStart = SystemClock.uptimeMillis()
             loopFeeding = autoStop
             work.post(object : Runnable {
@@ -283,7 +299,7 @@ class CaptureService : Service() {
                         main.post { stopRecording(0, cutAtMs = cut, reason = "คลิปจบแล้ว หยุดอัดอัตโนมัติ") }
                         return
                     }
-                    val bmp = grabBitmap()
+                    val bmp = if (stopOverlaps) grabWithoutStop() else grabBitmap()
                     if (bmp != null) {
                         // ใช้กรอบเดียวกันทั้งคลิป (คำนวณจากภาพแรก) ภาพจะได้ขนาดเท่ากันทุกภาพ
                         val rect = recRect ?: Cropper.rectFor(this@CaptureService, bmp).also { recRect = it }
@@ -313,6 +329,9 @@ class CaptureService : Service() {
             val n = FrameStore.count(this)
             main.post {
                 restoreBubble()
+                stopOverlaps = false
+                savedBubblePos?.let { (x, y) -> lp.x = x; lp.y = y }
+                savedBubblePos = null
                 showOverlay()
                 updateNotification()
                 toast((reason?.let { "$it · " } ?: "") + "ได้ $n ภาพ")
@@ -972,8 +991,61 @@ class CaptureService : Service() {
         scheduleFade()
     }
 
+    /** ซ่อนปุ่ม ■ แวบเดียวแล้วจับภาพ (ใช้เมื่อปุ่มอยู่ในกรอบที่เก็บ) เรียกจากเธรดทำงาน */
+    private fun grabWithoutStop(): Bitmap? {
+        val latch = java.util.concurrent.CountDownLatch(1)
+        main.post { root?.visibility = View.INVISIBLE; latch.countDown() }
+        latch.await(200, java.util.concurrent.TimeUnit.MILLISECONDS)
+        val t = SystemClock.uptimeMillis()
+        while (latestAt <= t + 40 && SystemClock.uptimeMillis() < t + 200) SystemClock.sleep(5)
+        val b = grabBitmap()
+        main.post { if (recording) root?.visibility = View.VISIBLE }
+        return b
+    }
+
+    private fun sysDimen(name: String): Int {
+        val id = resources.getIdentifier(name, "dimen", "android")
+        return if (id > 0) resources.getDimensionPixelSize(id) else 0
+    }
+
+    /** ย้ายปุ่ม ■ ไปมุมจอที่อยู่นอกกรอบที่เก็บ (ถ้าไม่มีที่ว่าง ใช้วิธีซ่อนแวบเดียวตอนจับ) */
+    private fun placeStopButton() {
+        val r = root ?: return
+        savedBubblePos = lp.x to lp.y
+        r.getLocationOnScreen(locBuf)
+        val offX = locBuf[0] - lp.x; val offY = locBuf[1] - lp.y
+        val rect = recRect
+        val sr = if (rect != null && recBmpW > 0 && recBmpH > 0) android.graphics.RectF(
+            rect.left * screenW / recBmpW.toFloat(), rect.top * screenH / recBmpH.toFloat(),
+            rect.right * screenW / recBmpW.toFloat(), rect.bottom * screenH / recBmpH.toFloat()
+        ) else null
+        val full = sr == null || (sr.width() >= screenW - 4 && sr.height() >= screenH - 4)
+        val win = lp.width
+        val m = dp(8f)
+        val top = sysDimen("status_bar_height") + m
+        val bottom = screenH - sysDimen("navigation_bar_height") - win - m
+        val cands = listOf(
+            (lp.x + offX) to (lp.y + offY),
+            (screenW - win - m) to top, m to top,
+            (screenW - win - m) to bottom, m to bottom,
+        )
+        val pick = if (full) null else cands.firstOrNull { (x, y) ->
+            !android.graphics.RectF.intersects(
+                android.graphics.RectF(x - 4f, y - 4f, x + win + 4f, y + win + 4f), sr!!
+            )
+        }
+        stopOverlaps = pick == null
+        if (pick != null) { lp.x = pick.first - offX; lp.y = pick.second - offY }
+    }
+
     private fun showStopButton() {
         guide?.visibility = View.INVISIBLE
+        root?.let {
+            holdHidden = false
+            it.visibility = View.VISIBLE
+            lp.flags = lp.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+            wm.updateViewLayout(it, lp)
+        }
         syncHandles()
         bubble.text = "■"
         bubble.setTextColor(Color.WHITE)
@@ -996,6 +1068,10 @@ class CaptureService : Service() {
         val open = PendingIntent.getActivity(
             this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE
         )
+        val openApp = PendingIntent.getActivity(
+            this, 3, Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            PendingIntent.FLAG_IMMUTABLE
+        )
         val b = Notification.Builder(this, CHANNEL)
             .setSmallIcon(android.R.drawable.ic_menu_camera)
             .setOngoing(true)
@@ -1006,9 +1082,12 @@ class CaptureService : Service() {
                 PendingIntent.FLAG_IMMUTABLE
             )
             b.setContentTitle("⏺ กำลังอัด… $recCount ภาพ")
-                .setContentText("กดหยุดเมื่อคลิปจบ")
+                .setContentText("แตะ ■ บนจอ หรือปุ่มด้านล่างเพื่อหยุด")
                 .addAction(Notification.Action.Builder(
                     Icon.createWithResource(this, android.R.drawable.ic_media_pause), "■ หยุดอัด", stop
+                ).build())
+                .addAction(Notification.Action.Builder(
+                    Icon.createWithResource(this, android.R.drawable.ic_menu_preferences), "⚙️ เปิดแอป", openApp
                 ).build())
         } else {
             val quit = PendingIntent.getService(
@@ -1018,7 +1097,10 @@ class CaptureService : Service() {
             b.setContentTitle(videoRatio?.let { "📐 วิดีโอที่เล่นอยู่: $it" } ?: "ปุ่มลอยจับเฟรมทำงานอยู่")
                 .setContentText("กรอบ: ${Cropper.presetLabel(Prefs.cropPreset(this))} · แตะปุ่ม 🎞️ บนจอเพื่อจับภาพ")
                 .addAction(Notification.Action.Builder(
-                    Icon.createWithResource(this, android.R.drawable.ic_menu_close_clear_cancel), "ปิด", quit
+                    Icon.createWithResource(this, android.R.drawable.ic_menu_preferences), "⚙️ เปิดแอป", openApp
+                ).build())
+                .addAction(Notification.Action.Builder(
+                    Icon.createWithResource(this, android.R.drawable.ic_menu_close_clear_cancel), "■ หยุดจับหน้าจอ", quit
                 ).build())
         }
         return b.build()

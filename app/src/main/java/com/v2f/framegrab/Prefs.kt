@@ -16,8 +16,8 @@ object Prefs {
     fun setMaxSeconds(c: Context, v: Int) = sp(c).edit().putInt("maxSec", v).apply()
 
     /** แสดงปุ่มหยุดระหว่างอัด (ใช้เมื่ออนุญาตแบบ "แอปเดียว" ปุ่มจะไม่ติดในภาพ) */
-    fun keepStopButton(c: Context): Boolean = sp(c).getBoolean("keepStop", false)
-    fun setKeepStopButton(c: Context, v: Boolean) = sp(c).edit().putBoolean("keepStop", v).apply()
+    fun keepStopButton(c: Context): Boolean = sp(c).getBoolean("keepStop2", true)
+    fun setKeepStopButton(c: Context, v: Boolean) = sp(c).edit().putBoolean("keepStop2", v).apply()
 
     /** หยุดอัดเองเมื่อคลิปวนกลับมาต้น */
     fun autoStop(c: Context): Boolean = sp(c).getBoolean("autoStop", true)
