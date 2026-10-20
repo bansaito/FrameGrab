@@ -1,6 +1,6 @@
 package com.v2f.framegrab
 
-import android.graphics.Bitmap
+import android.media.Image
 import kotlin.math.abs
 
 /**
@@ -19,12 +19,24 @@ class StoryBar {
     var advancedAtMs = -1L
         private set
 
-    fun reset() { y = -1; prev = null; pendingAt = -1L; pendingSize = -1; advancedAtMs = -1L }
+    @Synchronized fun reset() { lastLocateAt = -1000L; y = -1; prev = null; pendingAt = -1L; pendingSize = -1; advancedAtMs = -1L }
 
-    private fun whiteMask(b: Bitmap, yy: Int): BooleanArray {
+    /** อ่านพิกเซลจาก Image (RGBA) ตรง ๆ — ตรวจได้ทุกเฟรมที่จอแสดง */
+    private class Px(img: Image) {
+        val width = img.width; val height = img.height
+        private val pl = img.planes[0]; private val buf = pl.buffer
+        private val rs = pl.rowStride; private val ps = pl.pixelStride; private val lim = buf.limit()
+        fun rgb(x: Int, y: Int): Int {
+            val off = y * rs + x * ps
+            if (off + 2 >= lim) return 0
+            return ((buf.get(off).toInt() and 0xFF) shl 16) or ((buf.get(off + 1).toInt() and 0xFF) shl 8) or (buf.get(off + 2).toInt() and 0xFF)
+        }
+    }
+
+    private fun whiteMask(b: Px, yy: Int): BooleanArray {
         val l = IntArray(N); val c = IntArray(N)
         for (i in 0 until N) {
-            val p = b.getPixel((b.width - 1) * i / (N - 1), yy)
+            val p = b.rgb((b.width - 1) * i / (N - 1), yy)
             val r = (p shr 16) and 0xFF; val g = (p shr 8) and 0xFF; val bl = p and 0xFF
             l[i] = (r * 299 + g * 587 + bl * 114) / 1000; c[i] = maxOf(r, g, bl) - minOf(r, g, bl)
         }
@@ -50,7 +62,7 @@ class StoryBar {
     }
 
     /** หาแถวของแถบ (ด้านบน 12% ของจอ, เส้นบาง, เริ่มจากซ้าย, ช่องห่างกันนิดเดียว) */
-    private fun locate(b: Bitmap): Boolean {
+    private fun locate(b: Px): Boolean {
         val h = b.height
         val d = maxOf((h * 0.012f).toInt(), 3)
         for (yy in (h * 0.005f).toInt() until (h * 0.12f).toInt()) {
@@ -68,18 +80,29 @@ class StoryBar {
         return false
     }
 
-    /** ส่งภาพเต็มจอระหว่างอัด (ทุกครั้งที่จับภาพ) */
-    fun feed(tMs: Long, b: Bitmap) {
-        if (advancedAtMs >= 0) return
-        if (y < 0) { if (tMs > 3000 || !locate(b)) return }
+    private var lastLocateAt = -1000L
+
+    /** ส่งทุกเฟรมที่จอแสดงระหว่างอัด */
+    @Synchronized fun feed(tMs: Long, img: Image) {
+        if (advancedAtMs >= 0 || tMs < 0) return
+        val b = Px(img)
+        if (y < 0) {
+            // หาแถบไม่เกินทุก 250 ms ในช่วง 3 วิแรก (หาเจอแล้วใช้แถวเดิมตลอด)
+            if (tMs > 3000 || tMs - lastLocateAt < 250) return
+            lastLocateAt = tMs
+            if (!locate(b)) return
+        }
         val r = runs(whiteMask(b, y))
         val p = prev
         prev = r
         if (p == null || r.isEmpty()) return
-        // ยืนยันรอบถัดมา: ยังมีจำนวนช่องเท่าเดิม (หรือมากกว่า) = ขึ้นช่องใหม่จริง
+        // ยืนยันเฟรมถัด ๆ มา (≥60 ms): ยังมีจำนวนช่องเท่าเดิม (หรือมากกว่า) = ขึ้นช่องใหม่จริง
         if (pendingAt >= 0) {
             // 2 วิแรกของการอัดไม่นับ (กันพลาดตอนเพิ่งเริ่ม)
-            if (r.size >= pendingSize && pendingAt >= 2000) { advancedAtMs = pendingAt; return }
+            if (r.size >= pendingSize) {
+                if (tMs - pendingAt < 60) return
+                if (pendingAt >= 2000) { advancedAtMs = pendingAt; return }
+            }
             pendingAt = -1L
         }
         // ช่องใหม่โผล่ต่อจากช่องเดิมพอดี (ห่างแค่ช่องว่างระหว่างช่อง) และยังสั้น (เพิ่งเริ่ม)

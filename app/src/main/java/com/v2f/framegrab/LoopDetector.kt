@@ -15,7 +15,7 @@ class LoopDetector {
         private const val H = 32
         private const val REF_MS = 1500L      // เก็บ 1.5 วิแรกไว้เทียบ
         private const val MIN_LOOP_MS = 3000L // คลิปสั้นกว่านี้ไม่ตรวจ
-        private const val VERIFY_MS = 1000L
+        private const val VERIFY_MS = 600L
 
         /** ภาพย่อขาวดำ 18×32 จุดจากส่วนกลางจอ อ่านจากบัฟเฟอร์ตรง ๆ ไม่ต้องแปลงทั้งภาพ */
         fun signature(img: Image): IntArray {

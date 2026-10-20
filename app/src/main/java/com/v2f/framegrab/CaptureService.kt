@@ -297,7 +297,22 @@ class CaptureService : Service() {
                 // จับจังหวะเลื่อนสตอรี่ (ทุกเฟรม เฉพาะในกรอบที่อัด)
                 val rr = recRect
                 if (seamFeeding && rr != null) {
-                    try { seam.feed(SystemClock.uptimeMillis() - recStart, img, rr) } catch (e: Exception) { }
+                    val t = SystemClock.uptimeMillis() - recStart
+                    try { seam.feed(t, img, rr) } catch (e: Exception) { }
+                    try { storyBar.feed(t, img) } catch (e: Exception) { }
+                    // เจอแล้วหยุดทันที ไม่ต้องรอรอบจับภาพถัดไป
+                    val sAt = seam.seamAtMs; val bAt = storyBar.advancedAtMs
+                    if (sAt >= 0 || bAt >= 0) {
+                        seamFeeding = false
+                        val cut = if (sAt >= 0) (sAt - 100).coerceAtLeast(0) else (bAt - 150).coerceAtLeast(0)
+                        val why = if (sAt >= 0) "เลื่อนไปสตอรี่ใหม่ หยุดอัดอัตโนมัติ" else "จบสตอรี่ หยุดอัดอัตโนมัติ"
+                        main.post { stopRecording(0, cutAtMs = cut, reason = why) }
+                    }
+                }
+                // คลิปวนกลับ: หยุดทันทีเช่นกัน
+                if (loopFeeding) {
+                    val cut = loop.loopAtMs
+                    if (cut >= 0) { loopFeeding = false; main.post { stopRecording(0, cutAtMs = cut, reason = "คลิปจบแล้ว หยุดอัดอัตโนมัติ") } }
                 }
                 synchronized(lock) {
                     latest?.close()
@@ -428,15 +443,8 @@ class CaptureService : Service() {
                         main.post { stopRecording(0, cutAtMs = (sAt - 100).coerceAtLeast(0), reason = "เลื่อนไปสตอรี่ใหม่ หยุดอัดอัตโนมัติ") }
                         return
                     }
-                    // แถบด้านบนขึ้นช่องถัดไป (จบสตอรี่นี้) → หยุด (ไม่นับ 2 วิแรก กันพลาด)
-                    val bAt = storyBar.advancedAtMs
-                    if (stopOnStory && bAt >= 0) {
-                        main.post { stopRecording(0, cutAtMs = (bAt - 150).coerceAtLeast(0), reason = "จบสตอรี่ หยุดอัดอัตโนมัติ") }
-                        return
-                    }
                     val bmp = grabBitmap()
                     if (bmp != null) {
-                        if (stopOnStory) storyBar.feed(el, bmp)
                         // ใช้กรอบเดียวกันทั้งคลิป (คำนวณจากภาพแรก) ภาพจะได้ขนาดเท่ากันทุกภาพ
                         val rect = recRect ?: cropRectFor(bmp).also { recRect = it }
                         // ขึ้นสตอรี่ใหม่ (ภาพในกรอบเปลี่ยนทั้งหมดกะทันหัน) → หยุด ไม่เก็บภาพของสตอรี่ถัดไป
@@ -471,17 +479,18 @@ class CaptureService : Service() {
         loopFeeding = false
         seamFeeding = false
         val el = SystemClock.uptimeMillis() - recStart
+        // คืนปุ่มลอยทันที ไม่ต้องรองานบันทึกไฟล์ที่ค้างอยู่
+        restoreBubble()
+        stopOverlaps = false
+        savedBubblePos?.let { (x, y) -> lp.x = x; lp.y = y }
+        savedBubblePos = null
+        showOverlay()
+        updateNotification()
         work.post {
             if (dropLastMs > 0) FrameStore.dropAfter(this, el - dropLastMs)
-            if (cutAtMs >= 0) FrameStore.dropAfter(this, cutAtMs - 1) // ตัดภาพที่ซ้ำรอบสอง
+            if (cutAtMs >= 0) FrameStore.dropAfter(this, cutAtMs - 1) // ตัดภาพที่เกินจุดจบ
             val n = FrameStore.count(this)
             main.post {
-                restoreBubble()
-                stopOverlaps = false
-                savedBubblePos?.let { (x, y) -> lp.x = x; lp.y = y }
-                savedBubblePos = null
-                showOverlay()
-                updateNotification()
                 toast((reason?.let { "$it · " } ?: "") + "ได้ $n ภาพ")
                 if (n > 0) { recentlyRecorded = true; openViewer(); recentlyRecorded = false }
             }
