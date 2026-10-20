@@ -110,7 +110,8 @@ class CaptureService : Service() {
     @Volatile private var holdHidden = false    // กำลังซ่อนเพื่อจับภาพ ห้ามโผล่กลับเอง
     @Volatile private var inOwnApp = false      // กำลังเปิดหน้าแอป FrameGrab เอง
     @Volatile private var ownUiHidden = false   // หน้าดูภาพ/หน้าลากกรอบเปิดอยู่
-    @Volatile private var feedHidden = false    // อยู่หน้าฟีด TikTok และตั้งให้ซ่อน
+    @Volatile private var feedHidden = false    // ไม่ได้อยู่หน้าสตอรี่ และตั้งให้แสดงเฉพาะสตอรี่
+    private var storyMiss = 0                   // นับครั้งที่ไม่เจอหน้าสตอรี่ติดกัน (กันกะพริบ)
     @Volatile private var capturedAppVisible = true // Android 14+ อัด "แอปเดียว": แอปนั้นอยู่บนจอไหม
     @Volatile private var fgLabel: String? = null   // แอปที่ตรวจเจอ (แสดงในแจ้งเตือน)
     private var lastBase: android.graphics.RectF? = null // พื้นที่วิดีโอล่าสุด (พิกัดจอ)
@@ -797,22 +798,25 @@ class CaptureService : Service() {
             if (!recording && !menuOpen && !guideEditing && !draggingGuide && !inOwnApp && visibleOrFeedHidden) {
                 val preset = Prefs.cropPreset(svc)
                 val guideLive = Prefs.showGuide(svc) && preset != "full" && preset != "custom"
-                val checkFeed = Prefs.hideOnFeed(svc)
+                val storyOnly = Prefs.storyOnly(svc)
                 work.post {
                     val b = grabBitmap() ?: return@post
-                    val onFeed = checkFeed && Cropper.isTikTokFeed(b)
-                    if (onFeed != feedHidden) {
-                        feedHidden = onFeed
+                    // แสดงเฉพาะตอนดูสตอรี่: เจอสตอรี่ = แสดงทันที, ไม่เจอ 2 ครั้งติด = ซ่อน
+                    val story = !storyOnly || Cropper.isStory(b)
+                    storyMiss = if (story) 0 else storyMiss + 1
+                    val hide = !story && storyMiss >= 2
+                    if (story && feedHidden || hide && !feedHidden) {
+                        feedHidden = !story
                         main.post { main.removeCallbacks(appTick); main.post(appTick) }
                     }
-                    if (!onFeed) { if (guideLive) updateGuideFrom(b) else noteRatio(b) }
+                    if (story) { if (guideLive) updateGuideFrom(b) else noteRatio(b) }
                     b.recycle()
                 }
-            } else if (feedHidden && !Prefs.hideOnFeed(svc)) {
+            } else if (feedHidden && !Prefs.storyOnly(svc)) {
                 feedHidden = false
                 main.removeCallbacks(appTick); main.post(appTick)
             }
-            main.postDelayed(this, 1000)
+            main.postDelayed(this, if (Prefs.storyOnly(this@CaptureService)) 600 else 1000)
         }
     }
 

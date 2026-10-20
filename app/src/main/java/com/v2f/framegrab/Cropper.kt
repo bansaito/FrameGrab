@@ -141,6 +141,32 @@ object Cropper {
         return grey >= n * 0.08 && cyan >= n * 0.004 && pink >= n * 0.004
     }
 
+    /**
+     * หน้าสตอรี่ (TikTok / IG / FB): มีช่องพิมพ์ "ข้อความ…" สีเทาเข้มยาวด้านล่าง บนพื้นดำ
+     * (ทดสอบกับภาพจริง: สตอรี่ 7/7 ใช่, หน้าฟีด/กำลังติดตาม/หน้าโฮม/หน้าดูภาพ 5/5 ไม่ใช่)
+     */
+    fun isStory(b: Bitmap): Boolean {
+        val w = b.width; val h = b.height
+        var best = 0f
+        var y = (h * 0.80f).toInt()
+        val step = (h / 1000).coerceAtLeast(1) * 2
+        while (y < (h * 0.995f).toInt()) {
+            if (lum(b.getPixel((w * 0.01f).toInt(), y)) <= 25) {
+                var pill = 0
+                for (i in 0 until 40) {
+                    val p = b.getPixel((w * (0.08f + 0.50f * i / 39f)).toInt().coerceIn(0, w - 1), y)
+                    val r = (p shr 16) and 0xFF; val g = (p shr 8) and 0xFF; val bl = p and 0xFF
+                    val l = lum(p)
+                    if (l in 30..80 && maxOf(r, g, bl) - minOf(r, g, bl) < 18) pill++
+                }
+                best = maxOf(best, pill / 40f)
+                if (best >= 0.75f) return true
+            }
+            y += step
+        }
+        return false
+    }
+
     /** สัดส่วนของวิดีโอที่กำลังเล่น วัดจากขอบดำรอบวิดีโอ */
     fun detectVideoRatio(c: Context, bmp: Bitmap): String {
         val r = autoRect(c, bmp)

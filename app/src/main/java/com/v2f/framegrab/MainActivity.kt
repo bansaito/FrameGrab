@@ -113,10 +113,10 @@ class MainActivity : Activity() {
             setOnCheckedChangeListener { _, v -> Prefs.setOnlyInVideoApps(this@MainActivity, v); refresh() }
         }, gap(10f))
         col.addView(CheckBox(this).apply {
-            text = "ซ่อนในหน้าฟีด TikTok (สำหรับคุณ / กำลังติดตาม)"
+            text = "แสดงเฉพาะตอนดูสตอรี่ (ซ่อนในหน้าฟีด / กำลังติดตาม / สำหรับคุณ)"
             setTextColor(Color.WHITE)
-            isChecked = Prefs.hideOnFeed(this@MainActivity)
-            setOnCheckedChangeListener { _, v -> Prefs.setHideOnFeed(this@MainActivity, v) }
+            isChecked = Prefs.storyOnly(this@MainActivity)
+            setOnCheckedChangeListener { _, v -> Prefs.setStoryOnly(this@MainActivity, v) }
         }, gap(4f))
         appsPermBtn = button("🔓 อนุญาต \"การเข้าถึงข้อมูลการใช้งาน\" ให้ FrameGrab", 0xFF8A5A00.toInt()) {
             Toast.makeText(this, "เลือก FrameGrab แล้วเปิด \"อนุญาตการเข้าถึงข้อมูลการใช้งาน\"", Toast.LENGTH_LONG).show()

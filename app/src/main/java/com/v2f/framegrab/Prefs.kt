@@ -48,9 +48,9 @@ object Prefs {
     fun viewerLast(c: Context): String? = sp(c).getString("viewerLast", null)
     fun setViewerLast(c: Context, v: String?) = sp(c).edit().putString("viewerLast", v).apply()
 
-    /** ซ่อนปุ่มลอยและกรอบในหน้าฟีด TikTok (สำหรับคุณ / กำลังติดตาม) — ปิดเป็นค่าเริ่มต้น */
-    fun hideOnFeed(c: Context): Boolean = sp(c).getBoolean("hideOnFeed", false)
-    fun setHideOnFeed(c: Context, v: Boolean) = sp(c).edit().putBoolean("hideOnFeed", v).apply()
+    /** แสดงปุ่มลอยและกรอบเฉพาะตอนดูสตอรี่ (TikTok / IG / FB) */
+    fun storyOnly(c: Context): Boolean = sp(c).getBoolean("storyOnly", true)
+    fun setStoryOnly(c: Context, v: Boolean) = sp(c).edit().putBoolean("storyOnly", v).apply()
 
     fun hasCustomCrop(c: Context): Boolean = sp(c).contains("cropL")
     fun cropRect(c: Context): FloatArray = sp(c).let {
