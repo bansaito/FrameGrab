@@ -1,0 +1,184 @@
+package com.v2f.framegrab
+
+import android.Manifest
+import android.app.Activity
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
+import android.media.projection.MediaProjectionManager
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import android.provider.Settings
+import android.util.TypedValue
+import android.view.Gravity
+import android.view.ViewGroup
+import android.widget.CheckBox
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.TextView
+import android.widget.Toast
+import kotlin.math.roundToInt
+
+/** หน้าแรก: ขอสิทธิ์, เปิด/ปิดปุ่มลอย, ตั้งค่า, ดูภาพ */
+class MainActivity : Activity() {
+
+    companion object {
+        private const val REQ_CAPTURE = 10
+        private const val REQ_NOTIF = 11
+    }
+
+    private lateinit var status: TextView
+    private lateinit var startBtn: TextView
+    private lateinit var viewBtn: TextView
+    private lateinit var intervalBtn: TextView
+    private lateinit var maxBtn: TextView
+
+    private fun dp(v: Float): Int =
+        TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, resources.displayMetrics).roundToInt()
+
+    private fun button(text: String, color: Int, onClick: () -> Unit) = TextView(this).apply {
+        this.text = text
+        textSize = 17f
+        setTextColor(Color.WHITE)
+        gravity = Gravity.CENTER
+        setPadding(dp(16f), dp(14f), dp(16f), dp(14f))
+        background = GradientDrawable().apply { setColor(color); cornerRadius = dp(14f).toFloat() }
+        setOnClickListener { onClick() }
+    }
+
+    private fun label(text: String, size: Float = 14f, color: Int = 0xFFB8BCCB.toInt()) = TextView(this).apply {
+        this.text = text
+        textSize = size
+        setTextColor(color)
+        setLineSpacing(0f, 1.2f)
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val col = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20f), dp(36f), dp(20f), dp(28f))
+        }
+        val gap = { h: Float -> LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(h) } }
+
+        col.addView(label("🎞️ FrameGrab", 26f, Color.WHITE))
+        col.addView(label("ปุ่มลอยจับเฟรมจากวิดีโอ ใช้ได้เหนือทุกแอป เช่น TikTok, Instagram, Facebook, YouTube"), gap(4f))
+
+        status = label("", 14f)
+        col.addView(status, gap(18f))
+
+        startBtn = button("", 0xFF4F46E5.toInt()) { onStartClicked() }
+        col.addView(startBtn, gap(12f))
+        viewBtn = button("", 0xFF2A2D3A.toInt()) { startActivity(Intent(this, ViewerActivity::class.java)) }
+        col.addView(viewBtn, gap(10f))
+
+        col.addView(label("ตั้งค่าการอัดต่อเนื่อง", 16f, Color.WHITE), gap(26f))
+        intervalBtn = button("", 0xFF2A2D3A.toInt()) {
+            val cur = Prefs.interval(this)
+            val i = Prefs.INTERVALS.indexOfFirst { it == cur }
+            Prefs.setInterval(this, Prefs.INTERVALS[(i + 1) % Prefs.INTERVALS.size]); refresh()
+        }
+        col.addView(intervalBtn, gap(8f))
+        maxBtn = button("", 0xFF2A2D3A.toInt()) {
+            val cur = Prefs.maxSeconds(this)
+            val i = Prefs.MAX_SECONDS.indexOfFirst { it == cur }
+            Prefs.setMaxSeconds(this, Prefs.MAX_SECONDS[(i + 1) % Prefs.MAX_SECONDS.size]); refresh()
+        }
+        col.addView(maxBtn, gap(8f))
+        val keep = CheckBox(this).apply {
+            text = "แสดงปุ่ม ■ หยุด ระหว่างอัด"
+            setTextColor(Color.WHITE)
+            isChecked = Prefs.keepStopButton(this@MainActivity)
+            setOnCheckedChangeListener { _, v -> Prefs.setKeepStopButton(this@MainActivity, v) }
+        }
+        col.addView(keep, gap(8f))
+        col.addView(label(
+            "ปกติปุ่มลอยจะหายไปตอนอัด เพื่อไม่ให้ติดในภาพ (หยุดได้ที่แถบแจ้งเตือน หรือรอครบเวลา)\n" +
+            "ถ้าตอนกดอนุญาตเลือก \"แอปเดียว\" แล้วเลือก TikTok/IG/FB ปุ่มของเราจะไม่ติดในภาพเลย จึงเปิดตัวเลือกนี้ได้", 12.5f
+        ), gap(2f))
+
+        col.addView(label("วิธีใช้", 16f, Color.WHITE), gap(26f))
+        col.addView(label(
+            "1. กด \"เปิดปุ่มลอย\" แล้วอนุญาต \"แสดงทับแอปอื่น\"\n" +
+            "2. กดอนุญาตการจับภาพหน้าจอ\n" +
+            "3. เปิด TikTok / IG / Facebook แล้วแตะปุ่ม 🎞️\n" +
+            "   📸 จับภาพนี้ — จับภาพทีละภาพ\n" +
+            "   ⏺ อัดต่อเนื่อง — เล่นคลิปไปเรื่อย ๆ แล้วจับทุก 0.25 วิ\n" +
+            "4. อัดเสร็จจะเปิดหน้าดูภาพให้เอง: ถ่างนิ้วซูม, ปัดซ้าย/ขวาเปลี่ยนภาพ, 💾 บันทึกลงแกลเลอรี\n\n" +
+            "ภาพมาจากการจับหน้าจอ จึงได้ความละเอียดเท่าจอ และอาจมีข้อความหรือปุ่มของแอปนั้นติดมาด้วย", 13.5f
+        ), gap(6f))
+
+        val scroll = ScrollView(this).apply { setBackgroundColor(0xFF12141B.toInt()); addView(col) }
+        setContentView(scroll)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        refresh()
+    }
+
+    private fun refresh() {
+        val overlayOk = Settings.canDrawOverlays(this)
+        status.text = when {
+            CaptureService.running -> "✅ ปุ่มลอยทำงานอยู่ — เปิดแอปที่ต้องการแล้วแตะปุ่ม 🎞️"
+            !overlayOk -> "⚠️ ยังไม่ได้อนุญาต \"แสดงทับแอปอื่น\""
+            else -> "พร้อมใช้งาน"
+        }
+        startBtn.text = if (CaptureService.running) "■ ปิดปุ่มลอย" else "▶ เปิดปุ่มลอย"
+        viewBtn.text = "🖼 ดูภาพที่จับไว้ (${FrameStore.count(this)})"
+        intervalBtn.text = "⏱ จับทุก ${Prefs.intervalLabel(Prefs.interval(this))} วินาที  (แตะเพื่อเปลี่ยน)"
+        maxBtn.text = "⌛ อัดนานสุด ${Prefs.maxLabel(Prefs.maxSeconds(this))}  (แตะเพื่อเปลี่ยน)"
+    }
+
+    private fun onStartClicked() {
+        if (CaptureService.running) {
+            startService(Intent(this, CaptureService::class.java).setAction(CaptureService.ACTION_QUIT))
+            status.postDelayed({ refresh() }, 300)
+            return
+        }
+        if (!Settings.canDrawOverlays(this)) {
+            Toast.makeText(this, "เปิด \"อนุญาตให้แสดงทับแอปอื่น\" ให้ FrameGrab แล้วกดกลับมา", Toast.LENGTH_LONG).show()
+            startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+            return
+        }
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQ_NOTIF)
+            return
+        }
+        askCapture()
+    }
+
+    private fun askCapture() {
+        val mpm = getSystemService(MediaProjectionManager::class.java)
+        @Suppress("DEPRECATION")
+        startActivityForResult(mpm.createScreenCaptureIntent(), REQ_CAPTURE)
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQ_NOTIF) askCapture() // ไม่อนุญาตแจ้งเตือนก็ใช้ได้ แค่ไม่เห็นปุ่มหยุดในแถบแจ้งเตือน
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        @Suppress("DEPRECATION")
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != REQ_CAPTURE) return
+        if (resultCode != RESULT_OK || data == null) {
+            Toast.makeText(this, "ต้องอนุญาตการจับภาพหน้าจอ ปุ่มลอยจึงจะทำงานได้", Toast.LENGTH_LONG).show()
+            return
+        }
+        startForegroundService(
+            Intent(this, CaptureService::class.java)
+                .setAction(CaptureService.ACTION_START)
+                .putExtra(CaptureService.EXTRA_CODE, resultCode)
+                .putExtra(CaptureService.EXTRA_DATA, data)
+        )
+        Toast.makeText(this, "เปิดปุ่มลอยแล้ว เปิดแอปที่ต้องการได้เลย", Toast.LENGTH_SHORT).show()
+        moveTaskToBack(true)
+    }
+}
