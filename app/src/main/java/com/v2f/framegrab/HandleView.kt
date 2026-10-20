@@ -21,9 +21,9 @@ class HandleView(ctx: Context, private val move: Boolean, private val edge: Int 
     override fun onDraw(canvas: Canvas) {
         val cx = width / 2f; val cy = height / 2f
         if (edge != 0) {
-            // แถบขอบกรอบ (มองไม่เห็น) มีแค่ขีดเล็ก ๆ ตรงกลางบอกว่าลากได้
+            // จุดจับกลางขอบ: ขีดเล็ก ๆ บอกว่าลากได้
             val horiz = edge == 2 || edge == 8
-            val a = 14f * d; val b = 2.5f * d
+            val a = 16f * d; val b = 3.5f * d
             val r = if (horiz) android.graphics.RectF(cx - a, cy - b, cx + a, cy + b) else android.graphics.RectF(cx - b, cy - a, cx + b, cy + a)
             canvas.drawRoundRect(r, b, b, pill); canvas.drawRoundRect(r, b, b, pillRing)
             return

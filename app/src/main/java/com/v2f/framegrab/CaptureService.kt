@@ -1023,21 +1023,22 @@ class CaptureService : Service() {
             val (v, hl) = h
             if (!show) { if (v.visibility != View.GONE) v.visibility = View.GONE; continue }
             if (i >= 5) {
-                // แถบขอบ: ยาวตามขอบกรอบ (เว้นมุม) หนา 28dp — ซ้าย/ขวาเลี่ยงขอบจอ (ปัดย้อนกลับของระบบ)
-                val t = dp(28f); val gap = dp(26f).toFloat(); val sysEdge = dp(24f).toFloat()
+                // จุดจับกลางขอบ: เล็ก ๆ แค่ตรงกลางขอบ (ไม่ทั้งแนว จะได้ไม่แย่งที่แตะดูสตอรี่ถัดไป)
+                // ซ้าย/ขวาเลี่ยงขอบจอ (ปัดย้อนกลับของระบบ)
+                val t = dp(28f); val len = dp(52f); val sysEdge = dp(24f).toFloat()
                 val horiz = i == 5 || i == 6
-                val len = ((if (horiz) r!!.width() else r!!.height()) - gap * 2).roundToInt()
-                if (len < dp(24f)) { if (v.visibility != View.GONE) v.visibility = View.GONE; continue }
+                if ((if (horiz) r!!.width() else r!!.height()) < len + dp(90f)) { if (v.visibility != View.GONE) v.visibility = View.GONE; continue }
                 if (horiz) {
                     val ey = if (i == 5) r.top else r.bottom
                     hl.width = len; hl.height = t
-                    hl.x = (r.left + gap - offX).roundToInt(); hl.y = (ey - offY - t / 2f).roundToInt()
+                    hl.x = (r.centerX() - len / 2f - offX).roundToInt(); hl.y = (ey - offY - t / 2f).roundToInt()
+                    // ขอบบน: เลี่ยงปุ่มย้าย ✥ ที่อยู่กลางขอบบน
+                    if (i == 5) hl.x += dp(56f)
                 } else {
                     val ex = if (i == 7) r.left else r.right
-                    var x = ex - t / 2f
-                    x = x.coerceIn(sysEdge, screenW - sysEdge - t)
+                    val x = (ex - t / 2f).coerceIn(sysEdge, screenW - sysEdge - t)
                     hl.width = t; hl.height = len
-                    hl.x = (x - offX).roundToInt(); hl.y = (r.top + gap - offY).roundToInt()
+                    hl.x = (x - offX).roundToInt(); hl.y = (r.centerY() - len / 2f - offY).roundToInt()
                 }
                 v.visibility = View.VISIBLE
                 try { wm.updateViewLayout(v, hl) } catch (e: Exception) { }
