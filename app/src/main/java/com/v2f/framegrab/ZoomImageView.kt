@@ -11,7 +11,7 @@ import android.widget.ImageView
 import kotlin.math.abs
 
 /**
- * รูปที่ซูมด้วยนิ้วได้: ถ่างสองนิ้ว = ซูม, ลากตอนซูม = เลื่อน, แตะสองครั้ง = ซูม/ย่อกลับ
+ * รูปที่ซูมด้วยนิ้วได้: ถ่างสองนิ้ว = ซูม, ลากตอนซูม = เลื่อน
  * ตอนไม่ได้ซูม ปัดซ้าย/ขวา = เปลี่ยนภาพ (onSwipe), แตะครั้งเดียว = onTap
  */
 @SuppressLint("ViewConstructor")
@@ -126,11 +126,6 @@ class ZoomImageView(ctx: Context) : ImageView(ctx) {
             return false
         }
 
-        override fun onDoubleTap(e: MotionEvent): Boolean {
-            if (isZoomed) resetZoom() else zoomBy(2.5f, e.x, e.y)
-            return true
-        }
-
         override fun onLongPress(e: MotionEvent) {
             if (!scaleDetector.isInProgress) {
                 performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
@@ -138,7 +133,8 @@ class ZoomImageView(ctx: Context) : ImageView(ctx) {
             }
         }
 
-        override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+        // ไม่มีแตะสองครั้งเพื่อซูมแล้ว (ซูมสองนิ้วแทน) แตะครั้งเดียวจึงตอบสนองทันที
+        override fun onSingleTapUp(e: MotionEvent): Boolean {
             onTap?.invoke()
             return true
         }
