@@ -145,6 +145,8 @@ class CaptureService : Service() {
     // ---------- การอัดต่อเนื่อง ----------
     private val loop = LoopDetector()
     @Volatile private var loopFeeding = false
+    @Volatile private var seamFeeding = false
+    private val seam = SeamDetector()
     private var recRect: android.graphics.Rect? = null
     private var recBmpW = 0
     private var recBmpH = 0
@@ -291,6 +293,11 @@ class CaptureService : Service() {
                 if (loopFeeding) {
                     try { loop.feed(SystemClock.uptimeMillis() - recStart, LoopDetector.signature(img)) } catch (e: Exception) { }
                 }
+                // จับจังหวะเลื่อนสตอรี่ (ทุกเฟรม เฉพาะในกรอบที่อัด)
+                val rr = recRect
+                if (seamFeeding && rr != null) {
+                    try { seam.feed(SystemClock.uptimeMillis() - recStart, img, rr) } catch (e: Exception) { }
+                }
                 synchronized(lock) {
                     latest?.close()
                     latest = img
@@ -400,8 +407,9 @@ class CaptureService : Service() {
             }
             recStart = SystemClock.uptimeMillis()
             loopFeeding = autoStop
+            seam.reset()
+            seamFeeding = stopOnStory
             work.post(object : Runnable {
-                var prevT: IntArray? = null; var prevEl = 0L; var prevDiff = 0
                 override fun run() {
                     if (!recording) return
                     val el = SystemClock.uptimeMillis() - recStart
@@ -412,24 +420,18 @@ class CaptureService : Service() {
                         main.post { stopRecording(0, cutAtMs = cut, reason = "คลิปจบแล้ว หยุดอัดอัตโนมัติ") }
                         return
                     }
+                    // เลื่อนไปสตอรี่ถัดไป → หยุด ตัดภาพตั้งแต่เริ่มเลื่อนทิ้ง
+                    val sAt = seam.seamAtMs
+                    if (stopOnStory && sAt >= 0) {
+                        main.post { stopRecording(0, cutAtMs = (sAt - 100).coerceAtLeast(0), reason = "เลื่อนไปสตอรี่ใหม่ หยุดอัดอัตโนมัติ") }
+                        return
+                    }
                     val bmp = grabBitmap()
                     if (bmp != null) {
                         // ใช้กรอบเดียวกันทั้งคลิป (คำนวณจากภาพแรก) ภาพจะได้ขนาดเท่ากันทุกภาพ
                         val rect = recRect ?: cropRectFor(bmp).also { recRect = it }
                         // ขึ้นสตอรี่ใหม่ (ภาพในกรอบเปลี่ยนทั้งหมดกะทันหัน) → หยุด ไม่เก็บภาพของสตอรี่ถัดไป
                         // (ทดสอบ: ในคลิปเดียวกันต่างกัน ≤14, คนละภาพ ≥44)
-                        if (stopOnStory) {
-                            val t = thumbIn(bmp, rect); val o = prevT
-                            val d = if (o == null) 0 else t.indices.sumOf { abs(t[it] - o[it]) } / t.size
-                            if (o != null && el > 600 && d >= 30) {
-                                bmp.recycle()
-                                // ภาพก่อนหน้าเปลี่ยนไปเยอะแล้วด้วย = ช่วงกำลังเปลี่ยนสตอรี่ ตัดทิ้งด้วย
-                                val cut = if (prevDiff >= 15) prevEl else el
-                                main.post { stopRecording(0, cutAtMs = cut, reason = "ขึ้นสตอรี่ใหม่ หยุดอัดอัตโนมัติ") }
-                                return
-                            }
-                            prevT = t; prevEl = el; prevDiff = d
-                        }
                         val out = Cropper.apply(bmp, rect)
                         try { FrameStore.save(this@CaptureService, out, 'c', el, 90); recCount++ } catch (e: Exception) { }
                         if (out !== bmp) out.recycle()
@@ -458,6 +460,7 @@ class CaptureService : Service() {
         if (!recording) return
         recording = false
         loopFeeding = false
+        seamFeeding = false
         val el = SystemClock.uptimeMillis() - recStart
         work.post {
             if (dropLastMs > 0) FrameStore.dropAfter(this, el - dropLastMs)

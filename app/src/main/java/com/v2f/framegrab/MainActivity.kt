@@ -171,7 +171,7 @@ class MainActivity : Activity() {
         }
         col.addView(auto, gap(8f))
         val story = CheckBox(this).apply {
-            text = "หยุดอัดเองเมื่อขึ้นสตอรี่ใหม่ (ไม่เก็บภาพของเรื่องถัดไป)"
+            text = "หยุดอัดเองเมื่อเลื่อนไปสตอรี่ถัดไป (ไม่เก็บภาพของเรื่องถัดไป)"
             setTextColor(Color.WHITE)
             isChecked = Prefs.stopOnNewStory(this@MainActivity)
             setOnCheckedChangeListener { _, v -> Prefs.setStopOnNewStory(this@MainActivity, v) }
