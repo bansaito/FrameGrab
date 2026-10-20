@@ -123,32 +123,56 @@ object Cropper {
         val maxV = (h * 0.35f).toInt()
         val maxH = (w * 0.35f).toInt()
         val startTop = top; val startBottom = bottom
-        while (top < startTop + maxV && top < bottom - 32 && darkRow(bmp, top, left, right)) top += 2
-        while (bottom > startBottom - maxV && bottom > top + 32 && darkRow(bmp, bottom - 1, left, right)) bottom -= 2
-        while (left < maxH && left < right - 32 && darkCol(bmp, left, top, bottom)) left += 2
-        while (right > w - maxH && right > left + 32 && darkCol(bmp, right - 1, top, bottom)) right -= 2
+        top = scan(top, minOf(startTop + maxV, bottom - 32), 2) { darkRow(bmp, it, left, right) }
+        bottom = scan(bottom, maxOf(startBottom - maxV, top + 32), -2) { darkRow(bmp, it - 1, left, right) }
+        left = scan(left, minOf(maxH, right - 32), 2) { darkCol(bmp, it, top, bottom) }
+        right = scan(right, maxOf(w - maxH, left + 32), -2) { darkCol(bmp, it - 1, top, bottom) }
         return Rect(left, top.coerceAtLeast(0), right, bottom.coerceAtMost(h))
     }
 
     private fun lum(p: Int) = (((p shr 16) and 0xFF) * 299 + ((p shr 8) and 0xFF) * 587 + (p and 0xFF) * 114) / 1000
 
+    /**
+     * เดินจาก start ไปทาง limit ตราบที่ยังเป็นขอบดำ
+     * ข้ามเส้นบาง ๆ ได้ (เส้นกรอบ/ตัวหนังสือแถบสถานะ/ปุ่มลอยของเรา) ถ้าถัดไปยังดำอยู่
+     */
+    private inline fun scan(start: Int, limit: Int, step: Int, isDark: (Int) -> Boolean): Int {
+        var p = start
+        val before = { q: Int -> if (step > 0) q < limit else q > limit }
+        while (before(p)) {
+            if (isDark(p)) { p += step; continue }
+            var k = 2
+            var thin = false
+            while (k <= 24) {
+                val q = p + if (step > 0) k else -k
+                if (before(q) && isDark(q)) { thin = true; break }
+                k += 2
+            }
+            if (thin) p += if (step > 0) k else -k else break
+        }
+        return p
+    }
+
+    /** แถวนี้ดำ ถ้าจุดตัวอย่างอย่างน้อย 82% ดำ (เผื่อปุ่มลอยบังอยู่บางส่วน) */
     private fun darkRow(b: Bitmap, y: Int, x0: Int, x1: Int): Boolean {
         if (y < 0 || y >= b.height) return false
         val n = 48
+        var dark = 0
         for (i in 0 until n) {
             val x = (x0 + (x1 - x0 - 1) * i / (n - 1)).coerceIn(0, b.width - 1)
-            if (lum(b.getPixel(x, y)) > 22) return false
+            if (lum(b.getPixel(x, y)) <= 22) dark++
         }
-        return true
+        return dark >= n * 0.82
     }
 
     private fun darkCol(b: Bitmap, x: Int, y0: Int, y1: Int): Boolean {
         if (x < 0 || x >= b.width) return false
         val n = 64
+        var dark = 0
         for (i in 0 until n) {
             val y = (y0 + (y1 - y0 - 1) * i / (n - 1)).coerceIn(0, b.height - 1)
-            if (lum(b.getPixel(x, y)) > 22) return false
+            if (lum(b.getPixel(x, y)) <= 22) dark++
         }
-        return true
+        return dark >= n * 0.82
     }
 }

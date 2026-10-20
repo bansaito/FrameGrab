@@ -406,11 +406,14 @@ class CaptureService : Service() {
         }
         root = r
         wm.addView(r, lp)
+        bubble.setLineSpacing(0f, 0.85f)
         scheduleFade()
         refreshGuide()
+        main.postDelayed(liveTick, 1000)
     }
 
     private fun removeOverlays() {
+        main.removeCallbacks(liveTick)
         closeMenu()
         removeOverlays()
         guide?.let { try { wm.removeView(it) } catch (e: Exception) { } }
@@ -619,12 +622,43 @@ class CaptureService : Service() {
         }
     }
 
-    /** วัดสัดส่วนวิดีโอจากภาพ แล้วอัปเดตแจ้งเตือนถ้าเปลี่ยน (เรียกจากเธรดทำงาน) */
+    /** วัดสัดส่วนวิดีโอจากภาพ แล้วอัปเดตปุ่มกลม/แจ้งเตือนถ้าเปลี่ยน (เรียกจากเธรดทำงาน) */
     private fun noteRatio(bmp: Bitmap) {
         val r = try { Cropper.detectVideoRatio(this, bmp) } catch (e: Exception) { return }
         if (r != videoRatio) {
             videoRatio = r
-            main.post { updateNotification() }
+            main.post {
+                if (!recording) bubble.text = bubbleLabel()
+                updateNotification()
+            }
+        }
+    }
+
+    /** ปุ่มกลม: ไอคอน + สัดส่วนวิดีโอตัวเล็กด้านล่าง */
+    private fun bubbleLabel(): CharSequence {
+        val head = "🎞️"
+        val r = videoRatio?.substringBefore(" (") ?: return head
+        val sb = android.text.SpannableStringBuilder("$head\n$r")
+        sb.setSpan(android.text.style.AbsoluteSizeSpan(17, true), 0, head.length, 0)
+        sb.setSpan(android.text.style.AbsoluteSizeSpan(10, true), head.length + 1, sb.length, 0)
+        sb.setSpan(android.text.style.StyleSpan(android.graphics.Typeface.BOLD), head.length + 1, sb.length, 0)
+        return sb
+    }
+
+    /** วัดสัดส่วนวิดีโอทุก ~1 วินาที และให้กรอบบนจอตามวิดีโอแบบเรียลไทม์ */
+    private val liveTick = object : Runnable {
+        override fun run() {
+            if (root == null) return
+            if (!recording && !menuOpen && root?.visibility == View.VISIBLE) {
+                val preset = Prefs.cropPreset(this@CaptureService)
+                val guideLive = Prefs.showGuide(this@CaptureService) && preset != "full" && preset != "custom"
+                work.post {
+                    val b = grabBitmap() ?: return@post
+                    if (guideLive) updateGuideFrom(b) else noteRatio(b)
+                    b.recycle()
+                }
+            }
+            main.postDelayed(this, 1000)
         }
     }
 
@@ -685,13 +719,13 @@ class CaptureService : Service() {
     }
 
     private fun restoreBubble() {
-        bubble.text = "🎞️"
+        bubble.text = bubbleLabel()
         (bubble.background as? GradientDrawable)?.setColor(0xE64F46E5.toInt())
     }
 
     private fun flashBubble(t: String) {
         bubble.text = t
-        main.postDelayed({ if (!recording) bubble.text = "🎞️" }, 700)
+        main.postDelayed({ if (!recording) bubble.text = bubbleLabel() }, 700)
     }
 
     // ---------- แจ้งเตือน ----------
