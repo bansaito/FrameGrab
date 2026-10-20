@@ -147,6 +147,7 @@ class CaptureService : Service() {
     @Volatile private var loopFeeding = false
     @Volatile private var seamFeeding = false
     private val seam = SeamDetector()
+    private val storyBar = StoryBar()
     private var recRect: android.graphics.Rect? = null
     private var recBmpW = 0
     private var recBmpH = 0
@@ -408,6 +409,7 @@ class CaptureService : Service() {
             recStart = SystemClock.uptimeMillis()
             loopFeeding = autoStop
             seam.reset()
+            storyBar.reset()
             seamFeeding = stopOnStory
             work.post(object : Runnable {
                 override fun run() {
@@ -426,8 +428,15 @@ class CaptureService : Service() {
                         main.post { stopRecording(0, cutAtMs = (sAt - 100).coerceAtLeast(0), reason = "เลื่อนไปสตอรี่ใหม่ หยุดอัดอัตโนมัติ") }
                         return
                     }
+                    // แถบด้านบนขึ้นช่องถัดไป (จบสตอรี่นี้) → หยุด (ไม่นับ 2 วิแรก กันพลาด)
+                    val bAt = storyBar.advancedAtMs
+                    if (stopOnStory && bAt >= 0) {
+                        main.post { stopRecording(0, cutAtMs = (bAt - 150).coerceAtLeast(0), reason = "จบสตอรี่ หยุดอัดอัตโนมัติ") }
+                        return
+                    }
                     val bmp = grabBitmap()
                     if (bmp != null) {
+                        if (stopOnStory) storyBar.feed(el, bmp)
                         // ใช้กรอบเดียวกันทั้งคลิป (คำนวณจากภาพแรก) ภาพจะได้ขนาดเท่ากันทุกภาพ
                         val rect = recRect ?: cropRectFor(bmp).also { recRect = it }
                         // ขึ้นสตอรี่ใหม่ (ภาพในกรอบเปลี่ยนทั้งหมดกะทันหัน) → หยุด ไม่เก็บภาพของสตอรี่ถัดไป
