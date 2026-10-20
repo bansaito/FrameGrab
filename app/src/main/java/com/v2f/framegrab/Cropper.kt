@@ -245,8 +245,16 @@ object Cropper {
         val maxV = (h * 0.45f).toInt()
         val maxH = (w * 0.35f).toInt()
         val skip = (w * 0.066f).toInt().coerceAtLeast(24)
-        top = scan(top, maxV, 2, skip) { darkRow(bmp, it, left, right) }
-        bottom = scan(bottom, maxOf(h - maxV, top + 32), -2, skip) { darkRow(bmp, it - 1, left, right) }
+        // แถบสถานะ/แถบนำทางของระบบ (บางแอปเช่น Facebook ทำแถบนำทางเป็นสีขาว) = นับเป็นขอบ ถ้าสีเรียบทั้งแถว
+        val scale = w.toFloat() / realScreenWidth(c).coerceAtLeast(1)
+        val dens = c.resources.displayMetrics.density
+        val navH = ((sysDimen(c, "navigation_bar_height").takeIf { it > 0 } ?: (48 * dens).toInt()) * scale * 1.15f).toInt()
+        val statH = ((sysDimen(c, "status_bar_height").takeIf { it > 0 } ?: (30 * dens).toInt()) * scale * 1.15f).toInt()
+        fun bar(y: Int) = darkRow(bmp, y, left, right) || ((y >= h - navH || y < statH) && uniformRow(bmp, y))
+        // ด้านล่าง: ข้ามแถบปุ่มของแอปได้ไกลขึ้น (ช่องส่งข้อความ + อีโมจิของสตอรี่ FB) ถ้าขอบจอยังดำ
+        val uiSkip = (h * 0.10f).toInt()
+        top = scan(top, maxV, 2, skip) { bar(it) }
+        bottom = scan(bottom, maxOf(h - maxV, top + 32), -2, skip, uiSkip, { edgeBlack(bmp, it - 1) }) { bar(it - 1) }
         left = scan(left, minOf(maxH, right - 32), 2, skip) { darkCol(bmp, it, top, bottom) }
         right = scan(right, maxOf(w - maxH, left + 32), -2, skip) { darkCol(bmp, it - 1, top, bottom) }
         return Rect(left, top.coerceAtLeast(0), right, bottom.coerceAtMost(h))
@@ -258,15 +266,21 @@ object Cropper {
      * เดินจาก start ไปทาง limit ตราบที่ยังเป็นขอบดำ
      * ข้ามเส้นบาง ๆ ได้ (เส้นกรอบ/ตัวหนังสือแถบสถานะ/ปุ่มลอยของเรา) ถ้าถัดไปยังดำอยู่
      */
-    private inline fun scan(start: Int, limit: Int, step: Int, skip: Int, isDark: (Int) -> Boolean): Int {
+    private inline fun scan(
+        start: Int, limit: Int, step: Int, skip: Int,
+        longSkip: Int = 0, crossinline longOk: (Int) -> Boolean = { false }, isDark: (Int) -> Boolean
+    ): Int {
         var p = start
         val before = { q: Int -> if (step > 0) q < limit else q > limit }
+        val maxSkip = maxOf(skip, longSkip)
         while (before(p)) {
             if (isDark(p)) { p += step; continue }
             var k = 2
             var thin = false
-            while (k <= skip) {
+            while (k <= maxSkip) {
                 val q = p + if (step > 0) k else -k
+                // ข้ามไกลกว่าปกติได้เฉพาะแถวที่ขอบจอดำ (แถบปุ่มของแอป ไม่ใช่เนื้อวิดีโอ)
+                if (k > skip && !longOk(q)) break
                 if (before(q) && isDark(q)) { thin = true; break }
                 k += 2
             }
@@ -298,6 +312,25 @@ object Cropper {
         val l = edge(floatArrayOf(0.012f, 0.017f, 0.022f))
         val r = edge(floatArrayOf(0.978f, 0.983f, 0.988f))
         return (l || r) && darkish >= n * 0.6 && ((l && r) || darkish >= n * 0.75)
+    }
+
+    /** สีเรียบทั้งแถว (แถบระบบสีขาว/เทา/ดำ) */
+    private fun uniformRow(b: Bitmap, y: Int): Boolean {
+        if (y < 0 || y >= b.height) return false
+        var mn = 255; var mx = 0
+        for (i in 0 until 48) {
+            val l = lum(b.getPixel(((b.width - 1) * i / 47), y))
+            if (l < mn) mn = l; if (l > mx) mx = l
+        }
+        return mx - mn <= 10
+    }
+
+    /** ขอบซ้ายหรือขวาของแถวดำสนิท */
+    private fun edgeBlack(b: Bitmap, y: Int): Boolean {
+        if (y < 0 || y >= b.height) return false
+        val w = b.width
+        fun edge(fr: FloatArray) = fr.count { f -> lum(b.getPixel((w * f).toInt().coerceIn(0, w - 1), y)) <= 22 } >= 2
+        return edge(floatArrayOf(0.012f, 0.017f, 0.022f)) || edge(floatArrayOf(0.978f, 0.983f, 0.988f))
     }
 
     private fun darkCol(b: Bitmap, x: Int, y0: Int, y1: Int): Boolean {
