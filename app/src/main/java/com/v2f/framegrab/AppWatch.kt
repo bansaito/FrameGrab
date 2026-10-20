@@ -23,7 +23,10 @@ object AppWatch {
     fun hasPermission(c: Context): Boolean {
         val ops = c.getSystemService(AppOpsManager::class.java)
         val mode = ops.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), c.packageName)
-        return mode == AppOpsManager.MODE_ALLOWED
+        // บางยี่ห้อคืน MODE_DEFAULT แม้เปิดสิทธิ์แล้ว → ดูจากสิทธิ์แทน
+        return mode == AppOpsManager.MODE_ALLOWED ||
+            (mode == AppOpsManager.MODE_DEFAULT &&
+                c.checkSelfPermission(android.Manifest.permission.PACKAGE_USAGE_STATS) == android.content.pm.PackageManager.PERMISSION_GRANTED)
     }
 
     fun permissionIntent(c: Context): Intent =
@@ -47,7 +50,25 @@ object AppWatch {
             if (ev.eventType == UsageEvents.Event.ACTIVITY_RESUMED) pkg = ev.packageName
         }
         if (pkg != null) lastPkg = pkg
+        if (lastPkg == null) {
+            // สำรอง: แอปที่ถูกใช้ล่าสุดจากสถิติการใช้งาน
+            try {
+                usm.queryUsageStats(UsageStatsManager.INTERVAL_BEST, now - 3600_000L, now)
+                    ?.filter { it.lastTimeUsed > 0 }
+                    ?.maxByOrNull { it.lastTimeUsed }
+                    ?.let { lastPkg = it.packageName }
+            } catch (e: Exception) { }
+        }
         return lastPkg
+    }
+
+    /** ชื่อแอปสำหรับแสดง */
+    fun label(c: Context, pkg: String?): String {
+        if (pkg == null) return "?"
+        return try {
+            val pm = c.packageManager
+            pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
+        } catch (e: Exception) { pkg }
     }
 
     fun reset() { lastPkg = null; lastQuery = 0L }

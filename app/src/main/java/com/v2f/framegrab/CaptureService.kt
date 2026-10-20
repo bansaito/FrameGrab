@@ -110,6 +110,8 @@ class CaptureService : Service() {
     @Volatile private var holdHidden = false    // กำลังซ่อนเพื่อจับภาพ ห้ามโผล่กลับเอง
     @Volatile private var inOwnApp = false      // กำลังเปิดหน้าแอป FrameGrab เอง
     @Volatile private var ownUiHidden = false   // หน้าดูภาพ/หน้าลากกรอบเปิดอยู่
+    @Volatile private var capturedAppVisible = true // Android 14+ อัด "แอปเดียว": แอปนั้นอยู่บนจอไหม
+    @Volatile private var fgLabel: String? = null   // แอปที่ตรวจเจอ (แสดงในแจ้งเตือน)
     private var lastBase: android.graphics.RectF? = null // พื้นที่วิดีโอล่าสุด (พิกัดจอ)
     private val prefListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         if (key in setOf("cropPreset", "showGuide", "cropL", "cropT", "cropR", "cropB")) main.post { applyGuidePrefs() }
@@ -179,6 +181,12 @@ class CaptureService : Service() {
         projection = p
         p.registerCallback(object : MediaProjection.Callback() {
             override fun onStop() { main.post { quit() } }
+            // Android 14+: อนุญาตแบบ "แอปเดียว" แล้วออกจากแอปนั้น → ซ่อนปุ่มลอยเอง (ไม่ต้องใช้สิทธิ์เพิ่ม)
+            override fun onCapturedContentVisibilityChanged(isVisible: Boolean) {
+                capturedAppVisible = isVisible
+                main.removeCallbacks(appTick)
+                main.post(appTick)
+            }
         }, main)
         setupDisplay(p)
         AppWatch.reset()
@@ -749,8 +757,16 @@ class CaptureService : Service() {
             val enabled = Prefs.onlyInVideoApps(svc) && AppWatch.hasPermission(svc)
             val fg = if (enabled) AppWatch.foreground(svc) else null
             inOwnApp = fg == packageName || ownUiHidden
+            val newLabel = when {
+                !Prefs.onlyInVideoApps(svc) -> null
+                !AppWatch.hasPermission(svc) -> "⚠️ ยังไม่ได้อนุญาต \"การเข้าถึงข้อมูลการใช้งาน\" (แสดงทุกแอป)"
+                fg == null -> "กำลังตรวจแอปที่เปิดอยู่…"
+                else -> "แอปตอนนี้: ${AppWatch.label(svc, fg)}"
+            }
+            if (newLabel != fgLabel) { fgLabel = newLabel; updateNotification() }
             // หน้าตั้งค่าของ FrameGrab แสดงได้ (จะได้เห็นกรอบ) แต่หน้าดูภาพ/ลากกรอบ ซ่อน
-            val hide = ownUiHidden || (enabled && fg != null && fg !in AppWatch.VIDEO_APPS && fg != packageName)
+            val hide = ownUiHidden || !capturedAppVisible ||
+                (enabled && fg != null && fg !in AppWatch.VIDEO_APPS && fg != packageName)
             if (hide != appHidden) {
                 appHidden = hide
                 if (hide) {
@@ -1186,7 +1202,10 @@ class CaptureService : Service() {
                 PendingIntent.FLAG_IMMUTABLE
             )
             b.setContentTitle(videoRatio?.let { "📐 วิดีโอที่เล่นอยู่: $it" } ?: "ปุ่มลอยจับเฟรมทำงานอยู่")
-                .setContentText("กรอบ: ${Cropper.presetLabel(this, Prefs.cropPreset(this))} · แตะปุ่ม 🎞️ บนจอเพื่อจับภาพ")
+                .setContentText("กรอบ: ${Cropper.presetLabel(this, Prefs.cropPreset(this))}" + (fgLabel?.let { " · $it" } ?: ""))
+                .setStyle(Notification.BigTextStyle().bigText(
+                    "กรอบ: ${Cropper.presetLabel(this, Prefs.cropPreset(this))}\n" + (fgLabel ?: "แตะปุ่ม 🎞️ บนจอเพื่อจับภาพ")
+                ))
                 .addAction(Notification.Action.Builder(
                     Icon.createWithResource(this, android.R.drawable.ic_menu_preferences), "⚙️ เปิดแอป", openApp
                 ).build())
