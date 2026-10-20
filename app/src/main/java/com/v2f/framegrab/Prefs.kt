@@ -22,6 +22,9 @@ object Prefs {
     /** หยุดอัดเองเมื่อคลิปวนกลับมาต้น */
     fun autoStop(c: Context): Boolean = sp(c).getBoolean("autoStop", true)
     fun setAutoStop(c: Context, v: Boolean) = sp(c).edit().putBoolean("autoStop", v).apply()
+    /** หยุดอัดเองเมื่อขึ้นสตอรี่ใหม่ */
+    fun stopOnNewStory(c: Context): Boolean = sp(c).getBoolean("stopNewStory", true)
+    fun setStopOnNewStory(c: Context, v: Boolean) = sp(c).edit().putBoolean("stopNewStory", v).apply()
 
     /** ส่วนที่จะเก็บ: 0 ทั้งจอ, 1 ตัดขอบอัตโนมัติ, 2 กรอบที่ตั้งเอง */
     fun cropMode(c: Context): Int = sp(c).getInt("cropMode", 0)

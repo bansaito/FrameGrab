@@ -379,6 +379,7 @@ class CaptureService : Service() {
         val maxSec = Prefs.maxSeconds(this)
         val maxMs = if (maxSec == 0) MAX_UNLIMITED_MS else maxSec * 1000L
         val autoStop = Prefs.autoStop(this)
+        val stopOnStory = Prefs.stopOnNewStory(this)
         loop.reset()
         toast("⏺ เริ่มอัด ทุก ${Prefs.intervalLabel(Prefs.interval(this))} วิ · " +
             if (showStop) "แตะ ■ เพื่อหยุด" else "หยุดได้ที่แถบแจ้งเตือน")
@@ -400,6 +401,7 @@ class CaptureService : Service() {
             recStart = SystemClock.uptimeMillis()
             loopFeeding = autoStop
             work.post(object : Runnable {
+                var prevT: IntArray? = null; var prevEl = 0L; var prevDiff = 0
                 override fun run() {
                     if (!recording) return
                     val el = SystemClock.uptimeMillis() - recStart
@@ -414,6 +416,20 @@ class CaptureService : Service() {
                     if (bmp != null) {
                         // ใช้กรอบเดียวกันทั้งคลิป (คำนวณจากภาพแรก) ภาพจะได้ขนาดเท่ากันทุกภาพ
                         val rect = recRect ?: cropRectFor(bmp).also { recRect = it }
+                        // ขึ้นสตอรี่ใหม่ (ภาพในกรอบเปลี่ยนทั้งหมดกะทันหัน) → หยุด ไม่เก็บภาพของสตอรี่ถัดไป
+                        // (ทดสอบ: ในคลิปเดียวกันต่างกัน ≤14, คนละภาพ ≥44)
+                        if (stopOnStory) {
+                            val t = thumbIn(bmp, rect); val o = prevT
+                            val d = if (o == null) 0 else t.indices.sumOf { abs(t[it] - o[it]) } / t.size
+                            if (o != null && el > 600 && d >= 30) {
+                                bmp.recycle()
+                                // ภาพก่อนหน้าเปลี่ยนไปเยอะแล้วด้วย = ช่วงกำลังเปลี่ยนสตอรี่ ตัดทิ้งด้วย
+                                val cut = if (prevDiff >= 15) prevEl else el
+                                main.post { stopRecording(0, cutAtMs = cut, reason = "ขึ้นสตอรี่ใหม่ หยุดอัดอัตโนมัติ") }
+                                return
+                            }
+                            prevT = t; prevEl = el; prevDiff = d
+                        }
                         val out = Cropper.apply(bmp, rect)
                         try { FrameStore.save(this@CaptureService, out, 'c', el, 90); recCount++ } catch (e: Exception) { }
                         if (out !== bmp) out.recycle()
@@ -427,6 +443,15 @@ class CaptureService : Service() {
             })
         }
         updateNotification()
+    }
+
+    /** ภาพย่อ 12x12 (ความสว่าง) ภายในกรอบที่อัด */
+    private fun thumbIn(b: Bitmap, r: android.graphics.Rect): IntArray = IntArray(144) { k ->
+        val i = k % 12; val j = k / 12
+        val x = (r.left + r.width() * (0.05f + 0.9f * i / 11)).toInt().coerceIn(0, b.width - 1)
+        val y = (r.top + r.height() * (0.05f + 0.9f * j / 11)).toInt().coerceIn(0, b.height - 1)
+        val p = b.getPixel(x, y)
+        (((p shr 16) and 0xFF) * 299 + ((p shr 8) and 0xFF) * 587 + (p and 0xFF) * 114) / 1000
     }
 
     private fun stopRecording(dropLastMs: Long, cutAtMs: Long = -1, reason: String? = null) {
