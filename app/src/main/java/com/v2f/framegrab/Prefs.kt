@@ -36,6 +36,10 @@ object Prefs {
     fun showGuide(c: Context): Boolean = sp(c).getBoolean("showGuide", true)
     fun setShowGuide(c: Context, v: Boolean) = sp(c).edit().putBoolean("showGuide", v).apply()
 
+    /** 📸 จับภาพนี้ แล้วบันทึกลงแกลเลอรีให้เลย */
+    fun autoSaveSingle(c: Context): Boolean = sp(c).getBoolean("autoSaveSingle", true)
+    fun setAutoSaveSingle(c: Context, v: Boolean) = sp(c).edit().putBoolean("autoSaveSingle", v).apply()
+
     fun hasCustomCrop(c: Context): Boolean = sp(c).contains("cropL")
     fun cropRect(c: Context): FloatArray = sp(c).let {
         floatArrayOf(it.getFloat("cropL", 0f), it.getFloat("cropT", 0f), it.getFloat("cropR", 1f), it.getFloat("cropB", 1f))

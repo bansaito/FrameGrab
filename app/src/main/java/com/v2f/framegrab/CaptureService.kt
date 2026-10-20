@@ -214,20 +214,30 @@ class CaptureService : Service() {
         work.post {
             val bmp = grabFresh(hiddenAt + 60)
             var ok = false
+            var saved = false
             if (bmp != null) {
                 val now = java.util.Calendar.getInstance()
                 val msOfDay = ((now.get(java.util.Calendar.HOUR_OF_DAY) * 60 + now.get(java.util.Calendar.MINUTE)) * 60 +
                     now.get(java.util.Calendar.SECOND)) * 1000L + now.get(java.util.Calendar.MILLISECOND)
                 updateGuideFrom(bmp)
                 val out = Cropper.apply(bmp, Cropper.rectFor(this, bmp))
-                try { FrameStore.save(this, out, 's', msOfDay); ok = true } catch (e: Exception) { }
+                try {
+                    val f = FrameStore.save(this, out, 's', msOfDay)
+                    ok = true
+                    // บันทึกลงแกลเลอรีอัตโนมัติ (ปิดได้ในแอป)
+                    if (Prefs.autoSaveSingle(this)) saved = FrameStore.saveFileToGallery(this, f, FrameStore.count(this))
+                } catch (e: Exception) { }
                 if (out !== bmp) out.recycle()
                 bmp.recycle()
             }
             main.post {
                 showOverlay()
                 flashBubble(if (ok) "✓" else "!")
-                toast(if (ok) "📸 จับภาพแล้ว (${FrameStore.count(this)})" else "จับภาพไม่สำเร็จ")
+                toast(when {
+                    !ok -> "จับภาพไม่สำเร็จ"
+                    saved -> "📸 บันทึกลงแกลเลอรีแล้ว (Pictures/FrameGrab)"
+                    else -> "📸 จับภาพแล้ว (${FrameStore.count(this)})"
+                })
             }
         }
     }

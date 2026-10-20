@@ -86,10 +86,12 @@ object FrameStore {
     }
 
     /** บันทึกภาพเดียวลง Pictures/FrameGrab คืน true ถ้าสำเร็จ */
-    fun saveOneToGallery(c: Context, fr: Frame): Boolean {
+    fun saveOneToGallery(c: Context, fr: Frame): Boolean = saveFileToGallery(c, fr.file, fr.index)
+
+    fun saveFileToGallery(c: Context, f: File, index: Int): Boolean {
         val name = "frame_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date()) +
-            String.format(Locale.US, "_%03d.jpg", fr.index)
-        return copyToGallery(c, fr.file, name, "Pictures/FrameGrab")
+            String.format(Locale.US, "_%03d.jpg", index)
+        return copyToGallery(c, f, name, "Pictures/FrameGrab")
     }
 
     private fun copyToGallery(c: Context, src: File, displayName: String, folder: String): Boolean {

@@ -97,6 +97,13 @@ class MainActivity : Activity() {
         clearBtn = button("", 0xFF3A2026.toInt()) { FrameStore.confirmClear(this) { refresh() } }
         col.addView(clearBtn, gap(10f))
 
+        col.addView(CheckBox(this).apply {
+            text = "📸 จับภาพนี้ แล้วบันทึกลงแกลเลอรีอัตโนมัติ"
+            setTextColor(Color.WHITE)
+            isChecked = Prefs.autoSaveSingle(this@MainActivity)
+            setOnCheckedChangeListener { _, v -> Prefs.setAutoSaveSingle(this@MainActivity, v) }
+        }, gap(14f))
+
         col.addView(label("ส่วนที่จะเก็บ", 16f, Color.WHITE), gap(26f))
         cropBtn = button("", 0xFF2A2D3A.toInt()) { choosePreset() }
         col.addView(cropBtn, gap(8f))
