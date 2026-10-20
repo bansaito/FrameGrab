@@ -104,7 +104,7 @@ class CaptureService : Service() {
     private var editBackup: android.graphics.RectF? = null
     // จุดจับบนกรอบ: มุมซ้ายบน, ขวาบน, ซ้ายล่าง, ขวาล่าง, ปุ่มย้าย
     private val handles = ArrayList<Pair<HandleView, WindowManager.LayoutParams>>()
-    private val handleModes = intArrayOf(1 or 2, 4 or 2, 1 or 8, 4 or 8, 16)
+    private val handleModes = intArrayOf(1 or 2, 4 or 2, 1 or 8, 4 or 8, 16, 2, 8, 1, 4)  // มุม 4, ย้าย, ขอบ บน/ล่าง/ซ้าย/ขวา
     @Volatile private var draggingGuide = false
     @Volatile private var appHidden = false     // ไม่ได้อยู่ใน TikTok/IG/FB → ซ่อนทุกอย่าง
     @Volatile private var holdHidden = false    // กำลังซ่อนเพื่อจับภาพ ห้ามโผล่กลับเอง
@@ -960,16 +960,19 @@ class CaptureService : Service() {
     @SuppressLint("ClickableViewAccessibility")
     private fun addHandles() {
         val size = dp(44f)
-        for (i in 0 until 5) {
-            val v = HandleView(this, move = i == 4)
+        val made = arrayOfNulls<Pair<HandleView, WindowManager.LayoutParams>>(9)
+        // ใส่แถบขอบก่อน ให้จุดมุมและปุ่มย้ายอยู่ชั้นบนกว่า
+        for (i in listOf(5, 6, 7, 8, 0, 1, 2, 3, 4)) {
+            val v = HandleView(this, move = i == 4, edge = if (i >= 5) handleModes[i] else 0)
             val hl = overlayParams(size, size, WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN).apply {
                 layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
             }
             v.visibility = View.GONE
             v.setOnTouchListener { _, e -> onHandleTouch(i, e); true }
             wm.addView(v, hl)
-            handles.add(v to hl)
+            made[i] = v to hl
         }
+        for (h in made) handles.add(h!!)
     }
 
     private fun onHandleTouch(i: Int, e: MotionEvent) {
@@ -1019,6 +1022,27 @@ class CaptureService : Service() {
         for ((i, h) in handles.withIndex()) {
             val (v, hl) = h
             if (!show) { if (v.visibility != View.GONE) v.visibility = View.GONE; continue }
+            if (i >= 5) {
+                // แถบขอบ: ยาวตามขอบกรอบ (เว้นมุม) หนา 28dp — ซ้าย/ขวาเลี่ยงขอบจอ (ปัดย้อนกลับของระบบ)
+                val t = dp(28f); val gap = dp(26f).toFloat(); val sysEdge = dp(24f).toFloat()
+                val horiz = i == 5 || i == 6
+                val len = ((if (horiz) r!!.width() else r!!.height()) - gap * 2).roundToInt()
+                if (len < dp(24f)) { if (v.visibility != View.GONE) v.visibility = View.GONE; continue }
+                if (horiz) {
+                    val ey = if (i == 5) r.top else r.bottom
+                    hl.width = len; hl.height = t
+                    hl.x = (r.left + gap - offX).roundToInt(); hl.y = (ey - offY - t / 2f).roundToInt()
+                } else {
+                    val ex = if (i == 7) r.left else r.right
+                    var x = ex - t / 2f
+                    x = x.coerceIn(sysEdge, screenW - sysEdge - t)
+                    hl.width = t; hl.height = len
+                    hl.x = (x - offX).roundToInt(); hl.y = (r.top + gap - offY).roundToInt()
+                }
+                v.visibility = View.VISIBLE
+                try { wm.updateViewLayout(v, hl) } catch (e: Exception) { }
+                continue
+            }
             val px = when (i) { 0, 2 -> r!!.left; 1, 3 -> r!!.right; else -> r!!.centerX() }
             val py = when (i) { 0, 1, 4 -> r.top; else -> r.bottom }
             // ปุ่มย้ายอยู่เหนือขอบบนเล็กน้อย ไม่บังวิดีโอ
