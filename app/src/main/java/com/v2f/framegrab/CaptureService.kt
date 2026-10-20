@@ -1048,7 +1048,9 @@ class CaptureService : Service() {
                     // แสดงเฉพาะตอนดูสตอรี่:
                     //  เห็นแถบเมนูล่างของหน้าแรก (ร้านค้า…) ครั้งเดียว = ซ่อนยาว ไม่ต้องเช็กซ้ำให้กะพริบ
                     //  ซ่อนอยู่แล้วกลับมาแสดงเมื่อเห็นแถบความคืบหน้าสีขาวของสตอรี่ด้านบน
-                    val hide = storyOnly && (Cropper.hasFeedNav(b) || (feedHidden && !StoryBar.hasBar(b)))
+                    //  เห็นปุ่มหัวใจ+แชร์มุมขวาล่าง = หน้าสตอรี่แน่นอน → แสดงเสมอ
+                    val hide = storyOnly && !Cropper.hasStoryActions(b) &&
+                        (Cropper.hasFeedNav(b) || (feedHidden && !StoryBar.hasBar(b)))
                     val story = !hide
                     if (hide != feedHidden) {
                         feedHidden = hide

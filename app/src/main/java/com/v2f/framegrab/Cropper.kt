@@ -176,6 +176,38 @@ object Cropper {
     }
 
     /**
+     * ปุ่มหัวใจ + แชร์ ที่มุมขวาล่างของหน้าสตอรี่ (มีแม้สตอรี่ไม่มีช่องพิมพ์ข้อความ)
+     * ตรวจ: ไอคอนสว่างที่ x≈80% และ x≈92%, ช่องว่างดำระหว่างกันที่ x≈86%
+     * (ทดสอบ: สตอรี่ ≥0.136, หน้าแรก TikTok ≤0.053 → เกณฑ์ 0.10)
+     */
+    fun hasStoryActions(b: Bitmap): Boolean {
+        val w = b.width; val h = b.height
+        val band = (h * 0.04f).toInt().coerceAtLeast(4)
+        val sy = (h / 400).coerceAtLeast(1); val sx = (w / 360).coerceAtLeast(1)
+        fun frac(y0: Int, x0: Float, x1: Float, bright: Boolean): Float {
+            var n = 0; var k = 0
+            var y = y0
+            while (y < y0 + band) {
+                var x = (w * x0).toInt()
+                while (x < (w * x1).toInt()) {
+                    val l = lum(b.getPixel(x, y)); n++
+                    if (if (bright) l > 150 else l < 40) k++
+                    x += sx
+                }
+                y += sy
+            }
+            return if (n == 0) 0f else k / n.toFloat()
+        }
+        var y0 = (h * 0.80f).toInt()
+        while (y0 < h - band) {
+            if (frac(y0, 0.85f, 0.87f, false) >= 0.9f &&
+                frac(y0, 0.76f, 0.84f, true) >= 0.10f && frac(y0, 0.88f, 0.96f, true) >= 0.10f) return true
+            y0 += sy
+        }
+        return false
+    }
+
+    /**
      * หน้าสตอรี่ (TikTok / IG / FB): มีช่องพิมพ์ "ข้อความ…" สีเทาเข้มยาวด้านล่าง บนพื้นดำ
      * (ทดสอบกับภาพจริง: สตอรี่ 7/7 ใช่, หน้าฟีด/กำลังติดตาม/หน้าโฮม/หน้าดูภาพ 5/5 ไม่ใช่)
      */
