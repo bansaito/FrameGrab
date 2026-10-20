@@ -117,7 +117,7 @@ class CaptureService : Service() {
     private var recRect: android.graphics.Rect? = null
     private var recBmpW = 0
     private var recBmpH = 0
-    @Volatile private var stopOverlaps = false          // ปุ่ม ■ อยู่ในกรอบ → ซ่อนแวบเดียวตอนจับแต่ละภาพ
+    @Volatile private var stopOverlaps = false          // ปุ่ม ■ อยู่ในกรอบ (กรอบเต็มจอ)
     private var savedBubblePos: Pair<Int, Int>? = null
     @Volatile private var recording = false
     @Volatile private var recStart = 0L
@@ -304,7 +304,7 @@ class CaptureService : Service() {
                         main.post { stopRecording(0, cutAtMs = cut, reason = "คลิปจบแล้ว หยุดอัดอัตโนมัติ") }
                         return
                     }
-                    val bmp = if (stopOverlaps) grabWithoutStop() else grabBitmap()
+                    val bmp = grabBitmap()
                     if (bmp != null) {
                         // ใช้กรอบเดียวกันทั้งคลิป (คำนวณจากภาพแรก) ภาพจะได้ขนาดเท่ากันทุกภาพ
                         val rect = recRect ?: Cropper.rectFor(this@CaptureService, bmp).also { recRect = it }
@@ -1036,24 +1036,12 @@ class CaptureService : Service() {
         scheduleFade()
     }
 
-    /** ซ่อนปุ่ม ■ แวบเดียวแล้วจับภาพ (ใช้เมื่อปุ่มอยู่ในกรอบที่เก็บ) เรียกจากเธรดทำงาน */
-    private fun grabWithoutStop(): Bitmap? {
-        val latch = java.util.concurrent.CountDownLatch(1)
-        main.post { root?.visibility = View.INVISIBLE; latch.countDown() }
-        latch.await(200, java.util.concurrent.TimeUnit.MILLISECONDS)
-        val t = SystemClock.uptimeMillis()
-        while (latestAt <= t + 40 && SystemClock.uptimeMillis() < t + 200) SystemClock.sleep(5)
-        val b = grabBitmap()
-        main.post { if (recording) root?.visibility = View.VISIBLE }
-        return b
-    }
-
     private fun sysDimen(name: String): Int {
         val id = resources.getIdentifier(name, "dimen", "android")
         return if (id > 0) resources.getDimensionPixelSize(id) else 0
     }
 
-    /** ย้ายปุ่ม ■ ไปมุมจอที่อยู่นอกกรอบที่เก็บ (ถ้าไม่มีที่ว่าง ใช้วิธีซ่อนแวบเดียวตอนจับ) */
+    /** ย้ายปุ่ม ■ ไปมุมจอที่อยู่นอกกรอบที่เก็บ (ถ้าไม่มีที่ว่าง ปุ่มอาจติดในภาพ) */
     private fun placeStopButton() {
         val r = root ?: return
         savedBubblePos = lp.x to lp.y
@@ -1083,8 +1071,32 @@ class CaptureService : Service() {
         if (pick != null) { lp.x = pick.first - offX; lp.y = pick.second - offY }
     }
 
+    /** ปุ่มตอนอัด: ■ สีแดง + เวลาที่อัดไปแล้ว + วงขอบขาว */
+    private fun recLabel(): CharSequence {
+        val sec = if (recStart > 0) ((SystemClock.uptimeMillis() - recStart) / 1000).coerceAtLeast(0) else 0
+        val t = String.format(java.util.Locale.US, "%d:%02d", sec / 60, sec % 60)
+        val head = "■"
+        val sb = android.text.SpannableStringBuilder("$head\n$t")
+        sb.setSpan(android.text.style.AbsoluteSizeSpan(18, true), 0, head.length, 0)
+        sb.setSpan(android.text.style.AbsoluteSizeSpan(11, true), head.length + 1, sb.length, 0)
+        sb.setSpan(android.text.style.StyleSpan(android.graphics.Typeface.BOLD), head.length + 1, sb.length, 0)
+        return sb
+    }
+
+    private val recTick = object : Runnable {
+        override fun run() {
+            if (!recording) return
+            bubble.text = recLabel()
+            main.postDelayed(this, 500)
+        }
+    }
+
     private fun showStopButton() {
         guide?.visibility = View.INVISIBLE
+        (bubble.background as? GradientDrawable)?.setStroke(dp(3f), 0xE6FFFFFF.toInt())
+        main.removeCallbacks(recTick)
+        main.post(recTick)
+        if (stopOverlaps) toast("กรอบเต็มจอ ปุ่ม ■ อาจติดในภาพ (เลือกกรอบอัตโนมัติ/9:16 เพื่อเลี่ยง)")
         root?.let {
             holdHidden = false
             it.visibility = View.VISIBLE
@@ -1092,13 +1104,15 @@ class CaptureService : Service() {
             wm.updateViewLayout(it, lp)
         }
         syncHandles()
-        bubble.text = "■"
+        bubble.text = recLabel()
         bubble.setTextColor(Color.WHITE)
         (bubble.background as? GradientDrawable)?.setColor(0xE6DC2626.toInt())
         wake()
     }
 
     private fun restoreBubble() {
+        main.removeCallbacks(recTick)
+        (bubble.background as? GradientDrawable)?.setStroke(0, 0)
         bubble.text = bubbleLabel()
         (bubble.background as? GradientDrawable)?.setColor(0xE64F46E5.toInt())
     }
