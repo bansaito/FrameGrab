@@ -85,13 +85,7 @@ class ViewerActivity : Activity() {
 
         image = ZoomImageView(this).apply {
             onSwipe = { d -> setPlaying(false); show(idx + d) }
-            // แตะแบบสตอรี่: ซ้าย 1/3 = ก่อนหน้า, ขวา 1/3 = ถัดไป, กลาง = ซ่อน/แสดงปุ่ม (ซูมอยู่ = ซ่อน/แสดงปุ่มอย่างเดียว)
-            onTap = { fx ->
-                when {
-                    isZoomed || fx in 0.33f..0.67f -> setUiVisible(!uiVisible)
-                    fx < 0.33f -> { setPlaying(false); show(idx - 1) }
-                    else -> { setPlaying(false); show(idx + 1) }
-                }
+            onTap = { _ -> setUiVisible(!uiVisible) }   // แตะตรงไหนก็ได้ = ซ่อน/แสดงปุ่ม
             }
             onLongPress = { saveCurrent() } // กดค้าง = บันทึกภาพนี้
             onZoomChanged = { z -> setUiVisible(!z); if (z) setPlaying(false) }
