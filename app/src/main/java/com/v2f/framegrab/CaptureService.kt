@@ -126,6 +126,7 @@ class CaptureService : Service() {
     @Volatile private var overrideAt = 0L           // เวลาที่ลากกรอบเอง
     @Volatile private var jumpAfterDrag = false     // ลากแล้วเจอภาพเปลี่ยนกะทันหันหรือยัง
     @Volatile private var feedHidden = false    // ไม่ได้อยู่หน้าสตอรี่ และตั้งให้แสดงเฉพาะสตอรี่
+    private var lastFg: String? = null
     private var storyMiss = 0                   // นับครั้งที่ไม่เจอหน้าสตอรี่ติดกัน (กันกะพริบ)
     @Volatile private var capturedAppVisible = true // Android 14+ อัด "แอปเดียว": แอปนั้นอยู่บนจอไหม
     @Volatile private var fgLabel: String? = null   // แอปที่ตรวจเจอ (แสดงในแจ้งเตือน)
@@ -1002,6 +1003,11 @@ class CaptureService : Service() {
             val svc = this@CaptureService
             val enabled = Prefs.onlyInVideoApps(svc) && AppWatch.hasPermission(svc)
             val fg = if (enabled) AppWatch.foreground(svc) else null
+            // เปลี่ยนไปแอปอื่น (ไม่ใช่ FrameGrab) → ล้างสถานะ "ซ่อนเพราะอยู่หน้าแรก"
+            if (fg != null && fg != packageName && fg != lastFg) {
+                if (lastFg != null && feedHidden) feedHidden = false
+                lastFg = fg
+            }
             inOwnApp = fg == packageName || ownUiHidden
             val newLabel = when {
                 !Prefs.onlyInVideoApps(svc) -> null
@@ -1039,12 +1045,13 @@ class CaptureService : Service() {
                 val storyOnly = Prefs.storyOnly(svc)
                 work.post {
                     val b = grabBitmap() ?: return@post
-                    // แสดงเฉพาะตอนดูสตอรี่: เจอสตอรี่ = แสดงทันที, ไม่เจอ 2 ครั้งติด = ซ่อน
-                    val story = !storyOnly || !Cropper.hasFeedNav(b)
-                    storyMiss = if (story) 0 else storyMiss + 1
-                    val hide = !story && storyMiss >= 2
-                    if (story && feedHidden || hide && !feedHidden) {
-                        feedHidden = !story
+                    // แสดงเฉพาะตอนดูสตอรี่:
+                    //  เห็นแถบเมนูล่างของหน้าแรก (ร้านค้า…) ครั้งเดียว = ซ่อนยาว ไม่ต้องเช็กซ้ำให้กะพริบ
+                    //  ซ่อนอยู่แล้วกลับมาแสดงเมื่อเห็นแถบความคืบหน้าสีขาวของสตอรี่ด้านบน
+                    val hide = storyOnly && (Cropper.hasFeedNav(b) || (feedHidden && !StoryBar.hasBar(b)))
+                    val story = !hide
+                    if (hide != feedHidden) {
+                        feedHidden = hide
                         resetLock()
                         main.post { main.removeCallbacks(appTick); main.post(appTick) }
                     }

@@ -1,5 +1,6 @@
 package com.v2f.framegrab
 
+import android.graphics.Bitmap
 import android.media.Image
 import kotlin.math.abs
 
@@ -9,7 +10,17 @@ import kotlin.math.abs
  * (ใช้คู่กับ SeamDetector ที่จับตอนเลื่อนไปสตอรี่ของคนถัดไป)
  */
 class StoryBar {
-    companion object { private const val N = 180 }
+    companion object {
+        private const val N = 180
+        /** หน้าจอนี้มีแถบความคืบหน้าของสตอรี่ไหม (ใช้เป็นสัญญาณ "กลับมาหน้าสตอรี่แล้ว") */
+        fun hasBar(b: Bitmap): Boolean = StoryBar().locate(BmpPx(b))
+    }
+
+    private interface Pix { val width: Int; val height: Int; fun rgb(x: Int, y: Int): Int }
+    private class BmpPx(private val b: Bitmap) : Pix {
+        override val width = b.width; override val height = b.height
+        override fun rgb(x: Int, y: Int) = b.getPixel(x, y) and 0xFFFFFF
+    }
 
     private var y = -1
     private var prev: List<IntArray>? = null
@@ -22,18 +33,18 @@ class StoryBar {
     @Synchronized fun reset() { lastLocateAt = -1000L; y = -1; prev = null; pendingAt = -1L; pendingSize = -1; advancedAtMs = -1L }
 
     /** อ่านพิกเซลจาก Image (RGBA) ตรง ๆ — ตรวจได้ทุกเฟรมที่จอแสดง */
-    private class Px(img: Image) {
-        val width = img.width; val height = img.height
+    private class Px(img: Image) : Pix {
+        override val width = img.width; override val height = img.height
         private val pl = img.planes[0]; private val buf = pl.buffer
         private val rs = pl.rowStride; private val ps = pl.pixelStride; private val lim = buf.limit()
-        fun rgb(x: Int, y: Int): Int {
+        override fun rgb(x: Int, y: Int): Int {
             val off = y * rs + x * ps
             if (off + 2 >= lim) return 0
             return ((buf.get(off).toInt() and 0xFF) shl 16) or ((buf.get(off + 1).toInt() and 0xFF) shl 8) or (buf.get(off + 2).toInt() and 0xFF)
         }
     }
 
-    private fun whiteMask(b: Px, yy: Int): BooleanArray {
+    private fun whiteMask(b: Pix, yy: Int): BooleanArray {
         val l = IntArray(N); val c = IntArray(N)
         for (i in 0 until N) {
             val p = b.rgb((b.width - 1) * i / (N - 1), yy)
@@ -62,15 +73,15 @@ class StoryBar {
     }
 
     /** หาแถวของแถบ (ด้านบน 12% ของจอ, เส้นบาง, เริ่มจากซ้าย, ช่องห่างกันนิดเดียว) */
-    private fun locate(b: Px): Boolean {
+    private fun locate(b: Pix): Boolean {
         val h = b.height
         val d = maxOf((h * 0.012f).toInt(), 3)
         for (yy in (h * 0.005f).toInt() until (h * 0.12f).toInt()) {
             val m = whiteMask(b, yy)
             val rs = runs(m)
-            if (rs.isEmpty() || rs[0][0] > N * 0.08f) continue
+            if (rs.isEmpty() || rs[0][0] > N * 0.15f) continue  // ช่องแรกอาจจางที่ขอบซ้าย
             val cnt = m.count { it }
-            if (cnt < N * 0.03f) continue
+            if (cnt < N * 0.03f || rs.sumOf { it[1] - it[0] } < N * 0.04f) continue
             if ((0 until rs.size - 1).any { rs[it + 1][0] - rs[it][1] > N * 0.05f }) continue
             if (whiteMask(b, maxOf(yy - d, 0)).count { it } > cnt * 0.4f) continue
             if (whiteMask(b, minOf(yy + d, h - 1)).count { it } > cnt * 0.4f) continue
