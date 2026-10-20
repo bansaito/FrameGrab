@@ -29,10 +29,14 @@ class MainActivity : Activity() {
     companion object {
         private const val REQ_CAPTURE = 10
         private const val REQ_NOTIF = 11
+        /** เปิดมาจากแจ้งเตือน "🔄 เปลี่ยนแอป" */
+        const val EXTRA_RESHARE = "reshare"
     }
 
     private lateinit var status: TextView
     private lateinit var startBtn: TextView
+    private lateinit var reshareBtn: TextView
+    private var resharing = false
     private lateinit var viewBtn: TextView
     private lateinit var intervalBtn: TextView
     private lateinit var maxBtn: TextView
@@ -94,6 +98,8 @@ class MainActivity : Activity() {
 
         startBtn = button("", 0xFF4F46E5.toInt()) { onStartClicked() }
         col.addView(startBtn, gap(12f))
+        reshareBtn = button("🔄 เปลี่ยนแอปที่แชร์ (แอปเดียว / ทั้งหน้าจอ)", 0xFF2A2D3A.toInt()) { reshare() }
+        col.addView(reshareBtn, gap(10f))
         viewBtn = button("", 0xFF2A2D3A.toInt()) { startActivity(Intent(this, ViewerActivity::class.java)) }
         col.addView(viewBtn, gap(10f))
         clearBtn = button("", 0xFF3A2026.toInt()) { FrameStore.confirmClear(this) { refresh() } }
@@ -197,6 +203,22 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         refresh()
+        if (intent?.getBooleanExtra(EXTRA_RESHARE, false) == true) {
+            intent.removeExtra(EXTRA_RESHARE)
+            reshare()
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+    }
+
+    /** เลือกแอปที่จะแชร์ใหม่ (ระหว่างนี้ยังแชร์แอปเดิมอยู่ ถ้ายกเลิกก็ใช้ต่อได้) */
+    private fun reshare() {
+        if (!CaptureService.running) { onStartClicked(); return }
+        resharing = true
+        askCapture()
     }
 
     private fun refresh() {
@@ -220,6 +242,7 @@ class MainActivity : Activity() {
             else -> "พร้อมใช้งาน"
         }
         startBtn.text = if (CaptureService.running && !CaptureService.parked) "■ ปิดปุ่มลอย" else "▶ เปิดปุ่มลอย"
+        reshareBtn.visibility = if (CaptureService.running) android.view.View.VISIBLE else android.view.View.GONE
         val n = FrameStore.count(this)
         viewBtn.text = "🖼 ดูภาพที่จับไว้ ($n)"
         clearBtn.text = if (n > 0) "🧹 ล้างภาพทั้งหมด ($n ภาพ · ${FrameStore.sizeLabel(FrameStore.totalBytes(this))})" else "🧹 ล้างภาพทั้งหมด"
@@ -298,8 +321,12 @@ class MainActivity : Activity() {
         @Suppress("DEPRECATION")
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode != REQ_CAPTURE) return
+        val wasReshare = resharing
+        resharing = false
         if (resultCode != RESULT_OK || data == null) {
-            Toast.makeText(this, "ต้องอนุญาตการจับภาพหน้าจอ ปุ่มลอยจึงจะทำงานได้", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, if (wasReshare && CaptureService.running) "ยกเลิก — ยังแชร์แอปเดิมอยู่"
+                else "ต้องอนุญาตการจับภาพหน้าจอ ปุ่มลอยจึงจะทำงานได้", Toast.LENGTH_LONG).show()
+            if (wasReshare) moveTaskToBack(true)
             return
         }
         startForegroundService(

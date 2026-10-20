@@ -185,7 +185,7 @@ class CaptureService : Service() {
     }
 
     private fun start(intent: Intent) {
-        if (projection != null) { unpark(); return }
+        if (projection != null) { swapProjection(intent); return }
         // Android 14+: ต้องเริ่มบริการเบื้องหน้าแบบ mediaProjection ก่อนขอ MediaProjection
         startForeground(NOTIF_ID, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
         val code = intent.getIntExtra(EXTRA_CODE, 0)
@@ -198,9 +198,20 @@ class CaptureService : Service() {
         val mpm = getSystemService(MediaProjectionManager::class.java)
         val p = try { mpm.getMediaProjection(code, data) } catch (e: Exception) { null }
         if (p == null) { toast("เริ่มจับภาพหน้าจอไม่ได้"); quit(); return }
+        attach(p)
+        AppWatch.reset()
+        addOverlay()
+        parked = false
+        running = true
+    }
+
+    /** ผูก MediaProjection ใหม่: ตั้ง callback + เริ่มรับภาพ */
+    private fun attach(p: MediaProjection) {
         projection = p
+        capturedAppVisible = true
         p.registerCallback(object : MediaProjection.Callback() {
-            override fun onStop() { main.post { quit() } }
+            // ถูกหยุดจากระบบ (ไม่ใช่ตอนเราเปลี่ยนแอปที่แชร์) → ปิดทุกอย่าง
+            override fun onStop() { main.post { if (projection === p) quit() } }
             // Android 14+: อนุญาตแบบ "แอปเดียว" แล้วออกจากแอปนั้น → ซ่อนปุ่มลอยเอง (ไม่ต้องใช้สิทธิ์เพิ่ม)
             override fun onCapturedContentVisibilityChanged(isVisible: Boolean) {
                 capturedAppVisible = isVisible
@@ -209,10 +220,31 @@ class CaptureService : Service() {
             }
         }, main)
         setupDisplay(p)
-        AppWatch.reset()
-        addOverlay()
+    }
+
+    /** เปลี่ยนแอปที่แชร์: ได้สิทธิ์ใหม่มาแล้ว → ปิดของเดิม ใช้ของใหม่ (ปุ่มลอย/กรอบยังอยู่) */
+    private fun swapProjection(intent: Intent) {
+        val code = intent.getIntExtra(EXTRA_CODE, 0)
+        val data: Intent? = if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(EXTRA_DATA, Intent::class.java)
+            else @Suppress("DEPRECATION") intent.getParcelableExtra(EXTRA_DATA)
+        // เรียกผ่าน startForegroundService + สิทธิ์ใหม่ → ต้องยืนยันบริการเบื้องหน้าซ้ำ
+        startForeground(NOTIF_ID, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
+        if (data == null) { unpark(); return }
+        if (recording) stopRecording(dropLastMs = 0)
+        val old = projection
+        projection = null                       // กัน onStop ของอันเก่าสั่งปิดทุกอย่าง
+        display?.release(); display = null
+        synchronized(lock) { latest?.close(); latest = null }
+        reader?.close(); reader = null
+        try { old?.stop() } catch (e: Exception) { }
+        val p = try { getSystemService(MediaProjectionManager::class.java).getMediaProjection(code, data) } catch (e: Exception) { null }
+        if (p == null) { toast("เปลี่ยนแอปที่แชร์ไม่ได้"); quit(false); return }
+        attach(p)
         parked = false
-        running = true
+        resetLock()
+        main.removeCallbacks(appTick); main.post(appTick)
+        updateNotification()
+        toast("เปลี่ยนแอปที่แชร์แล้ว")
     }
 
     // ---------- ซ่อนปุ่มลอยแต่จับหน้าจอค้างไว้ ----------
@@ -1411,11 +1443,15 @@ class CaptureService : Service() {
                 this, 2, Intent(this, CaptureService::class.java).setAction(ACTION_QUIT),
                 PendingIntent.FLAG_IMMUTABLE
             )
+            val reshare = reshareIntent()
             b.setContentTitle("ปุ่มลอยซ่อนอยู่")
                 .setContentText("แตะ ▶ เพื่อเปิดปุ่มลอย (ไม่ต้องกดยืนยันใหม่)")
                 .setContentIntent(show)
                 .addAction(Notification.Action.Builder(
                     Icon.createWithResource(this, android.R.drawable.ic_media_play), "▶ เปิดปุ่มลอย", show
+                ).build())
+                .addAction(Notification.Action.Builder(
+                    Icon.createWithResource(this, android.R.drawable.ic_menu_rotate), "🔄 เปลี่ยนแอป", reshare
                 ).build())
                 .addAction(Notification.Action.Builder(
                     Icon.createWithResource(this, android.R.drawable.ic_menu_close_clear_cancel), "■ หยุดจับหน้าจอ", quit
@@ -1434,11 +1470,21 @@ class CaptureService : Service() {
                     Icon.createWithResource(this, android.R.drawable.ic_menu_preferences), "⚙️ เปิดแอป", openApp
                 ).build())
                 .addAction(Notification.Action.Builder(
+                    Icon.createWithResource(this, android.R.drawable.ic_menu_rotate), "🔄 เปลี่ยนแอป", reshareIntent()
+                ).build())
+                .addAction(Notification.Action.Builder(
                     Icon.createWithResource(this, android.R.drawable.ic_menu_close_clear_cancel), "■ หยุดจับหน้าจอ", quit
                 ).build())
         }
         return b.build()
     }
+
+    /** เปิดหน้าแอปแล้วขอเลือกแอปที่จะแชร์ใหม่ */
+    private fun reshareIntent(): PendingIntent = PendingIntent.getActivity(
+        this, 5, Intent(this, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra(MainActivity.EXTRA_RESHARE, true),
+        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+    )
 
     private fun updateNotification() {
         if (!running && !recording) return
