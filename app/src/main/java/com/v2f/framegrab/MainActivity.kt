@@ -284,11 +284,8 @@ class MainActivity : Activity() {
     private fun askCapture() {
         val mpm = getSystemService(MediaProjectionManager::class.java)
         @Suppress("DEPRECATION")
-        // Android 14+: ขอแบบทั้งหน้าจอเลย ไม่ต้องเลือก "แอปเดียว/ทั้งจอ" และไม่ต้องเลือกแอป
-        val i = if (Build.VERSION.SDK_INT >= 34)
-            mpm.createScreenCaptureIntent(android.media.projection.MediaProjectionConfig.createConfigForDefaultDisplay())
-        else mpm.createScreenCaptureIntent()
-        startActivityForResult(i, REQ_CAPTURE)
+        // ให้เลือกเองได้ "แอปเดียว" (ไม่ติดแจ้งเตือน/ปุ่มระบบในภาพ) หรือ "ทั้งหน้าจอ"
+        startActivityForResult(mpm.createScreenCaptureIntent(), REQ_CAPTURE)
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
