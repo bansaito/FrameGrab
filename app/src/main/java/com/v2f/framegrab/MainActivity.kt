@@ -234,7 +234,7 @@ class MainActivity : Activity() {
                 p.rw < p.rh -> "▯"
                 else -> "□"
             }
-            (if (p.id == cur) "✓ " else "    ") + "$shape  ${p.label}"
+            (if (p.id == cur) "✓ " else "    ") + "$shape  ${p.label}" + (if (Cropper.isPrimary(p.id)) "  ★ ใช้บ่อย" else "")
         }.toTypedArray()
         android.app.AlertDialog.Builder(this)
             .setTitle("เลือกกรอบที่จะเก็บ")

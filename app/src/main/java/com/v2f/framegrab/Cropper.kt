@@ -55,7 +55,8 @@ object Cropper {
                 val base = autoRect(c, bmp)
                 val target = p.rw / p.rh.toFloat()
                 val br = base.width() / base.height().coerceAtLeast(1).toFloat()
-                if (kotlin.math.abs(br - target) / target <= 0.03f) base else fitRatio(base, p.rw, p.rh)
+                val tol = if (isPrimary(p.id)) 0.06f else 0.03f
+                if (kotlin.math.abs(br - target) / target <= tol) base else fitRatio(base, p.rw, p.rh)
             }
             id == "custom" -> {
                 val r = Prefs.cropRect(c)
@@ -76,7 +77,16 @@ object Cropper {
     )
 
     /** ชื่อสัดส่วนที่ใกล้ที่สุด เช่น "16:9" (ถ้าไม่ใกล้อันไหนเลย บอกเป็นตัวเลข) */
+    /** สัดส่วนที่เจอบ่อยในสตอรี่/คลิป: จับแบบเผื่อมากกว่า (±6%) */
+    val PRIMARY = listOf("9:16" to 9 / 16.0, "3:4" to 3 / 4.0)
+
+    private fun primaryOf(r: Double): String? =
+        PRIMARY.firstOrNull { kotlin.math.abs(it.second - r) / it.second <= 0.06 }?.first
+
+    fun isPrimary(id: String) = PRIMARY.any { it.first == id }
+
     fun ratioName(w: Int, h: Int): String {
+        if (w > 0 && h > 0) primaryOf(w / h.toDouble())?.let { return it }
         if (w <= 0 || h <= 0) return "?"
         val r = w / h.toDouble()
         val best = COMMON.minByOrNull { kotlin.math.abs(it.second - r) / it.second }!!
@@ -87,6 +97,7 @@ object Cropper {
 
     /** ชื่อสัดส่วนมาตรฐานที่ใกล้ที่สุด: ตรง (±1.5%) = "3:4", ไม่ตรง = "≈3:4" */
     fun ratioTag(w: Int, h: Int): String {
+        if (w > 0 && h > 0) primaryOf(w / h.toDouble())?.let { return it }
         if (w <= 0 || h <= 0) return "?"
         val r = w / h.toDouble()
         val best = COMMON.minByOrNull { kotlin.math.abs(it.second - r) / it.second }!!

@@ -590,7 +590,11 @@ class CaptureService : Service() {
                     p.id == "auto" -> textIcon("✨")
                     else -> textIcon("✏️")
                 }
-                val lbl = if (p.id == "custom" && Prefs.hasCustomCrop(this)) "กรอบที่ลากไว้ · ${Cropper.presetLabel(this, "custom")}" else p.label
+                val lbl = when {
+                    p.id == "custom" && Prefs.hasCustomCrop(this) -> "กรอบที่ลากไว้ · ${Cropper.presetLabel(this, "custom")}"
+                    Cropper.isPrimary(p.id) -> "${p.label}  ★ ใช้บ่อย"
+                    else -> p.label
+                }
                 menuBox.addView(presetRow(icon, lbl, p.id == preset) { choosePreset(p.id) })
             }
             menuBox.addView(menuRow("✋  ปรับกรอบด้วยมือบนจอ") { startGuideEdit() })
