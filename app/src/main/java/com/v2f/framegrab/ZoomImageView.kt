@@ -19,6 +19,7 @@ class ZoomImageView(ctx: Context) : ImageView(ctx) {
 
     var onSwipe: ((Int) -> Unit)? = null
     var onTap: (() -> Unit)? = null
+    var onLongPress: (() -> Unit)? = null
     var onZoomChanged: ((Boolean) -> Unit)? = null
 
     private val m = Matrix()
@@ -128,6 +129,13 @@ class ZoomImageView(ctx: Context) : ImageView(ctx) {
         override fun onDoubleTap(e: MotionEvent): Boolean {
             if (isZoomed) resetZoom() else zoomBy(2.5f, e.x, e.y)
             return true
+        }
+
+        override fun onLongPress(e: MotionEvent) {
+            if (!scaleDetector.isInProgress) {
+                performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+                onLongPress?.invoke()
+            }
         }
 
         override fun onSingleTapConfirmed(e: MotionEvent): Boolean {

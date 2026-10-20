@@ -97,6 +97,11 @@ class CaptureService : Service() {
     @Volatile private var draggingGuide = false
     @Volatile private var appHidden = false     // ไม่ได้อยู่ใน TikTok/IG/FB → ซ่อนทุกอย่าง
     @Volatile private var holdHidden = false    // กำลังซ่อนเพื่อจับภาพ ห้ามโผล่กลับเอง
+    @Volatile private var inOwnApp = false      // กำลังเปิดหน้าแอป FrameGrab เอง
+    private var lastBase: android.graphics.RectF? = null // พื้นที่วิดีโอล่าสุด (พิกัดจอ)
+    private val prefListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key in setOf("cropPreset", "showGuide", "cropL", "cropT", "cropR", "cropB")) main.post { applyGuidePrefs() }
+    }
     private val locBuf = IntArray(2)
     private var menuOpen = false
     private var lastOutsideClose = 0L
@@ -455,9 +460,11 @@ class CaptureService : Service() {
         refreshGuide()
         main.postDelayed(liveTick, 1000)
         main.post(appTick)
+        getSharedPreferences("framegrab", MODE_PRIVATE).registerOnSharedPreferenceChangeListener(prefListener)
     }
 
     private fun removeOverlays() {
+        getSharedPreferences("framegrab", MODE_PRIVATE).unregisterOnSharedPreferenceChangeListener(prefListener)
         main.removeCallbacks(liveTick)
         main.removeCallbacks(appTick)
         for ((v, _) in handles) try { wm.removeView(v) } catch (e: Exception) { }
@@ -657,6 +664,11 @@ class CaptureService : Service() {
     /** คำนวณกรอบจากภาพที่ไม่มีปุ่มของเรา (เรียกจากเธรดทำงาน) */
     private fun updateGuideFrom(bmp: Bitmap) {
         noteRatio(bmp)
+        if (!inOwnApp) Cropper.autoRect(this, bmp).let { a ->
+            val sx = screenW / bmp.width.toFloat(); val sy = screenH / bmp.height.toFloat()
+            val base = android.graphics.RectF(a.left * sx, a.top * sy, a.right * sx, a.bottom * sy)
+            main.post { lastBase = base }
+        }
         val preset = Prefs.cropPreset(this)
         val r = Cropper.rectFor(this, bmp)
         val sx = screenW / bmp.width.toFloat()
@@ -705,7 +717,9 @@ class CaptureService : Service() {
             val svc = this@CaptureService
             val enabled = Prefs.onlyInVideoApps(svc) && AppWatch.hasPermission(svc)
             val fg = if (enabled) AppWatch.foreground(svc) else null
-            val hide = enabled && fg != null && fg !in AppWatch.VIDEO_APPS
+            inOwnApp = fg == packageName
+            // หน้าแอป FrameGrab เองก็แสดงได้ จะได้เห็นกรอบตอนตั้งค่า
+            val hide = enabled && fg != null && fg !in AppWatch.VIDEO_APPS && fg != packageName
             if (hide != appHidden) {
                 appHidden = hide
                 if (hide) {
@@ -724,7 +738,7 @@ class CaptureService : Service() {
     private val liveTick = object : Runnable {
         override fun run() {
             if (root == null) return
-            if (!recording && !menuOpen && !guideEditing && !draggingGuide && root?.visibility == View.VISIBLE) {
+            if (!recording && !menuOpen && !guideEditing && !draggingGuide && !inOwnApp && root?.visibility == View.VISIBLE) {
                 val preset = Prefs.cropPreset(this@CaptureService)
                 val guideLive = Prefs.showGuide(this@CaptureService) && preset != "full" && preset != "custom"
                 work.post {
@@ -735,6 +749,37 @@ class CaptureService : Service() {
             }
             main.postDelayed(this, 1000)
         }
+    }
+
+    /** ตั้งค่ากรอบเปลี่ยน (เช่นจากหน้าแอปเต็ม) → อัปเดตกรอบบนจอทันที */
+    private fun applyGuidePrefs() {
+        val g = guide ?: return
+        if (guideEditing || draggingGuide || recording) return
+        val preset = Prefs.cropPreset(this)
+        val p = Cropper.PRESETS.firstOrNull { it.id == preset }
+        val base = lastBase ?: android.graphics.RectF(0f, 0f, screenW.toFloat(), screenH.toFloat())
+        when {
+            !Prefs.showGuide(this) || preset == "full" -> g.rect = null
+            preset == "custom" -> {
+                val f = Prefs.cropRect(this)
+                g.rect = android.graphics.RectF(f[0] * screenW, f[1] * screenH, f[2] * screenW, f[3] * screenH)
+            }
+            inOwnApp -> { // อยู่ในหน้าแอปเรา วัดจอไม่ได้ ใช้พื้นที่วิดีโอล่าสุดแทน
+                g.rect = if (p != null && p.rw > 0) {
+                    val r = Cropper.fitRatio(
+                        android.graphics.Rect(base.left.toInt(), base.top.toInt(), base.right.toInt(), base.bottom.toInt()),
+                        p.rw, p.rh
+                    )
+                    android.graphics.RectF(r)
+                } else android.graphics.RectF(base)
+            }
+            else -> { refreshGuide(); return }
+        }
+        g.label = Cropper.presetLabel(preset)
+        g.invalidate()
+        g.visibility = if (shouldShowGuide()) View.VISIBLE else View.INVISIBLE
+        syncHandles()
+        updateNotification()
     }
 
     /** ซ่อนปุ่มแป๊บหนึ่ง ถ่ายจอ แล้วคำนวณกรอบใหม่ */

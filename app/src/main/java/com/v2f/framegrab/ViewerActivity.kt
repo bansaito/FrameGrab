@@ -43,6 +43,8 @@ class ViewerActivity : Activity() {
     private lateinit var bottom: HorizontalScrollView
     private lateinit var strip: LinearLayout
     private lateinit var empty: TextView
+    private lateinit var prevBtn: TextView
+    private lateinit var nextBtn: TextView
 
     private var frames: List<FrameStore.Frame> = emptyList()
     private var idx = 0
@@ -84,9 +86,27 @@ class ViewerActivity : Activity() {
         image = ZoomImageView(this).apply {
             onSwipe = { d -> setPlaying(false); show(idx + d) }
             onTap = { setUiVisible(!uiVisible) }
+            onLongPress = { saveCurrent() } // กดค้าง = บันทึกภาพนี้
             onZoomChanged = { z -> setUiVisible(!z); if (z) setPlaying(false) }
         }
         root.addView(image, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+
+        // ---------- ปุ่มซ้าย/ขวา (แบบในส่วนเสริม) ----------
+        fun arrow(t: String, onClick: () -> Unit) = TextView(this).apply {
+            text = t
+            textSize = 30f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            includeFontPadding = false
+            setPadding(0, 0, 0, dp(4f))
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0x66000000) }
+            setOnClickListener { onClick() }
+        }
+        prevBtn = arrow("‹") { setPlaying(false); show(idx - 1) }
+        nextBtn = arrow("›") { setPlaying(false); show(idx + 1) }
+        val asz = dp(48f)
+        root.addView(prevBtn, FrameLayout.LayoutParams(asz, asz, Gravity.CENTER_VERTICAL or Gravity.START).apply { marginStart = dp(10f) })
+        root.addView(nextBtn, FrameLayout.LayoutParams(asz, asz, Gravity.CENTER_VERTICAL or Gravity.END).apply { marginEnd = dp(10f) })
 
         // ---------- แถบบน ----------
         top = LinearLayout(this).apply {
@@ -176,6 +196,8 @@ class ViewerActivity : Activity() {
         if (!keepIndex) idx = 0
         empty.visibility = if (frames.isEmpty()) View.VISIBLE else View.GONE
         top.visibility = if (frames.isEmpty()) View.GONE else View.VISIBLE
+        prevBtn.visibility = if (frames.isEmpty() || !uiVisible) View.INVISIBLE else View.VISIBLE
+        nextBtn.visibility = prevBtn.visibility
         buildStrip()
         if (frames.isNotEmpty()) show(idx.coerceIn(0, frames.size - 1)) else image.setImageBitmap(null)
     }
@@ -211,6 +233,10 @@ class ViewerActivity : Activity() {
         count.text = "${i + 1} / ${frames.size}"
         time.text = f.label
         bars.set(frames.size, i)
+        prevBtn.alpha = if (i > 0) 1f else 0.3f
+        nextBtn.alpha = if (i < frames.size - 1) 1f else 0.3f
+        prevBtn.isEnabled = i > 0
+        nextBtn.isEnabled = i < frames.size - 1
         for (k in 0 until strip.childCount) {
             val v = strip.getChildAt(k)
             v.alpha = if (k == i) 1f else 0.55f
@@ -233,6 +259,8 @@ class ViewerActivity : Activity() {
         top.animate().alpha(a).setDuration(180).start()
         bottom.animate().alpha(a).setDuration(180).start()
         top.isClickable = v
+        prevBtn.visibility = if (v && frames.isNotEmpty()) View.VISIBLE else View.INVISIBLE
+        nextBtn.visibility = if (v && frames.isNotEmpty()) View.VISIBLE else View.INVISIBLE
         bottom.visibility = if (v) View.VISIBLE else View.INVISIBLE
     }
 
@@ -255,7 +283,7 @@ class ViewerActivity : Activity() {
             main.post {
                 Toast.makeText(
                     this,
-                    if (ok) "💾 บันทึกภาพที่ $n ลงแกลเลอรีแล้ว (กดค้าง 💾 = บันทึกทั้งหมด)" else "บันทึกไม่สำเร็จ",
+                    if (ok) "💾 บันทึกภาพที่ $n ลงแกลเลอรีแล้ว" else "บันทึกไม่สำเร็จ",
                     Toast.LENGTH_SHORT
                 ).show()
             }
