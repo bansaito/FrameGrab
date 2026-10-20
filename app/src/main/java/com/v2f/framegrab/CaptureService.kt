@@ -1022,6 +1022,8 @@ class CaptureService : Service() {
         for ((i, h) in handles.withIndex()) {
             val (v, hl) = h
             if (!show) { if (v.visibility != View.GONE) v.visibility = View.GONE; continue }
+            // ขีดกลางขอบซ้าย/ขวาเอาออก (รก) เหลือแค่ขอบบน/ล่าง
+            if (i == 7 || i == 8) { if (v.visibility != View.GONE) v.visibility = View.GONE; continue }
             if (i >= 5) {
                 // จุดจับกลางขอบ: เล็ก ๆ แค่ตรงกลางขอบ (ไม่ทั้งแนว จะได้ไม่แย่งที่แตะดูสตอรี่ถัดไป)
                 // ซ้าย/ขวาเลี่ยงขอบจอ (ปัดย้อนกลับของระบบ)
