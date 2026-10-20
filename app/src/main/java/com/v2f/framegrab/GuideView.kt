@@ -18,6 +18,9 @@ import kotlin.math.abs
 class GuideView(ctx: Context) : View(ctx) {
     /** กรอบในพิกัดจอจริง */
     var rect: RectF? = null
+        set(v) { field = v; onRectChanged?.invoke() }
+    /** เรียกทุกครั้งที่กรอบเปลี่ยน (ใช้ขยับจุดจับตาม) */
+    var onRectChanged: (() -> Unit)? = null
     var label: String = ""
     var editing = false
         set(v) { field = v; invalidate() }
@@ -113,7 +116,18 @@ class GuideView(ctx: Context) : View(ctx) {
                 if (mode == 0 && r.contains(x, y)) mode = 16
                 lastX = x; lastY = y
             }
-            MotionEvent.ACTION_MOVE -> {
+            MotionEvent.ACTION_MOVE -> dragTo(x, y)
+        }
+        return true
+    }
+
+    /** เริ่มลากจากจุดจับภายนอก (mode เป็นบิตแบบเดียวกับข้างบน) */
+    fun beginDrag(m: Int, x: Float, y: Float) { mode = m; lastX = x; lastY = y }
+
+    /** ลากไปที่ (x, y) ในพิกัดจอ */
+    fun dragTo(x: Float, y: Float) {
+        val r = rect ?: return
+        run {
                 val dx = x - lastX; val dy = y - lastY
                 lastX = x; lastY = y
                 val n = RectF(r)
@@ -125,7 +139,7 @@ class GuideView(ctx: Context) : View(ctx) {
                         val my = dy.coerceIn(bounds.top - r.top, bounds.bottom - r.bottom)
                         n.offset(mx, my)
                     }
-                    mode == 0 -> return true
+                    mode == 0 -> return
                     lock == null -> {
                         if (mode and 1 != 0) n.left = (r.left + dx).coerceIn(bounds.left, r.right - minS)
                         if (mode and 4 != 0) n.right = (r.right + dx).coerceIn(r.left + minS, bounds.right)
@@ -164,8 +178,6 @@ class GuideView(ctx: Context) : View(ctx) {
                     rect = n
                     invalidate()
                 }
-            }
         }
-        return true
     }
 }
