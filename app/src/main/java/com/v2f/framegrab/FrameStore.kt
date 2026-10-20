@@ -57,6 +57,33 @@ object FrameStore {
         list(c).filter { it.kind == 'c' && it.tMs > cutoffMs }.forEach { it.file.delete() }
     }
 
+    /** บันทึกภาพเดียวลง Pictures/FrameGrab คืน true ถ้าสำเร็จ */
+    fun saveOneToGallery(c: Context, fr: Frame): Boolean {
+        val name = "frame_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date()) +
+            String.format(Locale.US, "_%03d.jpg", fr.index)
+        return copyToGallery(c, fr.file, name, "Pictures/FrameGrab")
+    }
+
+    private fun copyToGallery(c: Context, src: File, displayName: String, folder: String): Boolean {
+        val values = ContentValues().apply {
+            put(MediaStore.Images.Media.DISPLAY_NAME, displayName)
+            put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+            put(MediaStore.Images.Media.RELATIVE_PATH, folder)
+            put(MediaStore.Images.Media.IS_PENDING, 1)
+        }
+        val uri = c.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values) ?: return false
+        return try {
+            c.contentResolver.openOutputStream(uri)?.use { out -> src.inputStream().use { it.copyTo(out) } }
+            values.clear()
+            values.put(MediaStore.Images.Media.IS_PENDING, 0)
+            c.contentResolver.update(uri, values, null, null)
+            true
+        } catch (e: Exception) {
+            c.contentResolver.delete(uri, null, null)
+            false
+        }
+    }
+
     /** บันทึกเฟรมทั้งหมดลง Pictures/FrameGrab/<วันเวลา> คืนจำนวนที่บันทึกได้ */
     fun saveAllToGallery(c: Context, frames: List<Frame>): Int {
         val folder = "Pictures/FrameGrab/" +

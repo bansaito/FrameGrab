@@ -108,7 +108,10 @@ class ViewerActivity : Activity() {
         row.addView(playBtn)
         row.addView(iconBtn("📤") { shareAll() })
         row.addView(iconBtn("↗") { openWith() })
-        row.addView(iconBtn("💾") { saveAll() })
+        // แตะ = บันทึกภาพนี้, กดค้าง = บันทึกทั้งหมด
+        row.addView(iconBtn("💾") { saveCurrent() }.apply {
+            setOnLongClickListener { saveAll(); true }
+        })
         row.addView(iconBtn("🗑") { deleteCurrent() })
         row.addView(iconBtn("✕") { finish() })
         top.addView(row)
@@ -233,6 +236,22 @@ class ViewerActivity : Activity() {
         if (p) {
             if (idx >= frames.size - 1) show(0)
             main.postDelayed(slide, 1200)
+        }
+    }
+
+    private fun saveCurrent() {
+        if (frames.isEmpty()) return
+        val f = frames[idx]
+        val n = idx + 1
+        exec.execute {
+            val ok = FrameStore.saveOneToGallery(this, f)
+            main.post {
+                Toast.makeText(
+                    this,
+                    if (ok) "💾 บันทึกภาพที่ $n ลงแกลเลอรีแล้ว (กดค้าง 💾 = บันทึกทั้งหมด)" else "บันทึกไม่สำเร็จ",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
         }
     }
 
