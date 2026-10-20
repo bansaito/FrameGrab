@@ -142,6 +142,40 @@ object Cropper {
     }
 
     /**
+     * แถบเมนูล่างของหน้าฟีด TikTok (หน้าหลัก · ร้านค้า · + · กล่องข้อความ · โปรไฟล์) บนพื้นดำ
+     * = หน้า "สำหรับคุณ"/"กำลังติดตาม" (สตอรี่ไม่มีแถบนี้)
+     * ตรวจ: ไอคอน/ตัวหนังสือสว่างที่ตำแหน่ง 10%, 30% (ร้านค้า), 50% (+) และช่องว่างดำสนิทที่ 20%, 40%
+     * (ทดสอบกับภาพจริงที่ 360–1080px: ฟีด 3/3 ใช่, สตอรี่/หน้าโฮม/อื่นๆ 10/10 ไม่ใช่)
+     */
+    fun hasFeedNav(b: Bitmap): Boolean {
+        val w = b.width; val h = b.height
+        val band = (h * 0.05f).toInt().coerceAtLeast(4)
+        val sy = (h / 400).coerceAtLeast(1); val sx = (w / 180).coerceAtLeast(1)
+        fun darkFrac(c: Float, y0: Int): Float {
+            var d = 0; var n = 0
+            val x0 = (w * (c - 0.015f)).toInt(); val x1 = (w * (c + 0.015f)).toInt()
+            val stx = (sx / 2).coerceAtLeast(1)
+            var y = y0
+            while (y < y0 + band) { var x = x0; while (x <= x1) { n++; if (lum(b.getPixel(x, y)) < 30) d++; x += stx }; y += sy }
+            return if (n == 0) 0f else d / n.toFloat()
+        }
+        fun brightFrac(c: Float, y0: Int): Float {
+            var d = 0; var n = 0
+            val x0 = (w * (c - 0.07f)).toInt().coerceAtLeast(0); val x1 = (w * (c + 0.07f)).toInt().coerceAtMost(w - 1)
+            var y = y0
+            while (y < y0 + band) { var x = x0; while (x < x1) { n++; if (lum(b.getPixel(x, y)) > 100) d++; x += sx }; y += sy }
+            return if (n == 0) 0f else d / n.toFloat()
+        }
+        var y0 = (h * 0.80f).toInt()
+        while (y0 < h - band) {
+            if (darkFrac(0.20f, y0) >= 0.9f && darkFrac(0.40f, y0) >= 0.9f &&
+                brightFrac(0.30f, y0) >= 0.08f && brightFrac(0.10f, y0) >= 0.08f && brightFrac(0.50f, y0) >= 0.08f) return true
+            y0 += sy
+        }
+        return false
+    }
+
+    /**
      * หน้าสตอรี่ (TikTok / IG / FB): มีช่องพิมพ์ "ข้อความ…" สีเทาเข้มยาวด้านล่าง บนพื้นดำ
      * (ทดสอบกับภาพจริง: สตอรี่ 7/7 ใช่, หน้าฟีด/กำลังติดตาม/หน้าโฮม/หน้าดูภาพ 5/5 ไม่ใช่)
      */

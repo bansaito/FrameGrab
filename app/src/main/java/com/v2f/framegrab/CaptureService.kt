@@ -831,7 +831,7 @@ class CaptureService : Service() {
                 work.post {
                     val b = grabBitmap() ?: return@post
                     // แสดงเฉพาะตอนดูสตอรี่: เจอสตอรี่ = แสดงทันที, ไม่เจอ 2 ครั้งติด = ซ่อน
-                    val story = !storyOnly || Cropper.isStory(b)
+                    val story = !storyOnly || !Cropper.hasFeedNav(b)
                     storyMiss = if (story) 0 else storyMiss + 1
                     val hide = !story && storyMiss >= 2
                     if (story && feedHidden || hide && !feedHidden) {
