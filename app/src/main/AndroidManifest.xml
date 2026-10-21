@@ -48,6 +48,19 @@
             android:grantUriPermissions="true" />
 
         <service
+            android:name=".HoldService"
+            android:exported="true"
+            android:label="FrameGrab: กดค้างซ่อนชื่อสตอรี่"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/hold_service" />
+        </service>
+
+        <service
             android:name=".CaptureService"
             android:exported="false"
             android:foregroundServiceType="mediaProjection" />

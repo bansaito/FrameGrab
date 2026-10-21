@@ -177,6 +177,19 @@ class MainActivity : Activity() {
             setOnCheckedChangeListener { _, v -> Prefs.setStopOnNewStory(this@MainActivity, v) }
         }
         col.addView(story, gap(8f))
+        fun holdBox(t: String, get: () -> Boolean, set: (Boolean) -> Unit) = CheckBox(this).apply {
+            text = t
+            setTextColor(Color.WHITE)
+            isChecked = get()
+            setOnCheckedChangeListener { _, v ->
+                set(v)
+                if (v && !HoldService.isEnabled(this@MainActivity)) askHoldPermission()
+            }
+        }
+        col.addView(holdBox("กดค้างหน้าจอให้เองตอน 📸 จับภาพ (ซ่อนชื่อโปรไฟล์ของสตอรี่)",
+            { Prefs.holdShot(this) }, { Prefs.setHoldShot(this, it) }), gap(8f))
+        col.addView(holdBox("กดค้างหน้าจอให้เองตอน ⏺ อัด (สตอรี่อาจหยุดเล่นระหว่างกดค้าง)",
+            { Prefs.holdRec(this) }, { Prefs.setHoldRec(this, it) }), gap(8f))
         val keep = CheckBox(this).apply {
             text = "แสดงปุ่ม ■ หยุด ระหว่างอัด"
             setTextColor(Color.WHITE)
@@ -285,6 +298,24 @@ class MainActivity : Activity() {
                     refresh()
                 }
             }
+            .show()
+    }
+
+    /** เปิดสิทธิ์ "การช่วยเหลือพิเศษ" ให้ FrameGrab กดค้างหน้าจอแทนได้ */
+    private fun askHoldPermission() {
+        android.app.AlertDialog.Builder(this)
+            .setTitle("ต้องเปิดสิทธิ์ครั้งเดียว")
+            .setMessage("ให้ FrameGrab กดค้างหน้าจอแทนคุณได้:\n\n" +
+                "1) แตะ \"เปิดการช่วยเหลือพิเศษ\" → หา FrameGrab → เปิด\n\n" +
+                "ถ้าเปิดไม่ได้ (ขึ้นว่าการตั้งค่าถูกจำกัด):\n" +
+                "2) แตะ \"ข้อมูลแอป\" → ⋮ มุมขวาบน → \"อนุญาตการตั้งค่าที่จำกัด\" แล้วทำข้อ 1 ใหม่")
+            .setPositiveButton("เปิดการช่วยเหลือพิเศษ") { _, _ ->
+                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            }
+            .setNeutralButton("ข้อมูลแอป") { _, _ ->
+                startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
+            }
+            .setNegativeButton("ไว้ทีหลัง", null)
             .show()
     }
 

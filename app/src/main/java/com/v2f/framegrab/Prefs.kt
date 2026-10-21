@@ -22,6 +22,11 @@ object Prefs {
     /** หยุดอัดเองเมื่อคลิปวนกลับมาต้น */
     fun autoStop(c: Context): Boolean = sp(c).getBoolean("autoStop", true)
     fun setAutoStop(c: Context, v: Boolean) = sp(c).edit().putBoolean("autoStop", v).apply()
+    /** กดค้างหน้าจอให้เองตอนจับภาพ/อัด (ซ่อนชื่อโปรไฟล์ของสตอรี่) */
+    fun holdShot(c: Context): Boolean = sp(c).getBoolean("holdShot", false)
+    fun setHoldShot(c: Context, v: Boolean) = sp(c).edit().putBoolean("holdShot", v).apply()
+    fun holdRec(c: Context): Boolean = sp(c).getBoolean("holdRec", false)
+    fun setHoldRec(c: Context, v: Boolean) = sp(c).edit().putBoolean("holdRec", v).apply()
     /** หยุดอัดเองเมื่อขึ้นสตอรี่ใหม่ */
     fun stopOnNewStory(c: Context): Boolean = sp(c).getBoolean("stopNewStory", true)
     fun setStopOnNewStory(c: Context, v: Boolean) = sp(c).edit().putBoolean("stopNewStory", v).apply()

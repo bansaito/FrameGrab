@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="hold_desc">FrameGrab ใช้แค่ "กดค้างหน้าจอ" ให้เองระหว่างจับภาพ/อัด เพื่อให้ชื่อโปรไฟล์และปุ่มต่าง ๆ ของสตอรี่ซ่อนไป (ไม่อ่านหรือเก็บข้อมูลบนจอ)</string>
+</resources>

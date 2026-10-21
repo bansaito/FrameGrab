@@ -353,13 +353,32 @@ class CaptureService : Service() {
         return grabBitmap()
     }
 
+    /** จุดที่จะกดค้าง: กลางกรอบวิดีโอ (ไม่โดนปุ่มของเรา) */
+    private fun holdPoint(): Pair<Float, Float> {
+        val r = overrideRect ?: lockedRect ?: guide?.rect
+        return if (r != null) r.centerX() to r.centerY() else screenW / 2f to screenH * 0.45f
+    }
+
+    /** เริ่มกดค้างหน้าจอ (ถ้าเปิดโหมดไว้และเปิดสิทธิ์แล้ว) คืน true ถ้ากดอยู่ */
+    private fun startHold(enabled: Boolean): Boolean {
+        val hs = HoldService.instance ?: return false
+        if (!enabled) return false
+        val (x, y) = holdPoint()
+        hs.hold(x, y)
+        return true
+    }
+
     private fun captureOne() {
         if (recording) return
         closeMenu()
         hideOverlay()
+        val held = startHold(Prefs.holdShot(this))
         val hiddenAt = SystemClock.uptimeMillis()
         work.post {
-            val bmp = grabFresh(hiddenAt + 60)
+            // กดค้างอยู่: รอให้แอปซ่อนชื่อโปรไฟล์/ปุ่มก่อน
+            if (held) SystemClock.sleep(700)
+            val bmp = grabFresh(if (held) SystemClock.uptimeMillis() else hiddenAt + 60)
+            if (held) main.post { HoldService.instance?.release() }
             var ok = false
             var saved = false
             if (bmp != null) {
@@ -404,6 +423,7 @@ class CaptureService : Service() {
         val maxMs = if (maxSec == 0) MAX_UNLIMITED_MS else maxSec * 1000L
         val autoStop = Prefs.autoStop(this)
         val stopOnStory = Prefs.stopOnNewStory(this)
+        val holdRec = Prefs.holdRec(this) && HoldService.instance != null
         loop.reset()
         toast("⏺ เริ่มอัด ทุก ${Prefs.intervalLabel(Prefs.interval(this))} วิ · " +
             if (showStop) "แตะ ■ เพื่อหยุด" else "หยุดได้ที่แถบแจ้งเตือน")
@@ -421,6 +441,13 @@ class CaptureService : Service() {
                 val latch = java.util.concurrent.CountDownLatch(1)
                 main.post { placeStopButton(); showStopButton(); latch.countDown() }
                 latch.await(500, java.util.concurrent.TimeUnit.MILLISECONDS)
+            }
+            // โหมดกดค้าง: กดหน้าจอค้างไว้ตลอดการอัด (ซ่อนชื่อโปรไฟล์ของสตอรี่)
+            if (holdRec) {
+                val latch2 = java.util.concurrent.CountDownLatch(1)
+                main.post { startHold(true); latch2.countDown() }
+                latch2.await(300, java.util.concurrent.TimeUnit.MILLISECONDS)
+                SystemClock.sleep(700)
             }
             recStart = SystemClock.uptimeMillis()
             loopFeeding = autoStop
@@ -477,6 +504,7 @@ class CaptureService : Service() {
     private fun stopRecording(dropLastMs: Long, cutAtMs: Long = -1, reason: String? = null) {
         if (!recording) return
         recording = false
+        HoldService.instance?.release()
         loopFeeding = false
         seamFeeding = false
         val el = SystemClock.uptimeMillis() - recStart
