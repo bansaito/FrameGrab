@@ -81,8 +81,9 @@ class CaptureService : Service() {
 
     private lateinit var wm: WindowManager
     private val main = Handler(Looper.getMainLooper())
-    private val imgThread = HandlerThread("fg-img").apply { start() }
-    private val workThread = HandlerThread("fg-work").apply { start() }
+    // งานของเราอยู่ลำดับความสำคัญต่ำ ให้ TikTok/IG เล่นวิดีโอลื่นก่อน (กันกระตุกระหว่างอัด)
+    private val imgThread = HandlerThread("fg-img", android.os.Process.THREAD_PRIORITY_DEFAULT).apply { start() }
+    private val workThread = HandlerThread("fg-work", android.os.Process.THREAD_PRIORITY_BACKGROUND).apply { start() }
     private val imgHandler = Handler(imgThread.looper)
     private val work = Handler(workThread.looper)
 
@@ -287,7 +288,7 @@ class CaptureService : Service() {
         val scale = if (m.widthPixels > 1080) 1080f / m.widthPixels else 1f
         val w = (m.widthPixels * scale).roundToInt() / 2 * 2
         val h = (m.heightPixels * scale).roundToInt() / 2 * 2
-        val r = ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 3)
+        val r = ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 4)
         r.setOnImageAvailableListener({ ir ->
             val img = try { ir.acquireLatestImage() } catch (e: Exception) { null }
             if (img != null) {
@@ -330,6 +331,33 @@ class CaptureService : Service() {
     }
 
     /** แปลงภาพล่าสุดเป็น Bitmap (เรียกจากเธรดทำงานเท่านั้น) */
+    /** บัฟเฟอร์เต็มจอที่ใช้ซ้ำระหว่างอัด (ไม่ต้องจองหน่วยความจำ ~10 MB ใหม่ทุกภาพ → ไม่มีจังหวะเก็บขยะหนัก ๆ) */
+    private var recBuf: Bitmap? = null
+    private var recBufW = 0
+
+    /** ระหว่างอัด: คัดลอกภาพล่าสุดลงบัฟเฟอร์เดิม แล้วตัดเฉพาะกรอบ (คืนภาพที่ตัดแล้ว) */
+    private fun grabCropped(rect: android.graphics.Rect?): Bitmap? {
+        val src: Bitmap = synchronized(lock) {
+            val img = latest ?: return null
+            try {
+                val plane = img.planes[0]
+                val ps = plane.pixelStride
+                val bw = plane.rowStride / ps
+                var b = recBuf
+                if (b == null || b.width != bw || b.height != img.height) {
+                    b?.recycle(); b = Bitmap.createBitmap(bw, img.height, Bitmap.Config.ARGB_8888); recBuf = b
+                }
+                plane.buffer.rewind()
+                b!!.copyPixelsFromBuffer(plane.buffer)
+                recBufW = img.width
+                b
+            } catch (e: Exception) { return null }
+        }
+        val r = rect ?: android.graphics.Rect(0, 0, recBufW, src.height)
+        val l = r.left.coerceIn(0, recBufW - 1); val t = r.top.coerceIn(0, src.height - 1)
+        return Bitmap.createBitmap(src, l, t, (r.right - l).coerceIn(1, recBufW - l), (r.bottom - t).coerceIn(1, src.height - t))
+    }
+
     private fun grabBitmap(): Bitmap? = synchronized(lock) {
         val img = latest ?: return null
         try {
@@ -473,16 +501,11 @@ class CaptureService : Service() {
                         main.post { stopRecording(0, cutAtMs = (sAt - 100).coerceAtLeast(0), reason = "เลื่อนไปสตอรี่ใหม่ หยุดอัดอัตโนมัติ") }
                         return
                     }
-                    val bmp = grabBitmap()
-                    if (bmp != null) {
-                        // ใช้กรอบเดียวกันทั้งคลิป (คำนวณจากภาพแรก) ภาพจะได้ขนาดเท่ากันทุกภาพ
-                        val rect = recRect ?: cropRectFor(bmp).also { recRect = it }
-                        // ขึ้นสตอรี่ใหม่ (ภาพในกรอบเปลี่ยนทั้งหมดกะทันหัน) → หยุด ไม่เก็บภาพของสตอรี่ถัดไป
-                        // (ทดสอบ: ในคลิปเดียวกันต่างกัน ≤14, คนละภาพ ≥44)
-                        val out = Cropper.apply(bmp, rect)
+                    // ใช้กรอบเดียวกันทั้งคลิป (คำนวณจากภาพแรก) ภาพจะได้ขนาดเท่ากันทุกภาพ
+                    val out = grabCropped(recRect)
+                    if (out != null) {
                         try { FrameStore.save(this@CaptureService, out, 'c', el, 90); recCount++ } catch (e: Exception) { }
-                        if (out !== bmp) out.recycle()
-                        bmp.recycle()
+                        out.recycle()
                     }
                     if (recCount % 4 == 0) main.post { updateNotification() }
                     // ข้ามช่องที่ช้าเกินไป แทนการวิ่งไล่ตาม
