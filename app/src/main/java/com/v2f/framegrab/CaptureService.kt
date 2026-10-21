@@ -453,6 +453,7 @@ class CaptureService : Service() {
         val maxMs = if (maxSec == 0) MAX_UNLIMITED_MS else maxSec * 1000L
         val autoStop = Prefs.autoStop(this)
         val stopOnStory = Prefs.stopOnNewStory(this)
+        val skipDup = Prefs.skipDuplicates(this)
         val holdRec = false   // กดค้างตอนอัด: เอาออก (ใช้เฉพาะ 📸 ใน IG)
         loop.reset()
         toast("⏺ เริ่มอัด ทุก ${Prefs.intervalLabel(Prefs.interval(this))} วิ · " +
@@ -485,6 +486,7 @@ class CaptureService : Service() {
             storyBar.reset()
             seamFeeding = stopOnStory
             work.post(object : Runnable {
+                var lastSig: IntArray? = null
                 override fun run() {
                     if (!recording) return
                     val el = SystemClock.uptimeMillis() - recStart
@@ -504,7 +506,13 @@ class CaptureService : Service() {
                     // ใช้กรอบเดียวกันทั้งคลิป (คำนวณจากภาพแรก) ภาพจะได้ขนาดเท่ากันทุกภาพ
                     val out = grabCropped(recRect)
                     if (out != null) {
-                        try { FrameStore.save(this@CaptureService, out, 'c', el, 90); recCount++ } catch (e: Exception) { }
+                        // ข้ามภาพซ้ำ: วิดีโอค้าง/สตอรี่รูปนิ่ง → ภาพเหมือนภาพที่เก็บล่าสุดทุกจุด ไม่ต้องเก็บ
+                        val sig = if (skipDup) dupSig(out) else null
+                        val prev = lastSig
+                        val dup = sig != null && prev != null && sig.indices.all { abs(sig[it] - prev[it]) <= 4 }
+                        if (!dup) {
+                            try { FrameStore.save(this@CaptureService, out, 'c', el, 90); recCount++; lastSig = sig } catch (e: Exception) { }
+                        }
                         out.recycle()
                     }
                     if (recCount % 4 == 0) main.post { updateNotification() }
@@ -515,6 +523,13 @@ class CaptureService : Service() {
             })
         }
         updateNotification()
+    }
+
+    /** ลายเซ็น 24x24 จุด (ความสว่าง) ของภาพ ไว้ดูว่าภาพซ้ำกับภาพก่อนหน้าไหม */
+    private fun dupSig(b: Bitmap): IntArray = IntArray(576) { k ->
+        val i = k % 24; val j = k / 24
+        val p = b.getPixel(((b.width - 1) * (i + 0.5f) / 24).toInt(), ((b.height - 1) * (j + 0.5f) / 24).toInt())
+        (((p shr 16) and 0xFF) * 299 + ((p shr 8) and 0xFF) * 587 + (p and 0xFF) * 114) / 1000
     }
 
     /** ภาพย่อ 12x12 (ความสว่าง) ภายในกรอบที่อัด */

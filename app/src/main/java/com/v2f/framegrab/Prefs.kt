@@ -22,6 +22,9 @@ object Prefs {
     /** หยุดอัดเองเมื่อคลิปวนกลับมาต้น */
     fun autoStop(c: Context): Boolean = sp(c).getBoolean("autoStop", true)
     fun setAutoStop(c: Context, v: Boolean) = sp(c).edit().putBoolean("autoStop", v).apply()
+    /** ข้ามภาพที่ซ้ำกับภาพก่อนหน้า (วิดีโอค้าง/รูปนิ่ง) */
+    fun skipDuplicates(c: Context): Boolean = sp(c).getBoolean("skipDup", true)
+    fun setSkipDuplicates(c: Context, v: Boolean) = sp(c).edit().putBoolean("skipDup", v).apply()
     /** กดค้างหน้าจอให้เองตอนจับภาพ/อัด (ซ่อนชื่อโปรไฟล์ของสตอรี่) */
     fun holdShot(c: Context): Boolean = sp(c).getBoolean("holdShot", false)
     fun setHoldShot(c: Context, v: Boolean) = sp(c).edit().putBoolean("holdShot", v).apply()

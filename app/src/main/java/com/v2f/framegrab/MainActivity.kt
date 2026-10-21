@@ -177,6 +177,13 @@ class MainActivity : Activity() {
             setOnCheckedChangeListener { _, v -> Prefs.setStopOnNewStory(this@MainActivity, v) }
         }
         col.addView(story, gap(8f))
+        val dup = CheckBox(this).apply {
+            text = "ข้ามภาพซ้ำ (ตอนวิดีโอค้าง หรือสตอรี่ที่เป็นรูปนิ่ง)"
+            setTextColor(Color.WHITE)
+            isChecked = Prefs.skipDuplicates(this@MainActivity)
+            setOnCheckedChangeListener { _, v -> Prefs.setSkipDuplicates(this@MainActivity, v) }
+        }
+        col.addView(dup, gap(8f))
         fun holdBox(t: String, get: () -> Boolean, set: (Boolean) -> Unit) = CheckBox(this).apply {
             text = t
             setTextColor(Color.WHITE)
