@@ -27,6 +27,8 @@ class HoldService : AccessibilityService() {
         }
     }
 
+    // ท่ากดค้างยาวได้สูงสุด ~60 วิ (ของระบบ) ใช้ยาวไว้ ไม่ต้องต่อท่าบ่อย ๆ (ตอนต่อจะสะดุดแวบหนึ่ง)
+    private val HOLD_MS = minOf(55_000L, GestureDescription.getMaxGestureDuration() - 1000)
     private var stroke: GestureDescription.StrokeDescription? = null
     @Volatile private var holding = false
     private var hx = 0f; private var hy = 0f
@@ -49,7 +51,7 @@ class HoldService : AccessibilityService() {
         if (holding) return
         holding = true
         hx = x; hy = y
-        val s = GestureDescription.StrokeDescription(point(), 0, 8000, true)
+        val s = GestureDescription.StrokeDescription(point(), 0, HOLD_MS, true)
         stroke = s
         send(s)
     }
@@ -59,7 +61,7 @@ class HoldService : AccessibilityService() {
             override fun onCompleted(g: GestureDescription?) {
                 // ยังต้องค้างอยู่: ต่อเวลาไปอีก (ท่าเดียวยาวได้จำกัด)
                 if (holding && stroke === s) {
-                    val n = s.continueStroke(point(), 0, 8000, true)
+                    val n = s.continueStroke(point(), 0, HOLD_MS, true)
                     stroke = n
                     send(n)
                 }
