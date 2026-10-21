@@ -16,6 +16,9 @@ class HoldService : AccessibilityService() {
     companion object {
         @Volatile var instance: HoldService? = null
             private set
+        /** แอปที่อยู่หน้าจอล่าสุด (จากเหตุการณ์เปลี่ยนหน้าต่าง) */
+        @Volatile var currentPkg: String? = null
+            private set
 
         fun isEnabled(c: Context): Boolean {
             val me = ComponentName(c, HoldService::class.java).flattenToString()
@@ -31,7 +34,12 @@ class HoldService : AccessibilityService() {
     override fun onServiceConnected() { instance = this }
     override fun onDestroy() { instance = null; super.onDestroy() }
     override fun onUnbind(intent: android.content.Intent?): Boolean { instance = null; return super.onUnbind(intent) }
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        val p = event?.packageName?.toString() ?: return
+        // ไม่นับหน้าต่างของระบบ/คีย์บอร์ด/ของเราเอง
+        if (p == packageName || p == "com.android.systemui" || p.contains("inputmethod")) return
+        currentPkg = p
+    }
     override fun onInterrupt() {}
 
     private fun point() = Path().apply { moveTo(hx, hy) }

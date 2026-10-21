@@ -372,7 +372,9 @@ class CaptureService : Service() {
         if (recording) return
         closeMenu()
         hideOverlay()
-        val held = startHold(Prefs.holdShot(this))
+        // โหมดกดค้าง (ซ่อนชื่อโปรไฟล์) ใช้เฉพาะ Instagram
+        val inIg = (HoldService.currentPkg ?: AppWatch.foreground(this)) == "com.instagram.android"
+        val held = startHold(Prefs.holdShot(this) && inIg)
         val hiddenAt = SystemClock.uptimeMillis()
         work.post {
             // กดค้างอยู่: รอให้แอปซ่อนชื่อโปรไฟล์/ปุ่มก่อน
@@ -423,7 +425,7 @@ class CaptureService : Service() {
         val maxMs = if (maxSec == 0) MAX_UNLIMITED_MS else maxSec * 1000L
         val autoStop = Prefs.autoStop(this)
         val stopOnStory = Prefs.stopOnNewStory(this)
-        val holdRec = Prefs.holdRec(this) && HoldService.instance != null
+        val holdRec = false   // กดค้างตอนอัด: เอาออก (ใช้เฉพาะ 📸 ใน IG)
         loop.reset()
         toast("⏺ เริ่มอัด ทุก ${Prefs.intervalLabel(Prefs.interval(this))} วิ · " +
             if (showStop) "แตะ ■ เพื่อหยุด" else "หยุดได้ที่แถบแจ้งเตือน")

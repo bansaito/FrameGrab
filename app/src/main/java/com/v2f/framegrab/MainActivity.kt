@@ -186,10 +186,8 @@ class MainActivity : Activity() {
                 if (v && !HoldService.isEnabled(this@MainActivity)) askHoldPermission()
             }
         }
-        col.addView(holdBox("กดค้างหน้าจอให้เองตอน 📸 จับภาพ (ซ่อนชื่อโปรไฟล์ของสตอรี่)",
+        col.addView(holdBox("IG: กดค้างหน้าจอให้เองตอน 📸 จับภาพ (ไม่ติดชื่อโปรไฟล์)",
             { Prefs.holdShot(this) }, { Prefs.setHoldShot(this, it) }), gap(8f))
-        col.addView(holdBox("กดค้างหน้าจอให้เองตอน ⏺ อัด (สตอรี่อาจหยุดเล่นระหว่างกดค้าง)",
-            { Prefs.holdRec(this) }, { Prefs.setHoldRec(this, it) }), gap(8f))
         val keep = CheckBox(this).apply {
             text = "แสดงปุ่ม ■ หยุด ระหว่างอัด"
             setTextColor(Color.WHITE)
