@@ -42,6 +42,7 @@ class CropActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        OwnActivities.add(this)
         Crash.install(this)
         val ref = Cropper.refFile(this)
         val bmp: Bitmap? = if (ref.isFile) BitmapFactory.decodeFile(ref.path) else null
@@ -184,5 +185,10 @@ class CropActivity : Activity() {
             }
             return true
         }
+    }
+
+    override fun onDestroy() {
+        OwnActivities.remove(this)
+        super.onDestroy()
     }
 }

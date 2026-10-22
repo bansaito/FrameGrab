@@ -263,11 +263,9 @@ class CaptureService : Service() {
         display?.surface = null   // หยุดส่งภาพระหว่างซ่อน (ประหยัดแบต)
         main.removeCallbacks(appTick); main.post(appTick)
         updateNotification()
-        if (exitApp) {
-            try {
-                getSystemService(android.app.ActivityManager::class.java).appTasks.forEach { it.finishAndRemoveTask() }
-            } catch (e: Exception) { }
-        }
+        // ปิดหน้าจอของแอปด้วย finish() เท่านั้น ไม่ลบออกจากรายการแอปล่าสุด
+        // (ลบแล้วมือถือบางรุ่นฆ่าทั้งแอป → การจับหน้าจอหาย กดเปิดใหม่ต้องเลือกแอปใหม่)
+        if (exitApp) main.post { OwnActivities.finishAll() }
     }
 
     private fun unpark() {

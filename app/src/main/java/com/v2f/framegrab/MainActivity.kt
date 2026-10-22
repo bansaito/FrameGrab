@@ -68,6 +68,7 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        OwnActivities.add(this)
         Crash.install(this)
         val col = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -380,5 +381,10 @@ class MainActivity : Activity() {
         )
         Toast.makeText(this, "เปิดปุ่มลอยแล้ว เปิดแอปที่ต้องการได้เลย", Toast.LENGTH_SHORT).show()
         moveTaskToBack(true)
+    }
+
+    override fun onDestroy() {
+        OwnActivities.remove(this)
+        super.onDestroy()
     }
 }

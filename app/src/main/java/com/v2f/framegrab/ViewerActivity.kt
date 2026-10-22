@@ -78,6 +78,7 @@ class ViewerActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        OwnActivities.add(this)
         Crash.install(this)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
@@ -200,6 +201,7 @@ class ViewerActivity : Activity() {
     }
 
     override fun onDestroy() {
+        OwnActivities.remove(this)
         exec.shutdownNow()
         super.onDestroy()
     }
