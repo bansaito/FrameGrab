@@ -262,7 +262,7 @@ class MainActivity : Activity() {
         }
         val overlayOk = Settings.canDrawOverlays(this)
         status.text = when {
-            CaptureService.running && CaptureService.parked -> "💤 ปุ่มลอยซ่อนอยู่ — กด ▶ เปิดได้ทันที ไม่ต้องกดยืนยัน"
+            CaptureService.running && CaptureService.parked -> "💤 ปุ่มลอยซ่อนอยู่ — กด ▶ เพื่อเลือกแอปที่จะแชร์แล้วเปิดปุ่มลอย"
             CaptureService.running -> "✅ ปุ่มลอยทำงานอยู่ — เปิดแอปที่ต้องการแล้วแตะปุ่ม 🎞️"
             !overlayOk -> "⚠️ ยังไม่ได้อนุญาต \"แสดงทับแอปอื่น\""
             else -> "พร้อมใช้งาน"
@@ -327,8 +327,9 @@ class MainActivity : Activity() {
 
     private fun onStartClicked() {
         if (CaptureService.running) {
-            // ยังจับหน้าจอค้างอยู่: เปิด/ซ่อนปุ่มลอยได้ทันที ไม่ต้องกดยืนยันใหม่
-            val act = if (CaptureService.parked) CaptureService.ACTION_UNPARK else CaptureService.ACTION_PARK
+            // ปุ่มลอยซ่อนอยู่: เปิดใหม่ = ให้เลือกแอปที่จะแชร์ใหม่ทันที (ยกเลิก = ยังใช้แอปเดิม)
+            if (CaptureService.parked) { reshare(); return }
+            val act = CaptureService.ACTION_PARK
             startService(Intent(this, CaptureService::class.java).setAction(act)
                 .putExtra(CaptureService.EXTRA_EXIT_APP, false))
             status.postDelayed({ refresh() }, 300)

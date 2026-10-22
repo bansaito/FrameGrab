@@ -1614,23 +1614,17 @@ class CaptureService : Service() {
                     Icon.createWithResource(this, android.R.drawable.ic_menu_preferences), "⚙️ เปิดแอป", openApp
                 ).build())
         } else if (parked) {
-            val show = PendingIntent.getService(
-                this, 4, Intent(this, CaptureService::class.java).setAction(ACTION_UNPARK),
-                PendingIntent.FLAG_IMMUTABLE
-            )
+            // เปิดปุ่มลอยอีกครั้ง = เลือกแอปที่จะแชร์ใหม่เลย
+            val show = reshareIntent()
             val quit = PendingIntent.getService(
                 this, 2, Intent(this, CaptureService::class.java).setAction(ACTION_QUIT),
                 PendingIntent.FLAG_IMMUTABLE
             )
-            val reshare = reshareIntent()
             b.setContentTitle("ปุ่มลอยซ่อนอยู่")
-                .setContentText("แตะ ▶ เพื่อเปิดปุ่มลอย (ไม่ต้องกดยืนยันใหม่)")
+                .setContentText("แตะ ▶ เพื่อเปิดปุ่มลอย แล้วเลือกแอปที่จะแชร์")
                 .setContentIntent(show)
                 .addAction(Notification.Action.Builder(
                     Icon.createWithResource(this, android.R.drawable.ic_media_play), "▶ เปิดปุ่มลอย", show
-                ).build())
-                .addAction(Notification.Action.Builder(
-                    Icon.createWithResource(this, android.R.drawable.ic_menu_rotate), "🔄 เปลี่ยนแอป", reshare
                 ).build())
                 .addAction(Notification.Action.Builder(
                     Icon.createWithResource(this, android.R.drawable.ic_menu_close_clear_cancel), "■ หยุดจับหน้าจอ", quit
