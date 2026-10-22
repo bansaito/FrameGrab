@@ -61,6 +61,17 @@
         </service>
 
         <service
+            android:name=".QsTile"
+            android:exported="true"
+            android:icon="@android:drawable/ic_menu_camera"
+            android:label="FrameGrab"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <service
             android:name=".CaptureService"
             android:exported="false"
             android:foregroundServiceType="mediaProjection" />

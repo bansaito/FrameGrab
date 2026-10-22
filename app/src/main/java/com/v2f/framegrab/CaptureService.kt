@@ -208,6 +208,7 @@ class CaptureService : Service() {
         addOverlay()
         parked = false
         running = true
+        QsTile.refresh(this)
     }
 
     /** ผูก MediaProjection ใหม่: ตั้ง callback + เริ่มรับภาพ */
@@ -1660,6 +1661,7 @@ class CaptureService : Service() {
     )
 
     private fun updateNotification() {
+        QsTile.refresh(this)
         if (!running && !recording) return
         getSystemService(NotificationManager::class.java).notify(NOTIF_ID, buildNotification())
     }
@@ -1682,6 +1684,7 @@ class CaptureService : Service() {
         recording = false
         running = false
         parked = false
+        QsTile.refresh(this)
         main.removeCallbacks(fadeRunnable)
         removeOverlays()
         display?.release(); display = null
