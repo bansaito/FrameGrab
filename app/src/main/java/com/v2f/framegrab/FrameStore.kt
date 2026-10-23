@@ -40,6 +40,18 @@ object FrameStore {
 
     fun count(c: Context): Int = list(c).size
 
+    // ---------- จำว่าภาพไหนบันทึกลงแกลเลอรีแล้ว (ไฟล์ .saved ในโฟลเดอร์เดียวกัน ล้างภาพ = ล้างด้วย) ----------
+    private fun markFile(c: Context) = File(dir(c), ".saved")
+    @Synchronized fun savedNames(c: Context): MutableSet<String> =
+        markFile(c).takeIf { it.isFile }?.readLines()?.filter { it.isNotBlank() }?.toMutableSet() ?: mutableSetOf()
+    fun isSaved(c: Context, f: File): Boolean = f.name in savedNames(c)
+    @Synchronized fun markSaved(c: Context, files: Collection<File>) {
+        val s = savedNames(c); s.addAll(files.map { it.name }); markFile(c).writeText(s.joinToString("\n"))
+    }
+    @Synchronized fun unmark(c: Context, f: File) {
+        val s = savedNames(c); if (s.remove(f.name)) markFile(c).writeText(s.joinToString("\n"))
+    }
+
     fun clear(c: Context) {
         dir(c).listFiles()?.forEach { it.delete() }
     }
@@ -82,7 +94,7 @@ object FrameStore {
 
     /** ลบเฟรมที่อัดหลังเวลา cutoffMs (ใช้ตอนหยุดจากแถบแจ้งเตือน เพื่อตัดภาพตอนดึงแถบลงมา) */
     fun dropAfter(c: Context, cutoffMs: Long) {
-        list(c).filter { it.kind == 'c' && it.tMs > cutoffMs }.forEach { it.file.delete() }
+        list(c).filter { it.kind == 'c' && it.tMs > cutoffMs }.forEach { unmark(c, it.file); it.file.delete() }
     }
 
     /** บันทึกภาพเดียวลง Pictures/FrameGrab คืน true ถ้าสำเร็จ */
@@ -91,7 +103,7 @@ object FrameStore {
     fun saveFileToGallery(c: Context, f: File, index: Int): Boolean {
         val name = "frame_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date()) +
             String.format(Locale.US, "_%03d.jpg", index)
-        return copyToGallery(c, f, name, "Pictures/FrameGrab")
+        return copyToGallery(c, f, name, "Pictures/FrameGrab").also { if (it) markSaved(c, listOf(f)) }
     }
 
     private fun copyToGallery(c: Context, src: File, displayName: String, folder: String): Boolean {
@@ -119,6 +131,7 @@ object FrameStore {
         val folder = "Pictures/FrameGrab/" +
             SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
         var ok = 0
+        val done = ArrayList<File>()
         for ((i, fr) in frames.withIndex()) {
             val values = ContentValues().apply {
                 put(MediaStore.Images.Media.DISPLAY_NAME, String.format(Locale.US, "frame_%03d.jpg", i + 1))
@@ -135,10 +148,12 @@ object FrameStore {
                 values.put(MediaStore.Images.Media.IS_PENDING, 0)
                 c.contentResolver.update(uri, values, null, null)
                 ok++
+                done.add(fr.file)
             } catch (e: Exception) {
                 c.contentResolver.delete(uri, null, null)
             }
         }
+        if (done.isNotEmpty()) markSaved(c, done)
         return ok
     }
 }

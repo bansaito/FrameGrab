@@ -185,6 +185,13 @@ class MainActivity : Activity() {
             setOnCheckedChangeListener { _, v -> Prefs.setSkipDuplicates(this@MainActivity, v) }
         }
         col.addView(dup, gap(8f))
+        fun box(t: String, get: Boolean, set: (Boolean) -> Unit) = CheckBox(this).apply {
+            text = t; setTextColor(Color.WHITE); isChecked = get
+            setOnCheckedChangeListener { _, v -> set(v) }
+        }
+        col.addView(box("แสดง ✓ ภาพที่บันทึกแล้ว และเตือนก่อนบันทึกซ้ำ", Prefs.saveMarks(this)) { Prefs.setSaveMarks(this, it) }, gap(8f))
+        col.addView(box("สั่นตอนบันทึก (สำเร็จ = สั้นครั้งเดียว, ซ้ำ/พลาด = สองครั้ง)", Prefs.saveHaptic(this)) { Prefs.setSaveHaptic(this, it) }, gap(8f))
+        col.addView(box("แอนิเมชันตอนบันทึก (ภาพวาบ + ป้าย ✓ เด้ง)", Prefs.saveAnim(this)) { Prefs.setSaveAnim(this, it) }, gap(8f))
         fun holdBox(t: String, get: () -> Boolean, set: (Boolean) -> Unit) = CheckBox(this).apply {
             text = t
             setTextColor(Color.WHITE)

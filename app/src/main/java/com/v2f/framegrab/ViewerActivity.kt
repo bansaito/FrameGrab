@@ -91,6 +91,18 @@ class ViewerActivity : Activity() {
             onZoomChanged = { z -> setUiVisible(!z); if (z) setPlaying(false) }
         }
         root.addView(image, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        // แสงวาบตอนบันทึก (แอนิเมชัน เปิดได้ในตั้งค่า)
+        flash = View(this).apply { setBackgroundColor(Color.WHITE); alpha = 0f; isClickable = false }
+        root.addView(flash, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        // ป้าย ✓ ภาพนี้บันทึกแล้ว (มุมขวาบน ใต้แถบปุ่ม)
+        badge = TextView(this).apply {
+            text = "✓ บันทึกแล้ว"; setTextColor(Color.WHITE); textSize = 13f; paint.isFakeBoldText = true
+            setPadding(dp(12f), dp(6f), dp(12f), dp(6f))
+            background = GradientDrawable().apply { setColor(0xE616A34A.toInt()); cornerRadius = dp(16f).toFloat() }
+            elevation = dp(4f).toFloat(); visibility = View.GONE
+        }
+        root.addView(badge, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+            Gravity.TOP or Gravity.END).apply { topMargin = dp(110f); marginEnd = dp(12f) })
 
         // ---------- ปุ่มซ้าย/ขวา (แบบในส่วนเสริม) ----------
         fun arrow(t: String, onClick: () -> Unit) = TextView(this).apply {
@@ -208,6 +220,7 @@ class ViewerActivity : Activity() {
 
     private fun reload(keepIndex: Boolean) {
         frames = FrameStore.list(this)
+        savedSet = FrameStore.savedNames(this)
         if (!keepIndex) idx = 0
         empty.visibility = if (frames.isEmpty()) View.VISIBLE else View.GONE
         top.visibility = if (frames.isEmpty()) View.GONE else View.VISIBLE
@@ -246,7 +259,7 @@ class ViewerActivity : Activity() {
         idx = i
         val f = frames[i]
         Prefs.setViewerLast(this, f.file.name)
-        count.text = "${i + 1} / ${frames.size}"
+        updateSavedUi()
         time.text = f.label
         bars.set(frames.size, i)
         prevBtn.alpha = if (i > 0) 1f else 0.3f
@@ -309,14 +322,65 @@ class ViewerActivity : Activity() {
         main.postDelayed(hideNotice, if (long) 2500 else 1200)
     }
 
+    // ---------- จำภาพที่บันทึกแล้ว / กันบันทึกซ้ำ / สั่น / แอนิเมชัน ----------
+    private lateinit var flash: View
+    private lateinit var badge: TextView
+    private var savedSet: MutableSet<String> = mutableSetOf()
+    private var dupAskName: String? = null
+    private var dupAskAt = 0L
+
+    private fun isSavedNow(i: Int) = Prefs.saveMarks(this) && frames.getOrNull(i)?.file?.name in savedSet
+
+    private fun updateSavedUi() {
+        if (frames.isEmpty()) return
+        val saved = isSavedNow(idx)
+        count.text = "${idx + 1} / ${frames.size}" + if (saved) "  · 💾" else ""
+        badge.visibility = if (saved) View.VISIBLE else View.GONE
+    }
+
+    /** ok = บันทึกสำเร็จ (สั่นครั้งเดียว), ไม่ ok = ซ้ำ/พลาด (สั่นสองครั้ง) */
+    private fun buzz(ok: Boolean) {
+        if (!Prefs.saveHaptic(this)) return
+        val v = window.decorView
+        if (Build.VERSION.SDK_INT >= 30) {
+            v.performHapticFeedback(if (ok) android.view.HapticFeedbackConstants.CONFIRM else android.view.HapticFeedbackConstants.REJECT)
+        } else {
+            v.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
+            if (!ok) v.postDelayed({ v.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY) }, 120)
+        }
+    }
+
+    private fun animateSaved() {
+        if (!Prefs.saveAnim(this)) return
+        flash.animate().cancel(); flash.alpha = 0.6f
+        flash.animate().alpha(0f).setDuration(260).start()
+        badge.scaleX = 0.5f; badge.scaleY = 0.5f
+        badge.animate().scaleX(1f).scaleY(1f).setDuration(260)
+            .setInterpolator(android.view.animation.OvershootInterpolator(3f)).start()
+    }
+
     private fun saveCurrent() {
         if (frames.isEmpty()) return
         val f = frames[idx]
         val n = idx + 1
+        // บันทึกไปแล้ว: เตือนก่อน กดอีกครั้งภายใน 3 วิ ถึงจะบันทึกซ้ำจริง
+        if (isSavedNow(idx)) {
+            val now = android.os.SystemClock.uptimeMillis()
+            if (dupAskName != f.file.name || now - dupAskAt > 3000) {
+                dupAskName = f.file.name; dupAskAt = now
+                buzz(false)
+                notice("ภาพที่ $n บันทึกไปแล้ว · กดอีกครั้งเพื่อบันทึกซ้ำ")
+                return
+            }
+        }
+        dupAskName = null
         exec.execute {
             val ok = FrameStore.saveOneToGallery(this, f)
             main.post {
+                if (ok) savedSet.add(f.file.name)
+                buzz(ok)
                 notice(if (ok) "💾 บันทึกภาพที่ $n แล้ว" else "บันทึกไม่สำเร็จ")
+                if (frames.getOrNull(idx)?.file == f.file) { updateSavedUi(); if (ok) animateSaved() }
             }
         }
     }
@@ -328,6 +392,9 @@ class ViewerActivity : Activity() {
         exec.execute {
             val n = FrameStore.saveAllToGallery(this, list)
             main.post {
+                savedSet = FrameStore.savedNames(this)
+                updateSavedUi()
+                buzz(n > 0)
                 notice("บันทึก $n ภาพลงแกลเลอรีแล้ว (โฟลเดอร์ Pictures/FrameGrab)", long = true)
             }
         }
@@ -368,6 +435,7 @@ class ViewerActivity : Activity() {
 
     private fun deleteCurrent() {
         if (frames.isEmpty()) return
+        FrameStore.unmark(this, frames[idx].file)
         frames[idx].file.delete()
         val keep = idx
         reload(keepIndex = true)

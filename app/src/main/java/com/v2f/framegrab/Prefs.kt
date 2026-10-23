@@ -22,6 +22,15 @@ object Prefs {
     /** หยุดอัดเองเมื่อคลิปวนกลับมาต้น */
     fun autoStop(c: Context): Boolean = sp(c).getBoolean("autoStop", true)
     fun setAutoStop(c: Context, v: Boolean) = sp(c).edit().putBoolean("autoStop", v).apply()
+    /** ป้าย ✓ ภาพที่บันทึกแล้ว + กันบันทึกซ้ำ (เปิดเป็นค่าเริ่มต้น) */
+    fun saveMarks(c: Context): Boolean = sp(c).getBoolean("saveMarks", true)
+    fun setSaveMarks(c: Context, v: Boolean) = sp(c).edit().putBoolean("saveMarks", v).apply()
+    /** สั่นต่างกันตามผลการบันทึก (ปิดเป็นค่าเริ่มต้น) */
+    fun saveHaptic(c: Context): Boolean = sp(c).getBoolean("saveHaptic", false)
+    fun setSaveHaptic(c: Context, v: Boolean) = sp(c).edit().putBoolean("saveHaptic", v).apply()
+    /** แอนิเมชันตอนบันทึก (ปิดเป็นค่าเริ่มต้น) */
+    fun saveAnim(c: Context): Boolean = sp(c).getBoolean("saveAnim", false)
+    fun setSaveAnim(c: Context, v: Boolean) = sp(c).edit().putBoolean("saveAnim", v).apply()
     /** ข้ามภาพที่ซ้ำกับภาพก่อนหน้า (วิดีโอค้าง/รูปนิ่ง) */
     fun skipDuplicates(c: Context): Boolean = sp(c).getBoolean("skipDup", true)
     fun setSkipDuplicates(c: Context, v: Boolean) = sp(c).edit().putBoolean("skipDup", v).apply()
