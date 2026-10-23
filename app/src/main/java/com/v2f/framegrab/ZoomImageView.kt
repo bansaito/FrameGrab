@@ -127,22 +127,40 @@ class ZoomImageView(ctx: Context) : ImageView(ctx) {
             return false
         }
 
-        override fun onLongPress(e: MotionEvent) {
-            if (!scaleDetector.isInProgress) {
-                performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
-                onLongPress?.invoke()
-            }
-        }
 
         // ไม่มีแตะสองครั้งเพื่อซูมแล้ว (ซูมสองนิ้วแทน) แตะครั้งเดียวจึงตอบสนองทันที
         override fun onSingleTapUp(e: MotionEvent): Boolean {
+            if (longFired) return true
             onTap?.invoke(if (width > 0) e.x / width else 0.5f)
             return true
         }
     })
 
     @SuppressLint("ClickableViewAccessibility")
+    // กดค้างจับเวลาเอง (ไม่ใช้ค่าของระบบ ซึ่งแต่ละยี่ห้อตั้งไว้ไม่เท่ากัน เช่น Samsung มี "ระยะเวลาแตะค้าง")
+    private val LONG_MS = 350L
+    private var longFired = false
+    private var downX = 0f; private var downY = 0f
+    private val slop = android.view.ViewConfiguration.get(ctx).scaledTouchSlop
+    private val longRunnable = Runnable {
+        if (!scaleDetector.isInProgress) {
+            longFired = true
+            performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+            onLongPress?.invoke()
+        }
+    }
+
+    init { gestures.setIsLongpressEnabled(false) }
+
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                longFired = false; downX = event.x; downY = event.y
+                removeCallbacks(longRunnable); postDelayed(longRunnable, LONG_MS)
+            }
+            MotionEvent.ACTION_MOVE -> if (abs(event.x - downX) > slop || abs(event.y - downY) > slop) removeCallbacks(longRunnable)
+            MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> removeCallbacks(longRunnable)
+        }
         scaleDetector.onTouchEvent(event)
         if (!scaleDetector.isInProgress) gestures.onTouchEvent(event)
         return true

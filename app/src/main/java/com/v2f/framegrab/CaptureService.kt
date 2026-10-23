@@ -660,7 +660,7 @@ class CaptureService : Service() {
                     downX = e.rawX; downY = e.rawY; startX = lp.x; startY = lp.y; moved = false
                     longFired = false
                     wake()
-                    if (!recording) main.postDelayed(longPress, ViewConfiguration.getLongPressTimeout().toLong())
+                    if (!recording) main.postDelayed(longPress, 400L)   // ไม่ใช้ค่าระบบ (แต่ละยี่ห้อไม่เท่ากัน)
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = e.rawX - downX; val dy = e.rawY - downY
