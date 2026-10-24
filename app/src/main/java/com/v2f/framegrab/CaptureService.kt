@@ -437,6 +437,21 @@ class CaptureService : Service() {
         }
     }
 
+    /** อ่านข้อความทั้งหมดบนจอ (ผ่านการช่วยเหลือพิเศษ) แล้วเปิดหน้าให้เลือกคัดลอก */
+    private fun copyScreenText() {
+        closeMenu()
+        val hs = HoldService.instance
+        if (hs == null) {
+            toast("ต้องเปิด FrameGrab ใน การตั้งค่า → การช่วยเหลือพิเศษ ก่อน")
+            try { startActivity(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (e: Exception) { }
+            return
+        }
+        val texts = try { hs.screenTexts() } catch (e: Exception) { arrayListOf() }
+        startActivity(Intent(this, TextPickActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            .putStringArrayListExtra(TextPickActivity.EXTRA_TEXTS, texts))
+    }
+
     private fun startRecording() {
         if (recording) return
         closeMenu()
@@ -778,6 +793,7 @@ class CaptureService : Service() {
             }
             menuBox.addView(menuRow("📸  จับภาพนี้") { captureOne() })
             menuBox.addView(menuRow("⏺  อัดต่อเนื่อง  (กดค้างปุ่มลอยก็ได้)") { startRecording() })
+            if (Prefs.copyText(this)) menuBox.addView(menuRow("📋  คัดลอกข้อความบนจอ") { copyScreenText() })
             menuBox.addView(menuRow("✂️  กรอบ: ${Cropper.presetLabel(this, preset)}  ›") { menuPage = 1; buildMenu(); layoutMenu() })
             menuBox.addView(menuRow("✋  ปรับกรอบด้วยมือ") { startGuideEdit() })
             menuBox.addView(menuRow("🔲  แสดงกรอบบนจอ: ${if (Prefs.showGuide(this)) "เปิด" else "ปิด"}") {

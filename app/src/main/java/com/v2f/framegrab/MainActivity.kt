@@ -192,6 +192,10 @@ class MainActivity : Activity() {
         col.addView(box("แสดง ✓ ภาพที่บันทึกแล้ว และเตือนก่อนบันทึกซ้ำ", Prefs.saveMarks(this)) { Prefs.setSaveMarks(this, it) }, gap(8f))
         col.addView(box("สั่นตอนบันทึก (สำเร็จ = สั้นครั้งเดียว, ซ้ำ/พลาด = สองครั้ง)", Prefs.saveHaptic(this)) { Prefs.setSaveHaptic(this, it) }, gap(8f))
         col.addView(box("แอนิเมชันตอนบันทึก (ภาพวาบ + ป้าย ✓ เด้ง)", Prefs.saveAnim(this)) { Prefs.setSaveAnim(this, it) }, gap(8f))
+        col.addView(box("📋 เมนูคัดลอกข้อความบนจอ (แคปชัน/คอมเมนต์ที่กดคัดลอกไม่ได้)", Prefs.copyText(this)) {
+            Prefs.setCopyText(this, it)
+            if (it && !HoldService.isEnabled(this)) askHoldPermission()
+        }, gap(8f))
         fun holdBox(t: String, get: () -> Boolean, set: (Boolean) -> Unit) = CheckBox(this).apply {
             text = t
             setTextColor(Color.WHITE)
@@ -318,7 +322,7 @@ class MainActivity : Activity() {
     private fun askHoldPermission() {
         android.app.AlertDialog.Builder(this)
             .setTitle("ต้องเปิดสิทธิ์ครั้งเดียว")
-            .setMessage("ให้ FrameGrab กดค้างหน้าจอแทนคุณได้:\n\n" +
+            .setMessage("ให้ FrameGrab กดค้างหน้าจอแทนคุณ / อ่านข้อความบนจอให้คัดลอกได้:\n\n" +
                 "1) แตะ \"เปิดการช่วยเหลือพิเศษ\" → หา FrameGrab → เปิด\n\n" +
                 "ถ้าเปิดไม่ได้ (ขึ้นว่าการตั้งค่าถูกจำกัด):\n" +
                 "2) แตะ \"ข้อมูลแอป\" → ⋮ มุมขวาบน → \"อนุญาตการตั้งค่าที่จำกัด\" แล้วทำข้อ 1 ใหม่")

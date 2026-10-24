@@ -22,6 +22,9 @@ object Prefs {
     /** หยุดอัดเองเมื่อคลิปวนกลับมาต้น */
     fun autoStop(c: Context): Boolean = sp(c).getBoolean("autoStop", true)
     fun setAutoStop(c: Context, v: Boolean) = sp(c).edit().putBoolean("autoStop", v).apply()
+    /** เมนู "คัดลอกข้อความบนจอ" (ปิดเป็นค่าเริ่มต้น) */
+    fun copyText(c: Context): Boolean = sp(c).getBoolean("copyText", false)
+    fun setCopyText(c: Context, v: Boolean) = sp(c).edit().putBoolean("copyText", v).apply()
     /** ป้าย ✓ ภาพที่บันทึกแล้ว + กันบันทึกซ้ำ (เปิดเป็นค่าเริ่มต้น) */
     fun saveMarks(c: Context): Boolean = sp(c).getBoolean("saveMarks", true)
     fun setSaveMarks(c: Context, v: Boolean) = sp(c).edit().putBoolean("saveMarks", v).apply()
