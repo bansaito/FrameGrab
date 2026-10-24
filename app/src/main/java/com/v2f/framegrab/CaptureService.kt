@@ -449,7 +449,8 @@ class CaptureService : Service() {
         val texts = try { hs.screenTexts() } catch (e: Exception) { arrayListOf() }
         startActivity(Intent(this, TextPickActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            .putStringArrayListExtra(TextPickActivity.EXTRA_TEXTS, texts))
+            .putStringArrayListExtra(TextPickActivity.EXTRA_TEXTS, texts)
+            .putExtra(TextPickActivity.EXTRA_PKG, HoldService.currentPkg))
     }
 
     private fun startRecording() {
