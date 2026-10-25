@@ -56,6 +56,7 @@ class CaptureService : Service() {
         /** ซ่อนปุ่มลอย/กรอบ แต่ยังจับหน้าจอค้างไว้ (เปิดใหม่ไม่ต้องกดยืนยัน) */
         const val ACTION_PARK = "com.v2f.framegrab.PARK"
         const val ACTION_UNPARK = "com.v2f.framegrab.UNPARK"
+        const val ACTION_FORCE_SHOW = "com.v2f.framegrab.FORCE_SHOW"
         const val EXTRA_EXIT_APP = "exitApp"
         /** หน้าดูภาพ/หน้าลากกรอบของแอปเปิดอยู่ → ซ่อนปุ่มลอยและกรอบ */
         const val ACTION_OWN_UI = "com.v2f.framegrab.OWN_UI"
@@ -128,6 +129,11 @@ class CaptureService : Service() {
     @Volatile private var jumpAfterDrag = false     // ลากแล้วเจอภาพเปลี่ยนกะทันหันหรือยัง
     @Volatile private var feedHidden = false    // ไม่ได้อยู่หน้าสตอรี่ และตั้งให้แสดงเฉพาะสตอรี่
     private var lastFg: String? = null
+    private var navMiss = 0
+    /** ผู้ใช้กด "แสดงเลย" ในแจ้งเตือน: ไม่ซ่อนเพราะหน้าแรก/นอกแอปวิดีโอ จนกว่าจะเปลี่ยนแอปหรือกด ✕ */
+    @Volatile private var forceShow = false
+    /** เหตุผลที่ปุ่มลอยซ่อนอยู่ (แสดงในแจ้งเตือน) */
+    @Volatile private var hideReason: String? = null
     private var storyMiss = 0                   // นับครั้งที่ไม่เจอหน้าสตอรี่ติดกัน (กันกะพริบ)
     @Volatile private var capturedAppVisible = true // Android 14+ อัด "แอปเดียว": แอปนั้นอยู่บนจอไหม
     @Volatile private var fgLabel: String? = null   // แอปที่ตรวจเจอ (แสดงในแจ้งเตือน)
@@ -185,6 +191,10 @@ class CaptureService : Service() {
             ACTION_QUIT -> quit(exitApp = intent.getBooleanExtra(EXTRA_EXIT_APP, true))
             ACTION_PARK -> park(exitApp = intent.getBooleanExtra(EXTRA_EXIT_APP, false))
             ACTION_UNPARK -> unpark()
+            ACTION_FORCE_SHOW -> {
+                forceShow = true; feedHidden = false; navMiss = 99
+                main.removeCallbacks(appTick); main.post(appTick)
+            }
         }
         return START_NOT_STICKY
     }
@@ -257,6 +267,7 @@ class CaptureService : Service() {
     /** ✕ = ซ่อนปุ่มลอย กรอบ และแอป แต่ไม่ปิดการจับหน้าจอ เปิดใหม่ได้ทันทีไม่ต้องกดยืนยัน */
     private fun park(exitApp: Boolean) {
         if (projection == null) { quit(exitApp); return }
+        forceShow = false
         if (recording) stopRecording(dropLastMs = 0)
         if (guideEditing) finishGuideEdit(false)
         closeMenu()
@@ -1090,6 +1101,7 @@ class CaptureService : Service() {
             // เปลี่ยนไปแอปอื่น (ไม่ใช่ FrameGrab) → ล้างสถานะ "ซ่อนเพราะอยู่หน้าแรก"
             if (fg != null && fg != packageName && fg != lastFg) {
                 if (lastFg != null && feedHidden) feedHidden = false
+                if (lastFg != null) forceShow = false
                 lastFg = fg
             }
             inOwnApp = fg == packageName || ownUiHidden
@@ -1101,8 +1113,18 @@ class CaptureService : Service() {
             }
             if (newLabel != fgLabel) { fgLabel = newLabel; updateNotification() }
             // หน้าตั้งค่าของ FrameGrab แสดงได้ (จะได้เห็นกรอบ) แต่หน้าดูภาพ/ลากกรอบ ซ่อน
-            val hide = parked || ownUiHidden || !capturedAppVisible || feedHidden ||
-                (enabled && fg != null && fg !in AppWatch.VIDEO_APPS && fg != packageName)
+            val outside = enabled && fg != null && fg !in AppWatch.VIDEO_APPS && fg != packageName
+            val reason = when {
+                parked -> null   // มีแจ้งเตือนของตัวเองแล้ว
+                ownUiHidden -> "เปิดหน้าของ FrameGrab อยู่"
+                !capturedAppVisible -> "ออกจากแอปที่เลือกแชร์ไว้ (กด 🔄 เปลี่ยนแอป ถ้าจะใช้แอปนี้)"
+                forceShow -> null
+                feedHidden -> "อยู่หน้าแรก TikTok (จะกลับมาเมื่อเปิดสตอรี่/ออกจากหน้าแรก)"
+                outside -> "ไม่ได้อยู่ใน TikTok / IG / FB"
+                else -> null
+            }
+            val hide = parked || reason != null
+            if (reason != hideReason) { hideReason = reason; updateNotification() }
             if (hide != appHidden) {
                 appHidden = hide
                 if (hide) {
@@ -1133,8 +1155,11 @@ class CaptureService : Service() {
                     //  เห็นแถบเมนูล่างของหน้าแรก (ร้านค้า…) ครั้งเดียว = ซ่อนยาว ไม่ต้องเช็กซ้ำให้กะพริบ
                     //  ซ่อนอยู่แล้วกลับมาแสดงเมื่อเห็นแถบความคืบหน้าสีขาวของสตอรี่ด้านบน
                     //  เห็นปุ่มหัวใจ+แชร์มุมขวาล่าง = หน้าสตอรี่แน่นอน → แสดงเสมอ
-                    val hide = storyOnly && !Cropper.hasStoryActions(b) &&
-                        (Cropper.hasFeedNav(b) || (feedHidden && !StoryBar.hasBar(b)))
+                    //  ออกจากหน้าแรกไปหน้าอื่น (ไม่เห็นแถบเมนูล่าง 4 รอบติด ≈ 2.4 วิ) → กลับมาแสดง
+                    val nav = storyOnly && Cropper.hasFeedNav(b)
+                    navMiss = if (nav) 0 else navMiss + 1
+                    val hide = !forceShow && storyOnly && !Cropper.hasStoryActions(b) &&
+                        (nav || (feedHidden && navMiss < 4 && !StoryBar.hasBar(b)))
                     val story = !hide
                     if (hide != feedHidden) {
                         feedHidden = hide
@@ -1652,6 +1677,29 @@ class CaptureService : Service() {
                 this, 2, Intent(this, CaptureService::class.java).setAction(ACTION_QUIT),
                 PendingIntent.FLAG_IMMUTABLE
             )
+            val why = hideReason
+            if (why != null) {
+                // ปุ่มลอยซ่อนอยู่: บอกเหตุผล + ปุ่ม "แสดงเลย" (ถ้าบังคับแสดงได้)
+                val canForce = why.startsWith("อยู่หน้าแรก") || why.startsWith("ไม่ได้อยู่ใน")
+                b.setContentTitle("🙈 ปุ่มลอยซ่อนอยู่")
+                    .setContentText(why)
+                    .setStyle(Notification.BigTextStyle().bigText(why))
+                if (canForce) b.addAction(Notification.Action.Builder(
+                    Icon.createWithResource(this, android.R.drawable.ic_menu_view), "👁 แสดงเลย",
+                    PendingIntent.getService(this, 6, Intent(this, CaptureService::class.java).setAction(ACTION_FORCE_SHOW),
+                        PendingIntent.FLAG_IMMUTABLE)
+                ).build())
+                else b.addAction(Notification.Action.Builder(
+                    Icon.createWithResource(this, android.R.drawable.ic_menu_preferences), "⚙️ เปิดแอป", openApp
+                ).build())
+                b.addAction(Notification.Action.Builder(
+                    Icon.createWithResource(this, android.R.drawable.ic_menu_rotate), "🔄 เปลี่ยนแอป", reshareIntent()
+                ).build())
+                .addAction(Notification.Action.Builder(
+                    Icon.createWithResource(this, android.R.drawable.ic_menu_close_clear_cancel), "■ หยุดจับหน้าจอ", quit
+                ).build())
+                return b.build()
+            }
             b.setContentTitle(videoRatio?.let { "📐 วิดีโอที่เล่นอยู่: $it" } ?: "ปุ่มลอยจับเฟรมทำงานอยู่")
                 .setContentText("กรอบ: ${Cropper.presetLabel(this, Prefs.cropPreset(this))}" + (fgLabel?.let { " · $it" } ?: ""))
                 .setStyle(Notification.BigTextStyle().bigText(
