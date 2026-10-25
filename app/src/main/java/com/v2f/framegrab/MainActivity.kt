@@ -99,6 +99,8 @@ class MainActivity : Activity() {
 
         startBtn = button("", 0xFF4F46E5.toInt()) { onStartClicked() }
         col.addView(startBtn, gap(12f))
+        // 🏦 ก่อนเปิดแอปธนาคาร: ปิดการช่วยเหลือพิเศษ + หยุดจับหน้าจอ ในครั้งเดียว
+        col.addView(button("🏦 โหมดธนาคาร (กดก่อนเปิดแอปธนาคาร)", 0xFF1F3A2E.toInt()) { bankMode() }, gap(10f))
         reshareBtn = button("🔄 เปลี่ยนแอปที่แชร์ (แอปเดียว / ทั้งหน้าจอ)", 0xFF2A2D3A.toInt()) { reshare() }
         col.addView(reshareBtn, gap(10f))
         viewBtn = button("", 0xFF2A2D3A.toInt()) { startActivity(Intent(this, ViewerActivity::class.java)) }
@@ -319,6 +321,22 @@ class MainActivity : Activity() {
     }
 
     /** เปิดสิทธิ์ "การช่วยเหลือพิเศษ" ให้ FrameGrab กดค้างหน้าจอแทนได้ */
+    private fun bankMode() {
+        val r = BankMode.run(this)
+        val b = android.app.AlertDialog.Builder(this)
+            .setTitle("🏦 โหมดธนาคาร")
+            .setMessage(r.joinToString("\n\n") + "\n\nใช้ FrameGrab ใหม่: กด ▶ เปิดปุ่มลอย (ฟีเจอร์กดค้างใน IG / คัดลอกข้อความ ต้องเปิดการช่วยเหลือพิเศษใหม่เอง)")
+            .setPositiveButton("ตกลง", null)
+        if (HoldService.isEnabled(this) && HoldService.instance == null)
+            b.setNeutralButton("ไปปิดการช่วยเหลือพิเศษ") { _, _ -> startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+        else if (Settings.canDrawOverlays(this))
+            b.setNeutralButton("ปิดแสดงทับแอปอื่น") { _, _ ->
+                startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+            }
+        b.show()
+        status.postDelayed({ refresh() }, 400)
+    }
+
     private fun askHoldPermission() {
         android.app.AlertDialog.Builder(this)
             .setTitle("ต้องเปิดสิทธิ์ครั้งเดียว")
