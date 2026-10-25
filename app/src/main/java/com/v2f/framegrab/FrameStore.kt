@@ -106,6 +106,23 @@ object FrameStore {
         return copyToGallery(c, f, name, "Pictures/FrameGrab").also { if (it) markSaved(c, listOf(f)) }
     }
 
+    /** ย้ายวิดีโอไปไว้ใน Movies/FrameGrab ของแกลเลอรี */
+    fun saveVideoToGallery(c: Context, f: File): Boolean {
+        val values = ContentValues().apply {
+            put(MediaStore.Video.Media.DISPLAY_NAME, f.name)
+            put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+            put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/FrameGrab")
+            put(MediaStore.Video.Media.IS_PENDING, 1)
+        }
+        val uri = c.contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values) ?: return false
+        return try {
+            c.contentResolver.openOutputStream(uri)?.use { out -> f.inputStream().use { it.copyTo(out) } }
+            values.clear(); values.put(MediaStore.Video.Media.IS_PENDING, 0)
+            c.contentResolver.update(uri, values, null, null)
+            true
+        } catch (e: Exception) { c.contentResolver.delete(uri, null, null); false }
+    }
+
     private fun copyToGallery(c: Context, src: File, displayName: String, folder: String): Boolean {
         val values = ContentValues().apply {
             put(MediaStore.Images.Media.DISPLAY_NAME, displayName)

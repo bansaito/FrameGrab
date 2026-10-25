@@ -36,6 +36,7 @@ class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var startBtn: TextView
     private lateinit var reshareBtn: TextView
+    private lateinit var replayBtn: TextView
     private var resharing = false
     private lateinit var viewBtn: TextView
     private lateinit var intervalBtn: TextView
@@ -194,6 +195,12 @@ class MainActivity : Activity() {
         col.addView(box("แสดง ✓ ภาพที่บันทึกแล้ว และเตือนก่อนบันทึกซ้ำ", Prefs.saveMarks(this)) { Prefs.setSaveMarks(this, it) }, gap(8f))
         col.addView(box("สั่นตอนบันทึก (สำเร็จ = สั้นครั้งเดียว, ซ้ำ/พลาด = สองครั้ง)", Prefs.saveHaptic(this)) { Prefs.setSaveHaptic(this, it) }, gap(8f))
         col.addView(box("แอนิเมชันตอนบันทึก (ภาพวาบ + ป้าย ✓ เด้ง)", Prefs.saveAnim(this)) { Prefs.setSaveAnim(this, it) }, gap(8f))
+        col.addView(box("🎥 หยุดอัดวิดีโอเองเมื่อภาพนิ่ง 10 วิ (ไลฟ์จบ)", Prefs.videoAutoStop(this)) { Prefs.setVideoAutoStop(this, it) }, gap(8f))
+        replayBtn = button("", 0xFF2A2D3A.toInt()) {
+            val cur = Prefs.replaySec(this); val arr = Prefs.REPLAY_SECS
+            Prefs.setReplaySec(this, arr[(arr.indexOf(cur) + 1).let { if (it <= 0 || it >= arr.size) 0 else it }]); refresh()
+        }
+        col.addView(replayBtn, gap(8f))
         col.addView(box("📋 เมนูคัดลอกข้อความบนจอ (แคปชัน/คอมเมนต์ที่กดคัดลอกไม่ได้)", Prefs.copyText(this)) {
             Prefs.setCopyText(this, it)
             if (it && !HoldService.isEnabled(this)) askHoldPermission()
@@ -289,6 +296,7 @@ class MainActivity : Activity() {
         intervalBtn.text = "⏱ จับทุก ${Prefs.intervalLabel(Prefs.interval(this))} วินาที  (แตะเพื่อเปลี่ยน)"
         cropBtn.text = "✂️ กรอบ: ${Cropper.presetLabel(this, Prefs.cropPreset(this))}  (แตะเพื่อเลือก)"
         maxBtn.text = "⌛ อัดนานสุด ${Prefs.maxLabel(Prefs.maxSeconds(this))}  (แตะเพื่อเปลี่ยน)"
+        replayBtn.text = "⟲ บันทึกย้อนหลัง ${Prefs.replaySec(this)} วิ  (แตะเพื่อเปลี่ยน)"
     }
 
     /** เลือกกรอบจากรายการ (ทั้งจอ, อัตโนมัติ, 9:16, 3:4, 1:1 …) */

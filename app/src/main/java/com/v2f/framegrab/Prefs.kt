@@ -22,6 +22,13 @@ object Prefs {
     /** หยุดอัดเองเมื่อคลิปวนกลับมาต้น */
     fun autoStop(c: Context): Boolean = sp(c).getBoolean("autoStop", true)
     fun setAutoStop(c: Context, v: Boolean) = sp(c).edit().putBoolean("autoStop", v).apply()
+    /** ⟲ บันทึกย้อนหลังกี่วินาที */
+    val REPLAY_SECS = intArrayOf(15, 30, 60, 120)
+    fun replaySec(c: Context): Int = sp(c).getInt("replaySec", 30)
+    fun setReplaySec(c: Context, v: Int) = sp(c).edit().putInt("replaySec", v).apply()
+    /** 🎥 หยุดอัดวิดีโอเองเมื่อภาพนิ่ง 10 วิ (ไลฟ์จบ) */
+    fun videoAutoStop(c: Context): Boolean = sp(c).getBoolean("videoAutoStop", true)
+    fun setVideoAutoStop(c: Context, v: Boolean) = sp(c).edit().putBoolean("videoAutoStop", v).apply()
     /** เมนู "คัดลอกข้อความบนจอ" (ปิดเป็นค่าเริ่มต้น) */
     fun copyText(c: Context): Boolean = sp(c).getBoolean("copyText", false)
     fun setCopyText(c: Context, v: Boolean) = sp(c).edit().putBoolean("copyText", v).apply()

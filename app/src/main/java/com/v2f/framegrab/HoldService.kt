@@ -37,7 +37,8 @@ class HoldService : AccessibilityService() {
     override fun onDestroy() { instance = null; super.onDestroy() }
     override fun onUnbind(intent: android.content.Intent?): Boolean { instance = null; return super.onUnbind(intent) }
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        val p = event?.packageName?.toString() ?: return
+        if (event == null || event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
+        val p = event.packageName?.toString() ?: return
         // ไม่นับหน้าต่างของระบบ/คีย์บอร์ด/ของเราเอง
         if (p == packageName || p == "com.android.systemui" || p.contains("inputmethod")) return
         currentPkg = p
@@ -52,6 +53,8 @@ class HoldService : AccessibilityService() {
      */
     fun screenTexts(): ArrayList<String> {
         val out = LinkedHashSet<String>()
+        // ล้างข้อมูลหน้าจอที่ระบบจำไว้ (บางเครื่อง เช่น Samsung คืนข้อความของหน้าก่อนหน้า)
+        if (android.os.Build.VERSION.SDK_INT >= 34) try { clearCache() } catch (e: Exception) { }
         val roots = try {
             windows.filter { it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION }
                 .mapNotNull { it.root }
@@ -59,6 +62,7 @@ class HoldService : AccessibilityService() {
         val list = if (roots.isEmpty()) listOfNotNull(rootInActiveWindow) else roots
         fun walk(n: android.view.accessibility.AccessibilityNodeInfo?, depth: Int) {
             if (n == null || depth > 60) return
+            if (depth == 0) try { n.refresh() } catch (e: Exception) { }
             if (n.packageName?.toString() == packageName) return
             val t = n.text?.toString()?.trim()
             val d = n.contentDescription?.toString()?.trim()

@@ -38,6 +38,7 @@ import android.widget.ScrollView
 import android.widget.FrameLayout
 import android.widget.TextView
 import android.widget.Toast
+import java.io.File
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -57,6 +58,9 @@ class CaptureService : Service() {
         const val ACTION_PARK = "com.v2f.framegrab.PARK"
         const val ACTION_UNPARK = "com.v2f.framegrab.UNPARK"
         const val ACTION_FORCE_SHOW = "com.v2f.framegrab.FORCE_SHOW"
+        const val ACTION_VIDEO_PAUSE = "com.v2f.framegrab.VIDEO_PAUSE"
+        const val ACTION_REPLAY_SAVE = "com.v2f.framegrab.REPLAY_SAVE"
+        const val ACTION_REPLAY_STOP = "com.v2f.framegrab.REPLAY_STOP"
         const val EXTRA_EXIT_APP = "exitApp"
         /** หน้าดูภาพ/หน้าลากกรอบของแอปเปิดอยู่ → ซ่อนปุ่มลอยและกรอบ */
         const val ACTION_OWN_UI = "com.v2f.framegrab.OWN_UI"
@@ -182,7 +186,10 @@ class CaptureService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START -> start(intent)
-            ACTION_STOP_REC -> stopRecording(dropLastMs = 1500) // ตัดภาพตอนดึงแถบแจ้งเตือนลงมา
+            ACTION_STOP_REC -> if (videoRec) stopVideo(null) else stopRecording(dropLastMs = 1500) // ตัดภาพตอนดึงแถบแจ้งเตือนลงมา
+            ACTION_VIDEO_PAUSE -> toggleVideoPause()
+            ACTION_REPLAY_SAVE -> saveReplay()
+            ACTION_REPLAY_STOP -> stopReplay()
             ACTION_OWN_UI -> {
                 ownUiHidden = intent.getBooleanExtra(EXTRA_HIDE, false)
                 main.removeCallbacks(appTick)
@@ -246,7 +253,8 @@ class CaptureService : Service() {
         // เรียกผ่าน startForegroundService + สิทธิ์ใหม่ → ต้องยืนยันบริการเบื้องหน้าซ้ำ
         startForeground(NOTIF_ID, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
         if (data == null) { unpark(); return }
-        if (recording) stopRecording(dropLastMs = 0)
+        if (videoRec) stopVideo(null) else if (recording) stopRecording(dropLastMs = 0)
+        stopReplay()
         val old = projection
         projection = null                       // กัน onStop ของอันเก่าสั่งปิดทุกอย่าง
         display?.release(); display = null
@@ -268,7 +276,8 @@ class CaptureService : Service() {
     private fun park(exitApp: Boolean) {
         if (projection == null) { quit(exitApp); return }
         forceShow = false
-        if (recording) stopRecording(dropLastMs = 0)
+        stopReplay()
+        if (videoRec) stopVideo(null) else if (recording) stopRecording(dropLastMs = 0)
         if (guideEditing) finishGuideEdit(false)
         closeMenu()
         parked = true
@@ -464,8 +473,123 @@ class CaptureService : Service() {
             .putExtra(TextPickActivity.EXTRA_PKG, HoldService.currentPkg))
     }
 
+    // ---------- 🎥 วิดีโอ MP4 / ⟲ บันทึกย้อนหลัง ----------
+    @Volatile private var videoEngine: VideoEngine? = null
+    @Volatile private var videoRec = false
+    @Volatile private var replayOn = false
+    private var videoTicks = 0
+    private var videoSaved = 0
+
+    private fun startVideo(replay: Boolean) {
+        if (recording || videoEngine != null) { if (replayOn && !replay) toast("ปิด ⟲ บันทึกย้อนหลังก่อน"); return }
+        val rd = reader ?: return
+        val disp = display ?: return
+        closeMenu()
+        if (!replay) hideOverlay()
+        val hiddenAt = SystemClock.uptimeMillis()
+        work.post {
+            // วัดกรอบจากภาพล่าสุด (ไม่มีปุ่มของเรา)
+            if (!replay) { val end = hiddenAt + 500; while (latestAt <= hiddenAt + 60 && SystemClock.uptimeMillis() < end) SystemClock.sleep(10) }
+            val b = grabBitmap()
+            val rect = if (b != null) cropRectFor(b) else android.graphics.Rect(0, 0, rd.width, rd.height)
+            b?.recycle()
+            recRect = rect; recBmpW = rd.width; recBmpH = rd.height
+            // ปลดภาพจอออกจาก ImageReader ก่อน (ตัวอัดจะวาดภาพเต็มจอส่งต่อให้เอง)
+            disp.surface = null
+            synchronized(lock) { latest?.close(); latest = null }
+            val eng = VideoEngine(rd.width, rd.height, rect, rd.surface, File(filesDir, "videos"),
+                replayMs = if (replay) Prefs.replaySec(this) * 1000L else 0L, listener = videoListener)
+            eng.frozenAfterMs = if (!replay && Prefs.videoAutoStop(this)) 10_000L else 0L
+            if (!eng.start()) {
+                disp.surface = rd.surface
+                main.post { toast("เริ่มอัดวิดีโอไม่ได้"); if (!replay) showOverlay() }
+                return@post
+            }
+            videoEngine = eng
+            disp.surface = eng.inputSurface
+            main.post {
+                if (replay) {
+                    replayOn = true
+                    // ซ่อนกรอบ + ย้ายปุ่มลอยออกนอกกรอบ จะได้ไม่ติดในวิดีโอ
+                    guide?.visibility = View.INVISIBLE; syncHandles()
+                    placeStopButton(); root?.let { wm.updateViewLayout(it, lp) }
+                    bubble.text = bubbleLabel()
+                    toast("⟲ บันทึกย้อนหลัง ${Prefs.replaySec(this)} วิ เปิดแล้ว · เจอช่วงเด็ด แตะปุ่มลอย → 💾 เก็บ")
+                } else {
+                    recording = true; videoRec = true; videoTicks = 0
+                    recStart = SystemClock.uptimeMillis()
+                    placeStopButton(); showStopButton()
+                    toast("🎥 เริ่มอัดวิดีโอ ${eng.outW}x${eng.outH} · แตะ ■ เพื่อหยุด")
+                }
+                updateNotification()
+            }
+        }
+    }
+
+    private val videoListener = object : VideoEngine.Listener {
+        override fun onFile(f: File) {
+            val ok = FrameStore.saveVideoToGallery(this@CaptureService, f)
+            if (ok) f.delete()
+            main.post {
+                if (ok) videoSaved++
+                toast(if (ok) "🎥 บันทึกวิดีโอลงแกลเลอรีแล้ว (Movies/FrameGrab)" else "บันทึกวิดีโอไม่สำเร็จ")
+            }
+        }
+        override fun onFrozen() { main.post { if (videoRec) stopVideo("ภาพนิ่ง 10 วิ (ไลฟ์จบ?) หยุดอัดอัตโนมัติ") } }
+        override fun onReleased() {
+            main.post {
+                videoEngine = null
+                // คืนภาพจอให้ ImageReader (ถ้ายังไม่ได้ปิด/ซ่อน)
+                if (!quitting) display?.surface = if (parked) null else reader?.surface
+                updateNotification()
+            }
+        }
+        override fun onError(msg: String) { main.post { toast(msg) } }
+    }
+
+    private fun stopVideo(reason: String?) {
+        if (!videoRec) return
+        videoRec = false
+        recording = false
+        videoEngine?.stop()
+        restoreBubble()
+        stopOverlaps = false
+        savedBubblePos?.let { (x, y) -> lp.x = x; lp.y = y }
+        savedBubblePos = null
+        showOverlay()
+        updateNotification()
+        toast((reason?.let { "$it · " } ?: "") + "กำลังบันทึกวิดีโอ…")
+    }
+
+    private fun toggleVideoPause() {
+        val e = videoEngine ?: return
+        if (!videoRec) return
+        e.setPaused(!e.paused)
+        main.postDelayed({ bubble.text = recLabel(); updateNotification() }, 100)
+    }
+
+    private fun saveReplay() {
+        val e = videoEngine ?: return
+        if (!replayOn) return
+        closeMenu()
+        toast("💾 กำลังเก็บ ${Prefs.replaySec(this)} วิล่าสุด…")
+        e.saveReplay { f -> if (f != null) videoListener.onFile(f) else main.post { toast("ยังไม่มีภาพให้เก็บ") } }
+    }
+
+    private fun stopReplay() {
+        if (!replayOn) return
+        replayOn = false
+        closeMenu()
+        videoEngine?.stop()
+        savedBubblePos?.let { (x, y) -> lp.x = x; lp.y = y; root?.let { r -> wm.updateViewLayout(r, lp) } }
+        savedBubblePos = null
+        bubble.text = bubbleLabel()
+        showOverlay()
+        updateNotification()
+    }
+
     private fun startRecording() {
-        if (recording) return
+        if (recording || videoEngine != null && !replayOn) return
         closeMenu()
         FrameStore.clear(this) // อัดคลิปใหม่ ล้างภาพเก่าทันที
         recording = true
@@ -708,7 +832,7 @@ class CaptureService : Service() {
                         root?.let { wm.updateViewLayout(it, lp) }
                         Prefs.setBubble(this, lp.x, lp.y)
                     } else if (recording) {
-                        stopRecording(0)
+                        if (videoRec) stopVideo(null) else stopRecording(0)
                     } else if (SystemClock.uptimeMillis() - lastOutsideClose > 300) {
                         if (menuOpen) closeMenu() else openMenu()
                     }
@@ -805,6 +929,12 @@ class CaptureService : Service() {
             }
             menuBox.addView(menuRow("📸  จับภาพนี้") { captureOne() })
             menuBox.addView(menuRow("⏺  อัดต่อเนื่อง  (กดค้างปุ่มลอยก็ได้)") { startRecording() })
+            menuBox.addView(menuRow("🎥  อัดวิดีโอ MP4  (ไลฟ์ได้)") { startVideo(false) })
+            val rs = Prefs.replaySec(this)
+            if (replayOn) {
+                menuBox.addView(menuRow("💾  เก็บ $rs วิล่าสุด") { saveReplay() })
+                menuBox.addView(menuRow("⟲  ปิดบันทึกย้อนหลัง") { stopReplay() })
+            } else menuBox.addView(menuRow("⟲  บันทึกย้อนหลัง $rs วิ") { startVideo(true) })
             if (Prefs.copyText(this)) menuBox.addView(menuRow("📋  คัดลอกข้อความบนจอ") { copyScreenText() })
             menuBox.addView(menuRow("✂️  กรอบ: ${Cropper.presetLabel(this, preset)}  ›") { menuPage = 1; buildMenu(); layoutMenu() })
             menuBox.addView(menuRow("✋  ปรับกรอบด้วยมือ") { startGuideEdit() })
@@ -1082,7 +1212,7 @@ class CaptureService : Service() {
 
     /** ปุ่มกลม: ไอคอน + สัดส่วนวิดีโอตัวเล็กด้านล่าง */
     private fun bubbleLabel(): CharSequence {
-        val head = "🎞️"
+        val head = if (replayOn) "⟲" else "🎞️"
         val r = videoRatio?.substringBefore(" (") ?: return head
         val sb = android.text.SpannableStringBuilder("$head\n$r")
         sb.setSpan(android.text.style.AbsoluteSizeSpan(17, true), 0, head.length, 0)
@@ -1226,7 +1356,7 @@ class CaptureService : Service() {
     }
 
     private fun shouldShowGuide(): Boolean =
-        guideEditing || (!appHidden && Prefs.showGuide(this) && !recording && root?.visibility == View.VISIBLE && guide?.rect != null)
+        guideEditing || (!appHidden && !replayOn && Prefs.showGuide(this) && !recording && root?.visibility == View.VISIBLE && guide?.rect != null)
 
     // ---------- จุดจับบนกรอบ (ลากได้ทันที ไม่ต้องเข้าเมนู) ----------
     @SuppressLint("ClickableViewAccessibility")
@@ -1581,7 +1711,7 @@ class CaptureService : Service() {
     private fun recLabel(): CharSequence {
         val sec = if (recStart > 0) ((SystemClock.uptimeMillis() - recStart) / 1000).coerceAtLeast(0) else 0
         val t = String.format(java.util.Locale.US, "%d:%02d", sec / 60, sec % 60)
-        val head = "■"
+        val head = if (videoRec && videoEngine?.paused == true) "⏸" else "■"
         val sb = android.text.SpannableStringBuilder("$head\n$t")
         sb.setSpan(android.text.style.AbsoluteSizeSpan(18, true), 0, head.length, 0)
         sb.setSpan(android.text.style.AbsoluteSizeSpan(11, true), head.length + 1, sb.length, 0)
@@ -1593,6 +1723,7 @@ class CaptureService : Service() {
         override fun run() {
             if (!recording) return
             bubble.text = recLabel()
+            if (videoRec && ++videoTicks % 4 == 0) updateNotification()
             main.postDelayed(this, 500)
         }
     }
@@ -1641,6 +1772,34 @@ class CaptureService : Service() {
             .setSmallIcon(android.R.drawable.ic_menu_camera)
             .setOngoing(true)
             .setContentIntent(open)
+        if (videoRec || (replayOn && !recording)) {
+            fun svc(code: Int, act: String) = PendingIntent.getService(this, code, Intent(this, CaptureService::class.java).setAction(act), PendingIntent.FLAG_IMMUTABLE)
+            val e = videoEngine
+            if (videoRec) {
+                val sec = ((SystemClock.uptimeMillis() - recStart) / 1000).coerceAtLeast(0)
+                val mb = (e?.bytesWritten ?: 0) / 1_048_576.0
+                val free = try { android.os.StatFs(filesDir.path).availableBytes } catch (x: Exception) { 0L }
+                val perMin = if (sec >= 5) (e?.bytesWritten ?: 0) * 60.0 / sec else 0.0
+                val left = if (perMin > 0) " · เหลือที่อัดได้ ~${(free / perMin).toInt()} นาที" else ""
+                val paused = e?.paused == true
+                b.setContentTitle((if (paused) "⏸ พักอัดวิดีโอ " else "🎥 อัดวิดีโอ ") + String.format(java.util.Locale.US, "%d:%02d", sec / 60, sec % 60))
+                    .setContentText(String.format(java.util.Locale.US, "%.1f MB", mb) + left)
+                    .addAction(Notification.Action.Builder(
+                        Icon.createWithResource(this, if (paused) android.R.drawable.ic_media_play else android.R.drawable.ic_media_pause),
+                        if (paused) "▶ อัดต่อ" else "⏸ พัก", svc(8, ACTION_VIDEO_PAUSE)).build())
+                    .addAction(Notification.Action.Builder(
+                        Icon.createWithResource(this, android.R.drawable.ic_menu_close_clear_cancel), "■ หยุดอัด", svc(1, ACTION_STOP_REC)).build())
+            } else {
+                val rs = Prefs.replaySec(this)
+                b.setContentTitle("⟲ บันทึกย้อนหลัง $rs วิ ทำงานอยู่")
+                    .setContentText("เจอช่วงเด็ด กด 💾 เก็บ เพื่อบันทึก $rs วิที่เพิ่งผ่านไป")
+                    .addAction(Notification.Action.Builder(
+                        Icon.createWithResource(this, android.R.drawable.ic_menu_save), "💾 เก็บ $rs วิล่าสุด", svc(9, ACTION_REPLAY_SAVE)).build())
+                    .addAction(Notification.Action.Builder(
+                        Icon.createWithResource(this, android.R.drawable.ic_menu_close_clear_cancel), "■ ปิด", svc(10, ACTION_REPLAY_STOP)).build())
+            }
+            return b.build()
+        }
         if (recording) {
             val stop = PendingIntent.getService(
                 this, 1, Intent(this, CaptureService::class.java).setAction(ACTION_STOP_REC),
@@ -1746,6 +1905,7 @@ class CaptureService : Service() {
     private fun quit(exitApp: Boolean = true) {
         if (quitting) return
         quitting = true
+        try { videoEngine?.stop() } catch (e: Exception) { }
         recording = false
         running = false
         parked = false
