@@ -3,5 +3,6 @@
     <string name="app_name">AnkiRounds</string>
     <string name="service_name">AnkiRounds (กดแทนใน AnkiDroid)</string>
     <string name="tile_name">➕ อีก 1 รอบ</string>
+    <string name="bank_tile_name">โหมดธนาคาร</string>
     <string name="service_desc">ใช้เปิด AnkiDroid เข้าตั้งค่า deck แก้ช่อง Maximum reviews/day แล้วกด Save ให้ เมื่อคุณกดปุ่ม ➕ เท่านั้น ไม่อ่านหรือเก็บข้อมูลจากแอปอื่น</string>
 </resources>

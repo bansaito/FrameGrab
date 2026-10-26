@@ -15,8 +15,12 @@ class RoundsTile : TileService() {
         super.onStartListening()
         qsTile?.let {
             it.state = if (RoundsService.instance != null) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
-            it.label = "➕ อีก 1 รอบ"
-            if (Build.VERSION.SDK_INT >= 29) it.subtitle = "ตอนนี้: " + Prefs(this).summary()
+            it.label = "อีก 1 รอบ"
+            it.icon = android.graphics.drawable.Icon.createWithResource(this, R.drawable.ic_tile_plus)
+            if (Build.VERSION.SDK_INT >= 29) {
+                it.subtitle = if (RoundsService.instance != null) "ตอนนี้ " + Prefs(this).summary()
+                              else "🏦 โหมดธนาคาร"
+            }
             it.updateTile()
         }
     }
@@ -29,8 +33,12 @@ class RoundsTile : TileService() {
             svc.bump()
             return
         }
-        Toast.makeText(this, "เปิดสิทธิ์ช่วยเหลือพิเศษของ AnkiRounds ก่อน", Toast.LENGTH_LONG).show()
-        val i = Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        // ผู้ช่วยปิดอยู่ (เช่นอยู่ในโหมดธนาคาร) → เปิดกลับก่อน
+        if (Bank.leaveBankMode(this)) {
+            Toast.makeText(this, "เปิดผู้ช่วยกลับแล้ว แตะ ➕ อีกครั้งเพื่อเพิ่มรอบ", Toast.LENGTH_LONG).show()
+            return
+        }
+        val i = Bank.accessibilitySettingsIntent(this)
         if (Build.VERSION.SDK_INT >= 34) {
             startActivityAndCollapse(
                 PendingIntent.getActivity(this, 0, i, PendingIntent.FLAG_IMMUTABLE)

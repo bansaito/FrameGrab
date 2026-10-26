@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- (ไม่บังคับ) ถ้าอนุญาตผ่าน adb ครั้งเดียว โหมดธนาคารจะเปิด/ปิดผู้ช่วยได้ในแตะเดียว -->
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS"
+        tools:ignore="ProtectedPermissions" />
 
     <!-- ให้มองเห็นและเปิด AnkiDroid ได้ (Android 11+) -->
     <queries>
@@ -41,8 +46,20 @@
         <service
             android:name=".RoundsTile"
             android:exported="true"
-            android:icon="@mipmap/ic_launcher"
+            android:icon="@drawable/ic_tile_plus"
             android:label="@string/tile_name"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <!-- ปุ่ม "โหมดธนาคาร" ในแผงควบคุม -->
+        <service
+            android:name=".BankTile"
+            android:exported="true"
+            android:icon="@drawable/ic_tile_bank"
+            android:label="@string/bank_tile_name"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE" />

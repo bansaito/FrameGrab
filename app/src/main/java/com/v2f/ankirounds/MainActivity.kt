@@ -29,6 +29,7 @@ class MainActivity : Activity() {
     private lateinit var root: LinearLayout
     private lateinit var status: TextView
     private lateinit var roundView: TextView
+    private lateinit var bankView: TextView
     private val nameFields = ArrayList<EditText>()
     private val baseFields = ArrayList<EditText>()
     private val stepFields = ArrayList<EditText>()
@@ -114,6 +115,30 @@ class MainActivity : Activity() {
         root.addView(sw)
         button("ตั้งรอบเองโดยไม่แตะ AnkiDroid…") { pickRound() }
 
+        section("🏦 โหมดธนาคาร")
+        note("แอปธนาคารบางแอปไม่ยอมเปิดถ้าผู้ช่วยทำงานอยู่ กดปิดก่อนเข้าแอปธนาคาร แล้วกดเปิดกลับเมื่อเสร็จ (ปุ่มลอย ➕ จะหายไประหว่างนั้น)")
+        bankView = note("")
+        val bankRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        bankRow.addView(btn("🏦 ปิดผู้ช่วย", false) { Bank.enterBankMode(this); root.postDelayed({ refresh() }, 600) },
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        bankRow.addView(btn("✅ เปิดผู้ช่วยกลับ", false) {
+            if (!Bank.leaveBankMode(this)) startActivity(Bank.accessibilitySettingsIntent(this))
+            root.postDelayed({ refresh() }, 800)
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        root.addView(bankRow)
+        button("📋 คัดลอกคำสั่งให้เปิดกลับได้ในแตะเดียว (ทำครั้งเดียวผ่านคอม)") { showAdbHelp() }
+
+        section("➕ ปุ่มในแผงควบคุม")
+        note("ดึงแถบแจ้งเตือนลงแล้วกดได้เลย ไม่ต้องเปิดแอป")
+        val tileRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        tileRow.addView(btn("เพิ่ม ➕ อีก 1 รอบ", false) {
+            addTile(RoundsTile::class.java, "อีก 1 รอบ", R.drawable.ic_tile_plus)
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        tileRow.addView(btn("เพิ่ม 🏦 โหมดธนาคาร", false) {
+            addTile(BankTile::class.java, "โหมดธนาคาร", R.drawable.ic_tile_bank)
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        root.addView(tileRow)
+
         section("4 · ถ้ากดแล้วไม่สำเร็จ")
         note("แอปหาเมนูและปุ่มจากข้อความบนจอ ถ้า AnkiDroid ใช้คำอื่น ใส่คำที่เห็นบนจอเพิ่มได้ (คั่นด้วย | )")
         menuField = labeled("เมนูหลังกดค้างที่ deck", prefs.menuLabels)
@@ -135,6 +160,30 @@ class MainActivity : Activity() {
         status.text = if (on) "✅ เปิดสิทธิ์ช่วยเหลือพิเศษแล้ว" else "⚠️ ยังไม่ได้เปิดสิทธิ์ช่วยเหลือพิเศษ"
         status.setTextColor(if (on) Color.parseColor("#4ADE80") else Color.parseColor("#FBBF24"))
         roundView.text = "ตอนนี้รอบ ${prefs.round}  ·  ${prefs.summary()}"
+        val bank = !Bank.isOn(this)
+        bankView.text = (if (bank) "สถานะ: 🏦 โหมดธนาคาร (ผู้ช่วยปิดอยู่)" else "สถานะ: ผู้ช่วยทำงานอยู่") +
+            "\nเปิดกลับในแตะเดียว: " + (if (Bank.canToggleDirectly(this)) "✅ ได้" else "— ต้องกดเปิดในหน้าตั้งค่า")
+    }
+
+    private fun addTile(cls: Class<*>, label: String, icon: Int) {
+        if (!Bank.requestAddTile(this, cls, label, icon)) {
+            AlertDialog.Builder(this)
+                .setTitle("เพิ่มเองในแผงควบคุม")
+                .setMessage("ดึงแถบแจ้งเตือนลง 2 ครั้ง → กด ✏️ แก้ไข → ลากปุ่ม \"$label\" ของ AnkiRounds ขึ้นไปวาง")
+                .setPositiveButton("ตกลง", null).show()
+        }
+    }
+
+    private fun showAdbHelp() {
+        val cm = getSystemService(android.content.ClipboardManager::class.java)
+        cm?.setPrimaryClip(android.content.ClipData.newPlainText("adb", Bank.ADB_CMD))
+        AlertDialog.Builder(this)
+            .setTitle("เปิดกลับได้ในแตะเดียว (ไม่บังคับ)")
+            .setMessage("Android ไม่ให้แอปเปิดสิทธิ์ช่วยเหลือพิเศษของตัวเอง ถ้าอยากให้ปุ่ม 🏦 สลับเปิด/ปิดได้ในแตะเดียว ต้องอนุญาตครั้งเดียวจากคอม:\n\n" +
+                "1. เปิด ตัวเลือกสำหรับนักพัฒนา → การแก้ไขข้อบกพร่อง USB\n" +
+                "2. ต่อสายเข้าคอมที่มี adb แล้วพิมพ์คำสั่ง (คัดลอกให้แล้ว):\n\n${Bank.ADB_CMD}\n\n" +
+                "ทำครั้งเดียว อยู่ถาวรจนกว่าจะลบแอป")
+            .setPositiveButton("ตกลง", null).show()
     }
 
     private fun saveFields() {

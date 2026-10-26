@@ -32,6 +32,17 @@ class RoundsService : AccessibilityService() {
         instance = this
         prefs = Prefs(this)
         refreshBubble()
+        refreshTiles()
+    }
+
+    private fun refreshTiles() {
+        for (c in listOf(RoundsTile::class.java, BankTile::class.java)) {
+            try {
+                android.service.quicksettings.TileService.requestListeningState(
+                    this, android.content.ComponentName(this, c))
+            } catch (_: Exception) {
+            }
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
@@ -40,6 +51,7 @@ class RoundsService : AccessibilityService() {
     override fun onDestroy() {
         removeBubble()
         if (instance === this) instance = null
+        refreshTiles()
         super.onDestroy()
     }
 
