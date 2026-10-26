@@ -37,7 +37,8 @@ class RoundsService : AccessibilityService() {
     @Volatile private var busy = false
 
     private var ankiInFront = false
-    private var remaining = -1          // -1 = ไม่รู้ (ยังไม่ได้รับสิทธิ์อ่าน AnkiDroid)
+    private var remaining = -1          // รวมทุกชุดที่แสดง · -1 = ไม่รู้ (ยังไม่ได้รับสิทธิ์อ่าน AnkiDroid)
+    private val remainingBy = HashMap<Int, Int>()
     private var lastCountAt = 0L
     @Volatile private var counting = false
 
@@ -105,25 +106,33 @@ class RoundsService : AccessibilityService() {
         if (System.currentTimeMillis() - lastCountAt < minGapMs) return
         counting = true
         lastCountAt = System.currentTimeMillis()
-        val names = prefs.decks().map { it.name }
+        val groups = prefs.visibleGroups().associateWith { g -> prefs.decks(g).map { it.name } }
         Thread {
-            var n = -1
+            var total = -1
+            val by = HashMap<Int, Int>()
             try {
                 val all = AnkiApi.decks(this)
-                val ids = HashSet<Long>()
-                n = 0
-                for (name in names) {
-                    val d = AnkiApi.find(all, name) ?: continue
-                    if (ids.add(d.id)) n += d.due
+                val seen = HashSet<Long>()
+                total = 0
+                for ((g, names) in groups) {
+                    var n = 0
+                    val ids = HashSet<Long>()
+                    for (name in names) {
+                        val d = AnkiApi.find(all, name) ?: continue
+                        if (ids.add(d.id)) n += d.due
+                        if (seen.add(d.id)) total += d.due
+                    }
+                    by[g] = n
                 }
             } catch (_: Exception) {
             }
             main.post {
                 counting = false
                 val before = remaining
-                remaining = n
+                remaining = total
+                remainingBy.clear(); remainingBy.putAll(by)
                 updateBubbleFace()
-                if (before > 0 && n == 0) { wake(); pulse() }   // เพิ่งท่องครบ → เรียกให้เห็น
+                if (before > 0 && total == 0) { wake(); pulse() }   // เพิ่งท่องครบ → เรียกให้เห็น
             }
         }.start()
     }
@@ -131,16 +140,25 @@ class RoundsService : AccessibilityService() {
     // ------------------------------------------------------------------ jobs
 
     /** ➕ อีก 1 รอบ */
-    fun bump() = run(prefs.round + 1, "รอบ ${prefs.round + 1}")
+    fun bump(g: Int = prefs.lastGroup) = run(g, prefs.round(g) + 1, "${label(g)} รอบ ${prefs.round(g) + 1}")
+
+    /** ↶ ย้อน 1 รอบ */
+    fun undo(g: Int = prefs.lastGroup) {
+        val r = prefs.round(g)
+        if (r <= 1) { toast("${label(g)} อยู่รอบแรกแล้ว"); return }
+        run(g, r - 1, "${label(g)} ย้อนเป็นรอบ ${r - 1}")
+    }
 
     /** ↺ เริ่มชุดใหม่ */
-    fun reset() = run(1, "เริ่มชุดใหม่")
+    fun reset(g: Int = prefs.lastGroup) = run(g, 1, "${label(g)} เริ่มชุดใหม่")
 
-    private fun run(newRound: Int, title: String) {
+    private fun label(g: Int) = if (prefs.visibleGroups().size > 1) prefs.groupName(g) else ""
+
+    private fun run(g: Int, newRound: Int, title: String) {
         hideMenu()
         if (busy) { toast("กำลังทำงานอยู่ รอสักครู่"); return }
-        val decks = prefs.decks()
-        if (decks.isEmpty()) { toast("ยังไม่ได้ตั้งชื่อ deck ในแอป AnkiRounds"); return }
+        val decks = prefs.decks(g)
+        if (decks.isEmpty()) { toast("ยังไม่ได้ตั้งชื่อ deck ใน ${prefs.groupName(g)}"); return }
         busy = true
         updateBubbleFace()
         val targets = dedupeByPreset(decks.map { it.name to prefs.valueFor(it, newRound) })
@@ -153,7 +171,7 @@ class RoundsService : AccessibilityService() {
                 val bad = verify(targets, a)
                 if (bad.isEmpty()) {
                     ok = true
-                    msg = "$title ✓  ${targets.joinToString(" / ") { it.second.toString() }}"
+                    msg = "${title.trim()} ✓  ${targets.joinToString(" / ") { it.second.toString() }}"
                 } else {
                     msg = "บันทึกไม่ติด: " + bad.joinToString(", ")
                 }
@@ -165,13 +183,13 @@ class RoundsService : AccessibilityService() {
             }
             prefs.lastLog = a.logText()
             main.post {
-                if (ok) prefs.round = newRound
+                if (ok) { prefs.setRound(g, newRound); prefs.lastGroup = g }
                 busy = false
                 lastCountAt = 0
                 refreshBubble()
                 requestCount(0)
                 refreshTiles()
-                toast(msg + if (ok) "" else "\nกดค้างที่ปุ่มลอย → ⚙️ ตั้งค่า → ส่ง log ให้ผู้ช่วยดูได้")
+                toast(msg + if (ok) "" else "\nแตะปุ่มลอย → ⚙️ ตั้งค่า → ส่ง log ให้ผู้ช่วยดูได้")
             }
         }.start()
     }
@@ -367,41 +385,83 @@ class RoundsService : AccessibilityService() {
         hideMenu()
         val blp = bubbleLp ?: return
         val dp = resources.displayMetrics.density
+        fun px(v: Int) = (v * dp).toInt()
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding((8 * dp).toInt(), (8 * dp).toInt(), (8 * dp).toInt(), (8 * dp).toInt())
+            setPadding(px(10), px(10), px(10), px(8))
             background = GradientDrawable().apply {
                 cornerRadius = 18 * dp
-                setColor(Color.parseColor("#F01E222A"))
+                setColor(Color.parseColor("#F21E222A"))
             }
         }
-        var confirmReset = false
-        fun item(text: String, onTap: (TextView) -> Unit) {
-            val t = TextView(this).apply {
-                this.text = text
-                textSize = 16f
-                setTextColor(Color.WHITE)
-                setPadding((14 * dp).toInt(), (11 * dp).toInt(), (18 * dp).toInt(), (11 * dp).toInt())
-                setOnClickListener { onTap(this) }
+        fun chip(text: String, color: String, onTap: (TextView) -> Unit) = TextView(this).apply {
+            this.text = text
+            textSize = 15f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            setPadding(px(12), px(9), px(12), px(9))
+            background = GradientDrawable().apply { cornerRadius = 12 * dp; setColor(Color.parseColor(color)) }
+            setOnClickListener { onTap(this) }
+        }
+        fun row(): LinearLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        fun addChip(r: LinearLayout, c: TextView) {
+            r.addView(c, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { marginEnd = px(6) })
+        }
+
+        val groups = prefs.visibleGroups().ifEmpty { listOf(0) }
+        val multi = groups.size > 1
+        for ((k, g) in groups.withIndex()) {
+            // หัวข้อ: ชื่อชุด + สถานะ
+            val head = buildString {
+                if (multi) append(prefs.groupName(g))
+                if (prefs.featStatus) {
+                    if (isNotEmpty()) append("  ·  ")
+                    append("ตอนนี้ ").append(prefs.summary(g))
+                    remainingBy[g]?.let { n -> append(if (n > 0) "  ·  เหลือ $n ใบ" else "  ·  ครบแล้ว ✓") }
+                }
             }
-            box.addView(t)
+            if (head.isNotEmpty()) {
+                box.addView(TextView(this).apply {
+                    text = head
+                    textSize = 13f
+                    setTextColor(Color.parseColor(if (remainingBy[g] == 0) "#86EFAC" else "#B0B6C0"))
+                    setPadding(px(4), if (k == 0) 0 else px(10), px(4), px(6))
+                })
+            }
+            val r = row()
+            addChip(r, chip("➕  ${prefs.summary(g, prefs.round(g) + 1)}", "#2563EB") { bump(g) })
+            if (prefs.featUndo && prefs.round(g) > 1) {
+                addChip(r, chip("↶ ${prefs.summary(g, prefs.round(g) - 1)}", "#374151") { undo(g) })
+            }
+            var confirm = false
+            addChip(r, chip("↺", "#374151") { tv ->
+                if (!confirm) {
+                    confirm = true
+                    tv.text = "↺ แตะอีกครั้ง (${prefs.summary(g, 1)})"
+                    tv.setTextColor(Color.parseColor("#FBBF24"))
+                    main.removeCallbacks(autoClose); main.postDelayed(autoClose, 6000)
+                } else reset(g)
+            })
+            box.addView(r)
         }
-        val next = prefs.summary(prefs.round + 1)
-        item("➕  อีก 1 รอบ  → $next") { bump() }
-        item("↺  เริ่มชุดใหม่") { tv ->
-            if (!confirmReset) {
-                confirmReset = true
-                tv.text = "↺  แตะอีกครั้งเพื่อยืนยัน (${prefs.summary(1)})"
-                tv.setTextColor(Color.parseColor("#FBBF24"))
-                main.removeCallbacks(autoClose); main.postDelayed(autoClose, 5000)
-            } else reset()
-        }
-        item("🏦  โหมดธนาคาร (ปิดผู้ช่วย)") { hideMenu(); Bank.enterBankMode(this) }
-        item("⚙️  ตั้งค่า") { hideMenu(); openApp() }
-        item("✕  ปิดเมนู") { hideMenu() }
+
+        val bottom = row().apply { setPadding(0, px(10), 0, 0) }
+        addChip(bottom, chip("🏦 ธนาคาร", "#2A2F38") { hideMenu(); Bank.enterBankMode(this@RoundsService) })
+        addChip(bottom, chip("⚙️", "#2A2F38") { hideMenu(); openApp() })
+        addChip(bottom, chip("✕", "#2A2F38") { hideMenu() })
+        box.addView(bottom)
 
         val screenW = resources.displayMetrics.widthPixels
-        val bubbleSize = (56 * dp).toInt()
+        val bubbleSize = px(56)
+        box.measure(
+            android.view.View.MeasureSpec.makeMeasureSpec(screenW, android.view.View.MeasureSpec.AT_MOST),
+            android.view.View.MeasureSpec.UNSPECIFIED)
+        val w = box.measuredWidth
         val lp = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
@@ -409,8 +469,8 @@ class RoundsService : AccessibilityService() {
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            val onRight = blp.x > screenW / 2
-            x = if (onRight) (blp.x - 280 * dp).toInt().coerceAtLeast(0) else blp.x + bubbleSize + (8 * dp).toInt()
+            val right = blp.x + bubbleSize + px(8)
+            x = if (right + w <= screenW) right else (blp.x - w - px(8)).coerceAtLeast(0)
             y = blp.y
         }
         box.setOnTouchListener { _, e ->
@@ -421,7 +481,8 @@ class RoundsService : AccessibilityService() {
             menu = box
             main.removeCallbacks(fade)
             bubble?.alpha = 0.95f
-            main.removeCallbacks(autoClose); main.postDelayed(autoClose, 6000)
+            main.removeCallbacks(autoClose); main.postDelayed(autoClose, 8000)
+            requestCount(0)
         } catch (e: Exception) {
             toast("เปิดเมนูไม่ได้: ${e.message}")
         }

@@ -18,7 +18,7 @@ class RoundsTile : TileService() {
             it.label = "อีก 1 รอบ"
             it.icon = android.graphics.drawable.Icon.createWithResource(this, R.drawable.ic_tile_plus)
             if (Build.VERSION.SDK_INT >= 29) {
-                it.subtitle = if (RoundsService.instance != null) "ตอนนี้ " + Prefs(this).summary()
+                it.subtitle = if (RoundsService.instance != null) Prefs(this).let { pr -> "ตอนนี้ " + pr.summary(pr.lastGroup) }
                               else "🏦 โหมดธนาคาร"
             }
             it.updateTile()

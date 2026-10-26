@@ -3,34 +3,88 @@ package com.v2f.ankirounds
 import android.content.Context
 import android.content.SharedPreferences
 
-/** การตั้งค่าทั้งหมดของแอป (เก็บในเครื่อง) */
+/**
+ * การตั้งค่าทั้งหมดของแอป (เก็บในเครื่อง)
+ * รองรับหลาย "ชุด" — ชุดแรก (g = 0) ใช้ key เดิมของเวอร์ชันก่อน จึงไม่ต้องตั้งค่าใหม่
+ */
 class Prefs(ctx: Context) {
     private val p: SharedPreferences = ctx.getSharedPreferences("rounds", Context.MODE_PRIVATE)
 
     data class Deck(val name: String, val base: Int, val step: Int)
 
-    fun deck(i: Int): Deck = Deck(
-        p.getString("deck${i}_name", DEFAULT_NAMES[i]) ?: "",
-        p.getInt("deck${i}_base", DEFAULT_BASE[i]),
-        p.getInt("deck${i}_step", DEFAULT_STEP[i]),
-    )
+    private fun pre(g: Int) = if (g == 0) "" else "g${g}_"
 
-    fun setDeck(i: Int, d: Deck) {
-        p.edit().putString("deck${i}_name", d.name.trim())
-            .putInt("deck${i}_base", d.base).putInt("deck${i}_step", d.step).apply()
+    // ------------------------------------------------------------------ groups (ชุด)
+
+    var groupCount: Int
+        get() = p.getInt("group_count", 1).coerceAtLeast(1)
+        set(v) = p.edit().putInt("group_count", v.coerceAtLeast(1)).apply()
+
+    /** ชุดที่ใช้ล่าสุด (ใช้กับปุ่มในแผงควบคุม) */
+    var lastGroup: Int
+        get() = p.getInt("last_group", 0).coerceIn(0, groupCount - 1)
+        set(v) = p.edit().putInt("last_group", v).apply()
+
+    fun groupName(g: Int): String =
+        p.getString("${pre(g)}group_name", null)?.takeIf { it.isNotBlank() } ?: "ชุด ${g + 1}"
+
+    fun setGroupName(g: Int, n: String) = p.edit().putString("${pre(g)}group_name", n.trim()).apply()
+
+    fun addGroup(): Int {
+        val g = groupCount
+        val e = p.edit()
+        for (i in 0 until MAX_DECKS) {
+            e.putString("${pre(g)}deck${i}_name", "")
+            e.putInt("${pre(g)}deck${i}_base", DEFAULT_BASE[i])
+            e.putInt("${pre(g)}deck${i}_step", DEFAULT_STEP[i])
+        }
+        e.putInt("${pre(g)}round", 1).putString("${pre(g)}group_name", "ชุด ${g + 1}").apply()
+        groupCount = g + 1
+        return g
     }
 
-    /** deck ที่ตั้งชื่อไว้ (deck ที่ใช้ preset ร่วมกัน ใส่แค่ deck เดียวก็พอ) */
-    fun decks(): List<Deck> = (0 until MAX_DECKS).map { deck(it) }.filter { it.name.isNotBlank() }
+    /** ลบชุด g (ชุดหลังจากนั้นเลื่อนขึ้นมาแทน) */
+    fun removeGroup(g: Int) {
+        val n = groupCount
+        if (n <= 1) return
+        for (k in g until n - 1) copyGroup(k + 1, k)
+        groupCount = n - 1
+        if (lastGroup >= n - 1) lastGroup = 0
+    }
 
-    /** รอบปัจจุบัน (1 = ค่าเริ่มต้น) */
-    var round: Int
-        get() = p.getInt("round", 1)
-        set(v) = p.edit().putInt("round", v.coerceAtLeast(1)).apply()
+    private fun copyGroup(from: Int, to: Int) {
+        for (i in 0 until MAX_DECKS) setDeck(to, i, deck(from, i))
+        setRound(to, round(from))
+        setGroupName(to, groupName(from))
+    }
 
-    fun valueFor(d: Deck, r: Int = round): Int = d.base + d.step * (r - 1)
+    // ------------------------------------------------------------------ decks in a group
 
-    fun summary(r: Int = round): String = decks().joinToString(" / ") { valueFor(it, r).toString() }
+    fun deck(g: Int, i: Int): Deck = Deck(
+        p.getString("${pre(g)}deck${i}_name", if (g == 0) DEFAULT_NAMES[i] else "") ?: "",
+        p.getInt("${pre(g)}deck${i}_base", DEFAULT_BASE[i]),
+        p.getInt("${pre(g)}deck${i}_step", DEFAULT_STEP[i]),
+    )
+
+    fun setDeck(g: Int, i: Int, d: Deck) {
+        p.edit().putString("${pre(g)}deck${i}_name", d.name.trim())
+            .putInt("${pre(g)}deck${i}_base", d.base).putInt("${pre(g)}deck${i}_step", d.step).apply()
+    }
+
+    /** deck ที่ตั้งชื่อไว้ในชุดนี้ */
+    fun decks(g: Int): List<Deck> = (0 until MAX_DECKS).map { deck(g, it) }.filter { it.name.isNotBlank() }
+
+    /** รอบปัจจุบันของชุด (1 = ค่าเริ่มต้น) */
+    fun round(g: Int): Int = p.getInt("${pre(g)}round", 1)
+
+    fun setRound(g: Int, v: Int) = p.edit().putInt("${pre(g)}round", v.coerceAtLeast(1)).apply()
+
+    fun valueFor(d: Deck, r: Int): Int = d.base + d.step * (r - 1)
+
+    fun summary(g: Int, r: Int = round(g)): String =
+        decks(g).joinToString(" / ") { valueFor(it, r).toString() }
+
+    // ------------------------------------------------------------------ bubble
 
     var bubble: Boolean
         get() = p.getBoolean("bubble", true)
@@ -53,6 +107,34 @@ class Prefs(ctx: Context) {
     var bubbleY: Int
         get() = p.getInt("bubble_y", 400)
         set(v) = p.edit().putInt("bubble_y", v).apply()
+
+    // ------------------------------------------------------------------ feature switches (เปิดไว้ก่อน ปิดได้)
+
+    /** ช่องค้นหาในหน้าเลือก deck */
+    var featSearch: Boolean
+        get() = p.getBoolean("feat_search", true)
+        set(v) = p.edit().putBoolean("feat_search", v).apply()
+
+    /** หัวเมนูบอกสถานะ (ตอนนี้ … · เหลือ … ใบ) */
+    var featStatus: Boolean
+        get() = p.getBoolean("feat_status", true)
+        set(v) = p.edit().putBoolean("feat_status", v).apply()
+
+    /** หลายชุดในเมนู */
+    var featGroups: Boolean
+        get() = p.getBoolean("feat_groups", true)
+        set(v) = p.edit().putBoolean("feat_groups", v).apply()
+
+    /** ปุ่ม ↶ ย้อน 1 รอบ */
+    var featUndo: Boolean
+        get() = p.getBoolean("feat_undo", true)
+        set(v) = p.edit().putBoolean("feat_undo", v).apply()
+
+    /** ชุดที่แสดงในเมนู (ปิดหลายชุด = เฉพาะชุดแรก) */
+    fun visibleGroups(): List<Int> =
+        if (featGroups) (0 until groupCount).filter { decks(it).isNotEmpty() } else listOf(0)
+
+    // ------------------------------------------------------------------ screen labels
 
     /** ข้อความที่ใช้หาบนหน้าจอ AnkiDroid (คั่นหลายแบบด้วย | ) */
     var menuLabels: String

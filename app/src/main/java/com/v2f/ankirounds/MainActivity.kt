@@ -37,12 +37,16 @@ class MainActivity : Activity() {
     private lateinit var menuField: EditText
     private lateinit var fieldField: EditText
     private lateinit var saveField: EditText
+    private var group = 0                       // ชุดที่กำลังแก้
+    private lateinit var groupBar: LinearLayout
+    private lateinit var groupNameField: EditText
 
     private val dp get() = resources.displayMetrics.density
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         prefs = Prefs(this)
+        group = prefs.lastGroup
         root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(px(18), px(20), px(18), px(40))
@@ -75,10 +79,16 @@ class MainActivity : Activity() {
         button("เปิดสิทธิ์ช่วยเหลือพิเศษ") { openAccessibility() }
         note("ถ้าเปิดไม่ได้ (ขึ้นว่า \"การตั้งค่าที่จำกัด\"): ตั้งค่า → แอป → AnkiRounds → ⋮ มุมขวาบน → อนุญาตการตั้งค่าที่จำกัด แล้วลองใหม่")
 
-        section("2 · deck")
+        section("2 · ชุดและ deck")
+        groupBar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        root.addView(android.widget.HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            addView(groupBar)
+        })
+        groupNameField = labeled("ชื่อชุด (เช่น ไทย / Bio / Math)", prefs.groupName(group))
         note("กด 🔎 เพื่อเลือก deck จาก AnkiDroid (ไม่ต้องพิมพ์) · deck ที่ใช้ preset ร่วมกัน แอปจะแก้ให้ครั้งเดียวเอง")
         for (i in 0 until Prefs.MAX_DECKS) {
-            val d = prefs.deck(i)
+            val d = prefs.deck(group, i)
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
@@ -97,16 +107,17 @@ class MainActivity : Activity() {
             root.addView(row)
             nameFields.add(name); baseFields.add(base); stepFields.add(step)
         }
+        renderGroupBar()
 
         section("3 · รอบ")
         roundView = title("", 18f)
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        row.addView(btn("➕ อีก 1 รอบ", true) { withService { it.bump() } },
+        row.addView(btn("➕ อีก 1 รอบ", true) { withService { it.bump(group) } },
             LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         row.addView(btn("↺ เริ่มชุดใหม่", false) { confirmReset() },
             LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         root.addView(row)
-        note("ปุ่มลอย: แตะ = เปิดเมนูให้เลือก (➕ / ↺ / 🏦 / ⚙️) · ลาก = ย้ายที่\nตัวเลขบนปุ่ม = การ์ดที่เหลือในรอบนี้ · ครบแล้วเปลี่ยนเป็น ➕ สีเขียวและเด้งเรียก")
+        note("ปุ่มลอย: แตะ = เปิดเมนูให้เลือก (➕ / ↶ / ↺ / 🏦 / ⚙️) · ลาก = ย้ายที่\nตัวเลขบนปุ่ม = การ์ดที่เหลือในรอบนี้ · ครบแล้วเปลี่ยนเป็น ➕ สีเขียวและเด้งเรียก")
         val sw = Switch(this).apply {
             text = "แสดงปุ่มลอย ➕"
             setTextColor(Color.WHITE)
@@ -140,6 +151,12 @@ class MainActivity : Activity() {
             }
         })
         button("ตั้งรอบเองโดยไม่แตะ AnkiDroid…") { pickRound() }
+
+        section("✨ ฟีเจอร์เสริม (ปิดได้ถ้าไม่ชอบ)")
+        featSwitch("ช่องค้นหาในหน้าเลือก deck", prefs.featSearch) { prefs.featSearch = it }
+        featSwitch("หัวเมนูบอกสถานะ (ตอนนี้ … · เหลือ … ใบ)", prefs.featStatus) { prefs.featStatus = it }
+        featSwitch("หลายชุดในเมนู (ปิด = แสดงเฉพาะชุดแรก)", prefs.featGroups) { prefs.featGroups = it }
+        featSwitch("ปุ่ม ↶ ย้อน 1 รอบ ในเมนู", prefs.featUndo) { prefs.featUndo = it }
 
         section("🏦 โหมดธนาคาร")
         note("แอปธนาคารบางแอปไม่ยอมเปิดถ้าผู้ช่วยทำงานอยู่ กดปิดก่อนเข้าแอปธนาคาร แล้วกดเปิดกลับเมื่อเสร็จ (ปุ่มลอย ➕ จะหายไประหว่างนั้น)")
@@ -185,7 +202,7 @@ class MainActivity : Activity() {
         val on = RoundsService.instance != null
         status.text = if (on) "✅ เปิดสิทธิ์ช่วยเหลือพิเศษแล้ว" else "⚠️ ยังไม่ได้เปิดสิทธิ์ช่วยเหลือพิเศษ"
         status.setTextColor(if (on) Color.parseColor("#4ADE80") else Color.parseColor("#FBBF24"))
-        roundView.text = "ตอนนี้รอบ ${prefs.round}  ·  ${prefs.summary()}"
+        roundView.text = "${prefs.groupName(group)}: รอบ ${prefs.round(group)}  ·  ${prefs.summary(group)}"
         val perm = AnkiApi.hasPermission(this)
         permView.text = if (perm) "✅ อ่านข้อมูล AnkiDroid ได้: ปุ่มบอกจำนวนการ์ดที่เหลือ และตรวจผลหลัง Save"
                         else "⚠️ ยังไม่ได้อนุญาตให้อ่าน AnkiDroid: ปุ่มจะไม่บอกจำนวนการ์ด และไม่ตรวจผลหลัง Save"
@@ -219,16 +236,81 @@ class MainActivity : Activity() {
     private fun saveFields() {
         if (nameFields.isEmpty()) return
         for (i in 0 until Prefs.MAX_DECKS) {
-            prefs.setDeck(i, Prefs.Deck(
+            prefs.setDeck(group, i, Prefs.Deck(
                 nameFields[i].text.toString(),
                 baseFields[i].text.toString().toIntOrNull() ?: 0,
                 stepFields[i].text.toString().toIntOrNull() ?: 0,
             ))
         }
+        if (::groupNameField.isInitialized) prefs.setGroupName(group, groupNameField.text.toString())
         prefs.menuLabels = menuField.text.toString()
         prefs.fieldLabels = fieldField.text.toString()
         prefs.saveLabels = saveField.text.toString()
-        if (::roundView.isInitialized) roundView.text = "ตอนนี้รอบ ${prefs.round}  ·  ${prefs.summary()}"
+        if (::roundView.isInitialized) {
+            roundView.text = "${prefs.groupName(group)}: รอบ ${prefs.round(group)}  ·  ${prefs.summary(group)}"
+        }
+    }
+
+    /** แถบเลือกชุด: [ชุด 1] [ชุด 2] [＋] [ลบ] */
+    private fun renderGroupBar() {
+        groupBar.removeAllViews()
+        for (g in 0 until prefs.groupCount) {
+            val sel = g == group
+            groupBar.addView(Button(this).apply {
+                text = prefs.groupName(g); isAllCaps = false; textSize = 14f
+                setTextColor(Color.WHITE)
+                background = GradientDrawable().apply {
+                    cornerRadius = 20 * dp
+                    setColor(Color.parseColor(if (sel) "#2563EB" else "#2A2F38"))
+                }
+                setOnClickListener { switchGroup(g) }
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(40)).apply { marginEnd = px(6) })
+        }
+        groupBar.addView(btn("＋ ชุด", false) {
+            saveFields(); switchGroup(prefs.addGroup())
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(40)).apply { marginEnd = px(6) })
+        if (prefs.groupCount > 1) {
+            groupBar.addView(btn("ลบชุดนี้", false) { confirmRemoveGroup() },
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(40)))
+        }
+    }
+
+    private fun switchGroup(g: Int) {
+        if (g != group) saveFields()
+        group = g.coerceIn(0, prefs.groupCount - 1)
+        prefs.lastGroup = group
+        groupNameField.setText(prefs.groupName(group))
+        for (i in 0 until Prefs.MAX_DECKS) {
+            val d = prefs.deck(group, i)
+            nameFields[i].setText(d.name)
+            baseFields[i].setText(d.base.toString())
+            stepFields[i].setText(d.step.toString())
+        }
+        renderGroupBar()
+        refresh()
+    }
+
+    private fun confirmRemoveGroup() {
+        AlertDialog.Builder(this)
+            .setTitle("ลบ ${prefs.groupName(group)}?")
+            .setMessage("ลบเฉพาะการตั้งค่าในแอปนี้ ไม่แตะ deck ใน AnkiDroid")
+            .setPositiveButton("ลบ") { _, _ ->
+                prefs.removeGroup(group)
+                group = 0
+                switchGroup(0)
+            }
+            .setNegativeButton("ยกเลิก", null)
+            .show()
+    }
+
+    private fun featSwitch(label: String, on: Boolean, set: (Boolean) -> Unit) {
+        root.addView(Switch(this).apply {
+            text = label
+            setTextColor(Color.WHITE)
+            isChecked = on
+            setPadding(0, px(4), 0, px(4))
+            setOnCheckedChangeListener { _, v -> set(v); RoundsService.instance?.refreshBubble() }
+        })
     }
 
     // ------------------------------------------------------------------ actions
@@ -288,9 +370,33 @@ class MainActivity : Activity() {
             setPadding(px(8), px(4), px(8), px(4))
         }
         lateinit var dialog: AlertDialog
+        var query = ""
 
         fun render() {
             list.removeAllViews()
+            if (query.isNotBlank()) {
+                // โหมดค้นหา: แสดงผลลัพธ์แบบแบน พร้อมชื่อกลุ่มตัวเล็ก
+                val q = query.trim().lowercase()
+                val hits = all.filter { it.name.lowercase().contains(q) }
+                if (hits.isEmpty()) list.addView(TextView(this).apply {
+                    text = "ไม่พบ \"$query\""; setTextColor(Color.GRAY); setPadding(px(8), px(14), 0, px(14))
+                })
+                for (d in hits) {
+                    list.addView(TextView(this).apply {
+                        val parent = if (d.name.contains("::")) d.name.substringBeforeLast("::").replace("::", " › ") + " › " else ""
+                        text = android.text.SpannableStringBuilder().apply {
+                            append(parent)
+                            setSpan(android.text.style.ForegroundColorSpan(Color.GRAY), 0, parent.length, 0)
+                            append(d.shortName)
+                        }
+                        textSize = 16f
+                        setTextColor(if (d.name == cur) Color.parseColor("#60A5FA") else Color.WHITE)
+                        setPadding(px(8), px(12), px(8), px(12))
+                        setOnClickListener { dialog.dismiss(); choose(i, d, chosen) }
+                    })
+                }
+                return
+            }
             fun add(d: AnkiApi.DeckInfo, depth: Int) {
                 val kids = children[d.name].orEmpty()
                 val open = expanded.contains(d.name)
@@ -327,9 +433,29 @@ class MainActivity : Activity() {
             for (t in tops) add(t, 0)
         }
         render()
+        val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        if (prefs.featSearch) {
+            content.addView(EditText(this).apply {
+                hint = "🔍 ค้นหา deck"
+                setTextColor(Color.WHITE); setHintTextColor(Color.GRAY)
+                isSingleLine = true
+                addTextChangedListener(object : android.text.TextWatcher {
+                    override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                    override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                    override fun afterTextChanged(e: android.text.Editable?) {
+                        query = e?.toString() ?: ""
+                        render()
+                    }
+                })
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(px(16), px(4), px(16), 0)
+            })
+        }
+        content.addView(ScrollView(this).apply { addView(list) },
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         dialog = AlertDialog.Builder(this)
             .setTitle("เลือก deck ${i + 1}")
-            .setView(ScrollView(this).apply { addView(list) })
+            .setView(content)
             .setNegativeButton("ยกเลิก", null)
             .create()
         dialog.show()
@@ -364,21 +490,21 @@ class MainActivity : Activity() {
     private fun confirmReset() {
         AlertDialog.Builder(this)
             .setTitle("เริ่มชุดใหม่?")
-            .setMessage("ตั้ง deck กลับเป็นค่าเริ่มต้น (${prefs.summary(1)}) ใน AnkiDroid")
-            .setPositiveButton("เริ่มชุดใหม่") { _, _ -> withService { it.reset() } }
+            .setMessage("ตั้ง ${prefs.groupName(group)} กลับเป็นค่าเริ่มต้น (${prefs.summary(group, 1)}) ใน AnkiDroid")
+            .setPositiveButton("เริ่มชุดใหม่") { _, _ -> withService { it.reset(group) } }
             .setNegativeButton("ยกเลิก", null)
             .show()
     }
 
     private fun pickRound() {
         saveFields()
-        val e = edit(prefs.round.toString(), "รอบ", true)
+        val e = edit(prefs.round(group).toString(), "รอบ", true)
         AlertDialog.Builder(this)
-            .setTitle("ตั้งรอบปัจจุบัน")
+            .setTitle("ตั้งรอบปัจจุบันของ ${prefs.groupName(group)}")
             .setMessage("ใช้เมื่อปรับบนคอมไปแล้ว ให้ตัวนับในโทรศัพท์ตรงกัน (ไม่แก้ AnkiDroid)")
             .setView(e)
             .setPositiveButton("ตกลง") { _, _ ->
-                prefs.round = e.text.toString().toIntOrNull() ?: prefs.round
+                prefs.setRound(group, e.text.toString().toIntOrNull() ?: prefs.round(group))
                 refresh()
             }
             .setNegativeButton("ยกเลิก", null)
