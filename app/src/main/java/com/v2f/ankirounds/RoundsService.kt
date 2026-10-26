@@ -72,7 +72,7 @@ class RoundsService : AccessibilityService() {
         if (decks.isEmpty()) { toast("ยังไม่ได้ตั้งชื่อ deck ในแอป AnkiRounds"); return }
         busy = true
         setBubbleText("⏳")
-        val targets = decks.map { it.name to prefs.valueFor(it, newRound) }
+        val targets = dedupeByPreset(decks.map { it.name to prefs.valueFor(it, newRound) })
         Thread {
             val a = Automator(this, prefs)
             var ok = false
@@ -97,6 +97,22 @@ class RoundsService : AccessibilityService() {
         }.start()
     }
 
+    /** deck ที่ใช้ preset เดียวกัน แก้ครั้งเดียวพอ (ใช้ค่าที่มากที่สุด) — ต้องมีสิทธิ์อ่าน AnkiDroid */
+    private fun dedupeByPreset(targets: List<Pair<String, Int>>): List<Pair<String, Int>> {
+        if (!AnkiApi.hasPermission(this)) return targets
+        val all = try { AnkiApi.decks(this) } catch (_: Exception) { return targets }
+        val best = LinkedHashMap<Long, Pair<String, Int>>()
+        val out = ArrayList<Pair<String, Int>>()
+        for (t in targets) {
+            val info = AnkiApi.find(all, t.first)
+            if (info == null || info.presetId < 0) { out.add(t); continue }
+            val cur = best[info.presetId]
+            if (cur == null || t.second > cur.second) best[info.presetId] = t
+        }
+        out.addAll(best.values)
+        return out
+    }
+
     /** บันทึกโครงหน้าจอปัจจุบัน (หลังนับถอยหลัง) */
     fun dumpAfter(delayMs: Long) {
         toast("อีก ${delayMs / 1000} วินาทีจะบันทึกโครงหน้าจอ สลับไปหน้าที่ต้องการได้เลย")
@@ -115,6 +131,20 @@ class RoundsService : AccessibilityService() {
         if (!::prefs.isInitialized) return
         if (prefs.bubble) showBubble() else removeBubble()
         setBubbleText(if (busy) "⏳" else "➕")
+        wake()
+    }
+
+    // จางลงเองเมื่อไม่ได้ใช้ 3 วินาที (แตะเมื่อไหร่ก็กลับมาชัด)
+    private val fade = Runnable {
+        bubble?.animate()?.alpha(0.25f)?.setDuration(600)?.start()
+    }
+
+    private fun wake() {
+        val v = bubble ?: return
+        main.removeCallbacks(fade)
+        v.animate().cancel()
+        v.alpha = 0.9f
+        if (::prefs.isInitialized && prefs.bubbleFade && !busy) main.postDelayed(fade, 3000)
     }
 
     private fun setBubbleText(t: String) {
@@ -154,6 +184,7 @@ class RoundsService : AccessibilityService() {
         v.setOnTouchListener { _, e ->
             when (e.action) {
                 MotionEvent.ACTION_DOWN -> {
+                    main.removeCallbacks(fade); v.animate().cancel(); v.alpha = 0.95f
                     downX = e.rawX; downY = e.rawY; startX = lp.x; startY = lp.y
                     moved = false; downAt = System.currentTimeMillis()
                 }
@@ -166,6 +197,7 @@ class RoundsService : AccessibilityService() {
                     }
                 }
                 MotionEvent.ACTION_UP -> {
+                    wake()
                     if (moved) {
                         prefs.bubbleX = lp.x; prefs.bubbleY = lp.y
                     } else if (System.currentTimeMillis() - downAt > 600) {
@@ -180,6 +212,7 @@ class RoundsService : AccessibilityService() {
         try {
             wm.addView(v, lp)
             bubble = v
+            wake()
         } catch (e: Exception) {
             toast("แสดงปุ่มลอยไม่ได้: ${e.message}")
         }

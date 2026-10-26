@@ -36,6 +36,11 @@ class Prefs(ctx: Context) {
         get() = p.getBoolean("bubble", true)
         set(v) = p.edit().putBoolean("bubble", v).apply()
 
+    /** ปุ่มลอยจางลงเองเมื่อไม่ได้ใช้ */
+    var bubbleFade: Boolean
+        get() = p.getBoolean("bubble_fade", true)
+        set(v) = p.edit().putBoolean("bubble_fade", v).apply()
+
     var bubbleX: Int
         get() = p.getInt("bubble_x", 0)
         set(v) = p.edit().putInt("bubble_x", v).apply()

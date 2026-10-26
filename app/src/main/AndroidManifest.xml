@@ -2,6 +2,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- อ่านรายชื่อ deck จาก AnkiDroid (API ทางการของ AnkiDroid) -->
+    <uses-permission android:name="com.ichi2.anki.permission.READ_WRITE_DATABASE" />
+
     <!-- (ไม่บังคับ) ถ้าอนุญาตผ่าน adb ครั้งเดียว โหมดธนาคารจะเปิด/ปิดผู้ช่วยได้ในแตะเดียว -->
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS"
         tools:ignore="ProtectedPermissions" />

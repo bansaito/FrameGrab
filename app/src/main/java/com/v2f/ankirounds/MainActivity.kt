@@ -75,7 +75,7 @@ class MainActivity : Activity() {
         note("ถ้าเปิดไม่ได้ (ขึ้นว่า \"การตั้งค่าที่จำกัด\"): ตั้งค่า → แอป → AnkiRounds → ⋮ มุมขวาบน → อนุญาตการตั้งค่าที่จำกัด แล้วลองใหม่")
 
         section("2 · deck")
-        note("deck ที่ใช้ preset ร่วมกัน ใส่แค่ deck เดียว (เช่น deck 2 กับ 3 ใช้ preset เดียวกัน ใส่แค่ deck 2) · ชื่อต้องตรงกับที่เห็นในรายการ AnkiDroid")
+        note("กด 🔎 เพื่อเลือก deck จาก AnkiDroid (ไม่ต้องพิมพ์) · deck ที่ใช้ preset ร่วมกัน แอปจะแก้ให้ครั้งเดียวเอง")
         for (i in 0 until Prefs.MAX_DECKS) {
             val d = prefs.deck(i)
             val row = LinearLayout(this).apply {
@@ -86,6 +86,9 @@ class MainActivity : Activity() {
             val base = edit(d.base.toString(), "เริ่ม", true)
             val step = edit(d.step.toString(), "+", true)
             row.addView(name, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            val idx = i
+            row.addView(btn("🔎", false) { pickDeck(idx) },
+                LinearLayout.LayoutParams(px(48), px(44)).apply { marginStart = px(4) })
             row.addView(small("เริ่ม"))
             row.addView(base, LinearLayout.LayoutParams(px(56), ViewGroup.LayoutParams.WRAP_CONTENT))
             row.addView(small("เพิ่ม"))
@@ -113,6 +116,15 @@ class MainActivity : Activity() {
             }
         }
         root.addView(sw)
+        root.addView(Switch(this).apply {
+            text = "ปุ่มลอยจางลงเองเมื่อไม่ได้ใช้"
+            setTextColor(Color.WHITE)
+            isChecked = prefs.bubbleFade
+            setOnCheckedChangeListener { _, on ->
+                prefs.bubbleFade = on
+                RoundsService.instance?.refreshBubble()
+            }
+        })
         button("ตั้งรอบเองโดยไม่แตะ AnkiDroid…") { pickRound() }
 
         section("🏦 โหมดธนาคาร")
@@ -210,6 +222,66 @@ class MainActivity : Activity() {
             Toast.makeText(this, "เปิดสิทธิ์ช่วยเหลือพิเศษก่อน", Toast.LENGTH_LONG).show()
             openAccessibility()
         } else f(s)
+    }
+
+    private var pendingPick = -1
+
+    private fun pickDeck(i: Int) {
+        saveFields()
+        if (!AnkiApi.hasPermission(this)) {
+            pendingPick = i
+            Toast.makeText(this, "อนุญาตให้อ่านรายชื่อ deck จาก AnkiDroid", Toast.LENGTH_SHORT).show()
+            requestPermissions(arrayOf(AnkiApi.PERM), 7)
+            return
+        }
+        val all = try {
+            AnkiApi.decks(this).filter { !it.filtered }
+        } catch (e: Exception) {
+            AlertDialog.Builder(this).setTitle("อ่านรายชื่อ deck ไม่ได้").setMessage(e.message)
+                .setPositiveButton("ตกลง", null).show()
+            return
+        }
+        if (all.isEmpty()) {
+            Toast.makeText(this, "ไม่พบ deck ใน AnkiDroid", Toast.LENGTH_LONG).show(); return
+        }
+        val chosen = (0 until Prefs.MAX_DECKS).filter { it != i }
+            .mapNotNull { AnkiApi.find(all, nameFields[it].text.toString()) }
+        val items = all.map { d ->
+            val shared = chosen.firstOrNull { it.presetId == d.presetId && d.presetId >= 0 }
+            val indent = "   ".repeat(d.name.count { c -> c == ':' } / 2)
+            indent + d.shortName + "\n" + indent +
+                "   ${if (d.reviewsPerDay >= 0) "${d.reviewsPerDay}/วัน · " else ""}preset ${d.presetName}" +
+                (if (shared != null) "  (ใช้ร่วมกับ ${shared.shortName})" else "")
+        }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle("เลือก deck ${i + 1}")
+            .setItems(items) { _, w ->
+                val d = all[w]
+                nameFields[i].setText(d.name)
+                if (d.reviewsPerDay > 0) {
+                    baseFields[i].setText(d.reviewsPerDay.toString())
+                    if ((stepFields[i].text.toString().toIntOrNull() ?: 0) <= 0) {
+                        stepFields[i].setText(d.reviewsPerDay.toString())
+                    }
+                }
+                saveFields()
+                val dup = chosen.firstOrNull { it.presetId == d.presetId && d.presetId >= 0 }
+                if (dup != null) {
+                    Toast.makeText(this, "${d.shortName} ใช้ preset เดียวกับ ${dup.shortName} — แอปจะแก้ครั้งเดียวให้", Toast.LENGTH_LONG).show()
+                }
+            }
+            .setNegativeButton("ยกเลิก", null)
+            .show()
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 7) {
+            val i = pendingPick
+            pendingPick = -1
+            if (AnkiApi.hasPermission(this) && i >= 0) pickDeck(i)
+            else Toast.makeText(this, "ยังไม่ได้รับอนุญาต พิมพ์ชื่อ deck เองแทนได้", Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun confirmReset() {

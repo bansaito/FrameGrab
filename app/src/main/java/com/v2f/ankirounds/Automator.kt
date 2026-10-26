@@ -113,9 +113,9 @@ class Automator(private val svc: AccessibilityService, private val prefs: Prefs)
     }
 
     private fun findDeckInList(name: String): AccessibilityNodeInfo? {
-        val want = norm(name)
+        val want = norm(name.substringAfterLast("::"))   // ในรายการ AnkiDroid แสดงแค่ชื่อสั้น
         val match: (AccessibilityNodeInfo) -> Boolean = { n ->
-            n.packageName?.toString() == Prefs.ANKI_PKG && norm(label(n)).let { it == want || it.endsWith("::$want") }
+            n.packageName?.toString() == Prefs.ANKI_PKG && norm(label(n)) == want
         }
         findNode(match)?.let { return it }
         // เลื่อนขึ้นบนสุดก่อน แล้วค่อยเลื่อนลงหา
