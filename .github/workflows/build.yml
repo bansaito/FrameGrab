@@ -40,7 +40,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete ankirounds-latest --yes --cleanup-tag || true
+          git push origin :refs/tags/ankirounds-latest || true
           gh release create ankirounds-latest AnkiRounds.apk \
-            --target anki-rounds \
+            --target "${{ github.sha }}" \
             --title "AnkiRounds ล่าสุด" \
             --notes "ดาวน์โหลด AnkiRounds.apk แล้วเปิดในมือถือ Android เพื่อติดตั้ง (build ${{ github.run_number }})"
+          # กันไม่ให้ค้างเป็นฉบับร่าง (draft) ซึ่งโหลดไม่ได้
+          gh release edit ankirounds-latest --draft=false --latest=false
+          gh release view ankirounds-latest --json isDraft,assets --jq '{draft: .isDraft, files: [.assets[].name]}'
+          curl -sfIL -o /dev/null https://github.com/${{ github.repository }}/releases/download/ankirounds-latest/AnkiRounds.apk && echo "download link OK"
