@@ -264,32 +264,90 @@ class MainActivity : Activity() {
         }
         val chosen = (0 until Prefs.MAX_DECKS).filter { it != i }
             .mapNotNull { AnkiApi.find(all, nameFields[it].text.toString()) }
-        val items = all.map { d ->
-            val shared = chosen.firstOrNull { it.presetId == d.presetId && d.presetId >= 0 }
-            val indent = "   ".repeat(d.name.count { c -> c == ':' } / 2)
-            indent + d.shortName + "\n" + indent +
-                "   ${if (d.reviewsPerDay >= 0) "${d.reviewsPerDay}/วัน · " else ""}preset ${d.presetName}" +
-                (if (shared != null) "  (ใช้ร่วมกับ ${shared.shortName})" else "")
-        }.toTypedArray()
-        AlertDialog.Builder(this)
-            .setTitle("เลือก deck ${i + 1}")
-            .setItems(items) { _, w ->
-                val d = all[w]
-                nameFields[i].setText(d.name)
-                if (d.reviewsPerDay > 0) {
-                    baseFields[i].setText(d.reviewsPerDay.toString())
-                    if ((stepFields[i].text.toString().toIntOrNull() ?: 0) <= 0) {
-                        stepFields[i].setText(d.reviewsPerDay.toString())
+        showDeckTree(i, all, chosen)
+    }
+
+    /** รายชื่อ deck แบบพับได้: แตะ ▸ เพื่อกาง/พับ deck ย่อย · แตะชื่อเพื่อเลือก */
+    private fun showDeckTree(i: Int, all: List<AnkiApi.DeckInfo>, chosen: List<AnkiApi.DeckInfo>) {
+        val byName = all.associateBy { it.name }
+        val children = HashMap<String, MutableList<AnkiApi.DeckInfo>>()
+        val tops = ArrayList<AnkiApi.DeckInfo>()
+        for (d in all) {
+            val parent = if (d.name.contains("::")) d.name.substringBeforeLast("::") else null
+            if (parent != null && byName.containsKey(parent)) children.getOrPut(parent) { ArrayList() }.add(d)
+            else tops.add(d)
+        }
+        // กางให้เห็น deck ที่เลือกไว้ในช่องนี้อยู่แล้ว
+        val expanded = HashSet<String>()
+        val cur = nameFields[i].text.toString()
+        var p = cur
+        while (p.contains("::")) { p = p.substringBeforeLast("::"); expanded.add(p) }
+
+        val list = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(px(8), px(4), px(8), px(4))
+        }
+        lateinit var dialog: AlertDialog
+
+        fun render() {
+            list.removeAllViews()
+            fun add(d: AnkiApi.DeckInfo, depth: Int) {
+                val kids = children[d.name].orEmpty()
+                val open = expanded.contains(d.name)
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(px(depth * 20), 0, 0, 0)
+                }
+                val arrow = TextView(this).apply {
+                    text = if (kids.isEmpty()) "" else if (open) "▾" else "▸"
+                    textSize = 18f
+                    gravity = Gravity.CENTER
+                    setTextColor(Color.parseColor("#93C5FD"))
+                    if (kids.isNotEmpty()) setOnClickListener {
+                        if (open) expanded.remove(d.name) else expanded.add(d.name)
+                        render()
                     }
                 }
-                saveFields()
-                val dup = chosen.firstOrNull { it.presetId == d.presetId && d.presetId >= 0 }
-                if (dup != null) {
-                    Toast.makeText(this, "${d.shortName} ใช้ preset เดียวกับ ${dup.shortName} — แอปจะแก้ครั้งเดียวให้", Toast.LENGTH_LONG).show()
+                val label = TextView(this).apply {
+                    text = d.shortName
+                    textSize = 17f
+                    setTextColor(if (d.name == cur) Color.parseColor("#60A5FA") else Color.WHITE)
+                    setPadding(px(4), px(12), px(8), px(12))
+                    setOnClickListener {
+                        dialog.dismiss()
+                        choose(i, d, chosen)
+                    }
                 }
+                row.addView(arrow, LinearLayout.LayoutParams(px(40), px(44)))
+                row.addView(label, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                list.addView(row)
+                if (open) for (k in kids) add(k, depth + 1)
             }
+            for (t in tops) add(t, 0)
+        }
+        render()
+        dialog = AlertDialog.Builder(this)
+            .setTitle("เลือก deck ${i + 1}")
+            .setView(ScrollView(this).apply { addView(list) })
             .setNegativeButton("ยกเลิก", null)
-            .show()
+            .create()
+        dialog.show()
+    }
+
+    private fun choose(i: Int, d: AnkiApi.DeckInfo, chosen: List<AnkiApi.DeckInfo>) {
+        nameFields[i].setText(d.name)
+        if (d.reviewsPerDay > 0) {
+            baseFields[i].setText(d.reviewsPerDay.toString())
+            if ((stepFields[i].text.toString().toIntOrNull() ?: 0) <= 0) {
+                stepFields[i].setText(d.reviewsPerDay.toString())
+            }
+        }
+        saveFields()
+        val dup = chosen.firstOrNull { it.presetId == d.presetId && d.presetId >= 0 }
+        if (dup != null) {
+            Toast.makeText(this, "${d.shortName} ใช้ preset เดียวกับ ${dup.shortName} — แอปจะแก้ครั้งเดียวให้", Toast.LENGTH_LONG).show()
+        }
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
