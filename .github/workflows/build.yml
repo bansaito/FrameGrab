@@ -1,0 +1,46 @@
+name: Build AnkiRounds APK
+
+on:
+  push:
+    branches: [anki-rounds]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.11.1
+
+      - name: Build
+        run: gradle assembleDebug --stacktrace --no-daemon
+
+      - name: Rename APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk AnkiRounds.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AnkiRounds-apk
+          path: AnkiRounds.apk
+
+      # ลิงก์ดาวน์โหลดถาวร: Releases > "AnkiRounds ล่าสุด"
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete ankirounds-latest --yes --cleanup-tag || true
+          gh release create ankirounds-latest AnkiRounds.apk \
+            --target anki-rounds \
+            --title "AnkiRounds ล่าสุด" \
+            --notes "ดาวน์โหลด AnkiRounds.apk แล้วเปิดในมือถือ Android เพื่อติดตั้ง (build ${{ github.run_number }})"
