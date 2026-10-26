@@ -20,6 +20,7 @@ object AnkiApi {
         val presetName: String,
         val reviewsPerDay: Int,
         val filtered: Boolean,
+        val due: Int,              // การ์ดที่ยังท่องได้วันนี้ (learn + review + new) ตามเพดานปัจจุบัน
     ) {
         val shortName: String get() = name.substringAfterLast("::")
     }
@@ -40,6 +41,7 @@ object AnkiApi {
             val iId = it.getColumnIndex("deck_id")
             val iOpt = it.getColumnIndex("options")
             val iDyn = it.getColumnIndex("deck_dyn")
+            val iCnt = it.getColumnIndex("deck_count")
             while (it.moveToNext()) {
                 val name = if (iName >= 0) it.getString(iName) ?: "" else ""
                 var pid = -1L; var pname = ""; var rev = -1
@@ -53,7 +55,15 @@ object AnkiApi {
                     }
                 }
                 val dyn = iDyn >= 0 && (it.getInt(iDyn) != 0)
-                out.add(DeckInfo(if (iId >= 0) it.getLong(iId) else -1, name, pid, pname, rev, dyn))
+                var due = 0
+                if (iCnt >= 0) {
+                    try {
+                        val a = org.json.JSONArray(it.getString(iCnt) ?: "[]")
+                        for (k in 0 until a.length()) due += a.optInt(k, 0)
+                    } catch (_: Exception) {
+                    }
+                }
+                out.add(DeckInfo(if (iId >= 0) it.getLong(iId) else -1, name, pid, pname, rev, dyn, due))
             }
         }
         return out.sortedBy { it.name.lowercase() }

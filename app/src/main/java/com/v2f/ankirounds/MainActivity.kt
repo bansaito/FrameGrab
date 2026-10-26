@@ -30,6 +30,7 @@ class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var roundView: TextView
     private lateinit var bankView: TextView
+    private lateinit var permView: TextView
     private val nameFields = ArrayList<EditText>()
     private val baseFields = ArrayList<EditText>()
     private val stepFields = ArrayList<EditText>()
@@ -105,7 +106,7 @@ class MainActivity : Activity() {
         row.addView(btn("↺ เริ่มชุดใหม่", false) { confirmReset() },
             LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         root.addView(row)
-        note("ปุ่มลอย ➕ : แตะ = อีก 1 รอบ · ลาก = ย้ายที่ · กดค้าง = เปิดหน้านี้\nยังเพิ่มปุ่ม \"➕ อีก 1 รอบ\" ในแถบตั้งค่าด่วน (ดึงแถบแจ้งเตือนลง → ✏️ แก้ไข) ได้ด้วย")
+        note("ปุ่มลอย: แตะ = อีก 1 รอบ · ลาก = ย้ายที่ · กดค้าง = เมนู (➕ / ↺ / 🏦 / ⚙️)\nตัวเลขบนปุ่ม = การ์ดที่เหลือในรอบนี้ · ครบแล้วเปลี่ยนเป็น ➕ สีเขียวและเด้งเรียก")
         val sw = Switch(this).apply {
             text = "แสดงปุ่มลอย ➕"
             setTextColor(Color.WHITE)
@@ -116,6 +117,19 @@ class MainActivity : Activity() {
             }
         }
         root.addView(sw)
+        root.addView(Switch(this).apply {
+            text = "แสดงปุ่มลอยเฉพาะตอนเปิด AnkiDroid"
+            setTextColor(Color.WHITE)
+            isChecked = prefs.onlyInAnki
+            setOnCheckedChangeListener { _, on ->
+                prefs.onlyInAnki = on
+                RoundsService.instance?.refreshBubble()
+            }
+        })
+        permView = note("")
+        button("อนุญาตให้อ่านข้อมูล AnkiDroid (จำนวนการ์ด / ตรวจผล / เลือก deck)") {
+            requestPermissions(arrayOf(AnkiApi.PERM), 8)
+        }
         root.addView(Switch(this).apply {
             text = "ปุ่มลอยจางลงเองเมื่อไม่ได้ใช้"
             setTextColor(Color.WHITE)
@@ -172,6 +186,10 @@ class MainActivity : Activity() {
         status.text = if (on) "✅ เปิดสิทธิ์ช่วยเหลือพิเศษแล้ว" else "⚠️ ยังไม่ได้เปิดสิทธิ์ช่วยเหลือพิเศษ"
         status.setTextColor(if (on) Color.parseColor("#4ADE80") else Color.parseColor("#FBBF24"))
         roundView.text = "ตอนนี้รอบ ${prefs.round}  ·  ${prefs.summary()}"
+        val perm = AnkiApi.hasPermission(this)
+        permView.text = if (perm) "✅ อ่านข้อมูล AnkiDroid ได้: ปุ่มบอกจำนวนการ์ดที่เหลือ และตรวจผลหลัง Save"
+                        else "⚠️ ยังไม่ได้อนุญาตให้อ่าน AnkiDroid: ปุ่มจะไม่บอกจำนวนการ์ด และไม่ตรวจผลหลัง Save"
+        permView.setTextColor(Color.parseColor(if (perm) "#4ADE80" else "#FBBF24"))
         val bank = !Bank.isOn(this)
         bankView.text = (if (bank) "สถานะ: 🏦 โหมดธนาคาร (ผู้ช่วยปิดอยู่)" else "สถานะ: ผู้ช่วยทำงานอยู่") +
             "\nเปิดกลับในแตะเดียว: " + (if (Bank.canToggleDirectly(this)) "✅ ได้" else "— ต้องกดเปิดในหน้าตั้งค่า")
@@ -276,6 +294,7 @@ class MainActivity : Activity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 8) refresh()
         if (requestCode == 7) {
             val i = pendingPick
             pendingPick = -1

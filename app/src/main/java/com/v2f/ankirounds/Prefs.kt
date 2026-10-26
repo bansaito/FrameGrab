@@ -41,6 +41,11 @@ class Prefs(ctx: Context) {
         get() = p.getBoolean("bubble_fade", true)
         set(v) = p.edit().putBoolean("bubble_fade", v).apply()
 
+    /** แสดงปุ่มลอยเฉพาะตอนเปิด AnkiDroid */
+    var onlyInAnki: Boolean
+        get() = p.getBoolean("only_in_anki", true)
+        set(v) = p.edit().putBoolean("only_in_anki", v).apply()
+
     var bubbleX: Int
         get() = p.getInt("bubble_x", 0)
         set(v) = p.edit().putInt("bubble_x", v).apply()
