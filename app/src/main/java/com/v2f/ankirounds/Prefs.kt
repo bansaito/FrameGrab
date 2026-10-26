@@ -161,6 +161,11 @@ class Prefs(ctx: Context) {
         get() = p.getBoolean("feat_scroll_hide", false)
         set(v) = p.edit().putBoolean("feat_scroll_hide", v).apply()
 
+    /** (ย่อยของหลายชุด) บอกการ์ดที่เหลือของแต่ละชุดในเมนู — ปิดไว้ */
+    var featGroupRemaining: Boolean
+        get() = p.getBoolean("feat_group_remaining", false)
+        set(v) = p.edit().putBoolean("feat_group_remaining", v).apply()
+
     /** ปุ่ม ↶ ย้อน 1 รอบ */
     var featUndo: Boolean
         get() = p.getBoolean("feat_undo", true)

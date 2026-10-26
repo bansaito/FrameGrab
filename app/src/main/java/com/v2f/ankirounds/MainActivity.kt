@@ -169,8 +169,9 @@ class MainActivity : Activity() {
 
         section("✨ ฟีเจอร์เสริม (ปิดได้ถ้าไม่ชอบ)")
         featSwitch("ช่องค้นหาในหน้าเลือก deck", prefs.featSearch) { prefs.featSearch = it }
-        featSwitch("หัวเมนูบอกสถานะ (ตอนนี้ … · เหลือ … ใบ)", prefs.featStatus) { prefs.featStatus = it }
+        featSwitch("หัวเมนูบอกการ์ดที่เหลือ (เมื่อมีชุดเดียว)", prefs.featStatus) { prefs.featStatus = it }
         featSwitch("หลายชุดในเมนู (ปิด = แสดงเฉพาะชุดแรก)", prefs.featGroups) { prefs.featGroups = it }
+        featSwitch("      ↳ บอกการ์ดที่เหลือของแต่ละชุด", prefs.featGroupRemaining) { prefs.featGroupRemaining = it }
         featSwitch("ปุ่ม ↶ ย้อน 1 รอบ ในเมนู", prefs.featUndo) { prefs.featUndo = it }
         featSwitch("ลากปุ่มลงขอบล่างเพื่อเก็บไว้ในแจ้งเตือน", prefs.featTrash) { on ->
             prefs.featTrash = on

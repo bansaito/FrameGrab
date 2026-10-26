@@ -633,8 +633,9 @@ class RoundsService : AccessibilityService() {
             // หัวข้อ: ชื่อชุด + การ์ดที่เหลือ (ไม่มีตัวเลขเพดาน)
             val left = remainingBy[g]
             val head = buildString {
-                if (multi) append(prefs.groupName(g))
-                if (prefs.featStatus && left != null) {
+                append(prefs.groupName(g))                    // ชื่อชุดแสดงเสมอ (แม้ปิดหลายชุด)
+                val showLeft = prefs.featStatus && (!multi || prefs.featGroupRemaining)
+                if (showLeft && left != null) {
                     if (isNotEmpty()) append("  ·  ")
                     append(if (left > 0) "เหลือ $left ใบ" else "ครบแล้ว ✓")
                 }
