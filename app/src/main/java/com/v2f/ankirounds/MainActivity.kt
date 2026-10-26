@@ -119,7 +119,7 @@ class MainActivity : Activity() {
         row.addView(btn("↺ เริ่มชุดใหม่", false) { confirmReset() },
             LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         root.addView(row)
-        note("ปุ่มลอย: แตะ = เปิดเมนู · ลาก = ย้ายที่\nตัวเลขบนปุ่ม = การ์ดที่เหลือ · ครบแล้วเปลี่ยนเป็น ➕ สีเขียวและเด้งเรียก")
+        note("ปุ่มลอย: แตะ = เปิดเมนู · ลาก = ย้ายที่\n📚 = ยังท่องรอบนี้ไม่ครบ · ➕ สีเขียว (เด้งเรียก) = ครบแล้ว กดเพิ่มรอบได้")
         val sw = Switch(this).apply {
             text = "แสดงปุ่มลอย ➕"
             setTextColor(Color.WHITE)
@@ -173,6 +173,7 @@ class MainActivity : Activity() {
         featSwitch("หลายชุดในเมนู (ปิด = แสดงเฉพาะชุดแรก)", prefs.featGroups) { prefs.featGroups = it }
         featSwitch("      ↳ บอกการ์ดที่เหลือของแต่ละชุด", prefs.featGroupRemaining) { prefs.featGroupRemaining = it }
         featSwitch("ปุ่ม ↶ ย้อน 1 รอบ ในเมนู", prefs.featUndo) { prefs.featUndo = it }
+        featSwitch("วงแหวนความคืบหน้ารอบปุ่มลอย", prefs.featRing) { prefs.featRing = it }
         featSwitch("ลากปุ่มลงขอบล่างเพื่อเก็บไว้ในแจ้งเตือน", prefs.featTrash) { on ->
             prefs.featTrash = on
             if (on && android.os.Build.VERSION.SDK_INT >= 33 && !Parking.canNotify(this)) {

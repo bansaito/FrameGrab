@@ -39,6 +39,7 @@ class RoundsService : AccessibilityService() {
     private var ankiInFront = false
     private var remaining = -1          // รวมทุกชุดที่แสดง · -1 = ไม่รู้ (ยังไม่ได้รับสิทธิ์อ่าน AnkiDroid)
     private val remainingBy = HashMap<Int, Int>()
+    private var roundTotal = 0
     private var lastCountAt = 0L
     @Volatile private var counting = false
 
@@ -193,6 +194,8 @@ class RoundsService : AccessibilityService() {
                 counting = false
                 val before = remaining
                 remaining = total
+                // จำนวนการ์ดตอนเริ่มรอบ (ใช้วาดวงแหวน): ตั้งใหม่เมื่อจำนวนเพิ่มขึ้น (เพิ่งกด ➕ / ขึ้นวันใหม่)
+                if (total > roundTotal || before <= 0) roundTotal = total
                 remainingBy.clear(); remainingBy.putAll(by)
                 updateBubbleFace()
                 if (before > 0 && total == 0) { wake(); pulse() }   // เพิ่งท่องครบ → เรียกให้เห็น
@@ -369,18 +372,22 @@ class RoundsService : AccessibilityService() {
         wake()
     }
 
+    /** ปุ่มบอกแค่ 2 สถานะ: 📚 ยังท่องไม่ครบ · ➕ เขียว = ครบรอบแล้ว (ไม่มีตัวเลข) */
     private fun updateBubbleFace() {
         val v = bubble ?: return
         val done = remaining == 0
         v.text = when {
             busy -> "⏳"
-            remaining > 0 -> remaining.toString()
-            else -> "➕"
+            done -> "➕"
+            else -> "📚"
         }
-        v.textSize = if (remaining > 0 && !busy) 20f else 22f
-        (v.background as? GradientDrawable)?.setColor(
-            Color.parseColor(if (done && !busy) "#E616A34A" else "#E62563EB"))
-        v.contentDescription = if (remaining > 0) "เหลือ $remaining ใบ" else "อีก 1 รอบ"
+        v.textSize = 16f
+        (v.background as? RingDrawable)?.let { r ->
+            r.fillColor = Color.parseColor(if (done && !busy) "#E616A34A" else "#E62563EB")
+            r.progress = if (prefs.featRing && !busy && !done && remaining > 0 && roundTotal > 0)
+                ((roundTotal - remaining).toFloat() / roundTotal) else -1f
+        }
+        v.contentDescription = if (done) "ครบรอบแล้ว แตะเพื่อเพิ่มรอบ" else "AnkiRounds"
     }
 
     // จางลงเองเมื่อไม่ได้ใช้ 3 วินาที (แตะเมื่อไหร่ก็กลับมาชัด)
@@ -413,16 +420,13 @@ class RoundsService : AccessibilityService() {
     @SuppressLint("ClickableViewAccessibility")
     private fun showBubble() {
         if (bubble != null) return
-        val size = (56 * resources.displayMetrics.density).toInt()
+        val size = (BUBBLE_DP * resources.displayMetrics.density).toInt()
         val v = TextView(this).apply {
-            text = "➕"
-            textSize = 22f
+            text = "📚"
+            textSize = 16f
             gravity = Gravity.CENTER
             setTextColor(Color.WHITE)
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(Color.parseColor("#E62563EB"))
-            }
+            background = RingDrawable(2.5f * resources.displayMetrics.density)
             alpha = 0.9f
         }
         val lp = WindowManager.LayoutParams(
@@ -545,7 +549,7 @@ class RoundsService : AccessibilityService() {
     private fun overTrash(blp: WindowManager.LayoutParams): Boolean {
         val tl = trashLp ?: return false
         val dp = resources.displayMetrics.density
-        val b = (56 * dp) / 2; val t = (64 * dp) / 2
+        val b = (BUBBLE_DP * dp) / 2; val t = (64 * dp) / 2
         val dx = (blp.x + b) - (tl.x + t); val dy = (blp.y + b) - (tl.y + t)
         return dx * dx + dy * dy < (80 * dp) * (80 * dp)
     }
@@ -675,7 +679,7 @@ class RoundsService : AccessibilityService() {
         box.addView(bottom)
 
         val screenW = resources.displayMetrics.widthPixels
-        val bubbleSize = px(56)
+        val bubbleSize = px(BUBBLE_DP.toInt())
         box.measure(
             android.view.View.MeasureSpec.makeMeasureSpec(screenW, android.view.View.MeasureSpec.AT_MOST),
             android.view.View.MeasureSpec.UNSPECIFIED)
@@ -727,6 +731,7 @@ class RoundsService : AccessibilityService() {
     }
 
     companion object {
+        const val BUBBLE_DP = 42f
         @Volatile var instance: RoundsService? = null
     }
 }
