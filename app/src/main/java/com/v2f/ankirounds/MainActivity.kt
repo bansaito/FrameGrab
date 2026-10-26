@@ -48,6 +48,9 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         prefs = Prefs(this)
         group = prefs.lastGroup
+        if (prefs.featTrash && android.os.Build.VERSION.SDK_INT >= 33 && !Parking.canNotify(this)) {
+            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 9)
+        }
         root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(px(18), px(20), px(18), px(40))
@@ -160,6 +163,18 @@ class MainActivity : Activity() {
         featSwitch("หัวเมนูบอกสถานะ (ตอนนี้ … · เหลือ … ใบ)", prefs.featStatus) { prefs.featStatus = it }
         featSwitch("หลายชุดในเมนู (ปิด = แสดงเฉพาะชุดแรก)", prefs.featGroups) { prefs.featGroups = it }
         featSwitch("ปุ่ม ↶ ย้อน 1 รอบ ในเมนู", prefs.featUndo) { prefs.featUndo = it }
+        featSwitch("ลากปุ่มลงขอบล่างเพื่อเก็บไว้ในแจ้งเตือน", prefs.featTrash) { on ->
+            prefs.featTrash = on
+            if (on && android.os.Build.VERSION.SDK_INT >= 33 && !Parking.canNotify(this)) {
+                requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 9)
+            }
+        }
+        featSwitch("ปุ่มชิดขอบจอ ซ่อนครึ่งหนึ่งเมื่อไม่ได้ใช้", prefs.featEdge) { prefs.featEdge = it }
+        featSwitch("ซ่อนปุ่มตอนเลื่อนรายการใน AnkiDroid", prefs.featScrollHide) { prefs.featScrollHide = it }
+        button("📤 เรียกปุ่มลอยที่เก็บไว้กลับมา") {
+            prefs.parked = false; Parking.hide(this); RoundsService.instance?.refreshBubble()
+            Toast.makeText(this, "แสดงปุ่มลอยแล้ว (เห็นตอนเปิด AnkiDroid)", Toast.LENGTH_SHORT).show()
+        }
 
         section("🏦 โหมดธนาคาร")
         note("แอปธนาคารบางแอปไม่ยอมเปิดถ้าผู้ช่วยทำงานอยู่ กดปิดก่อนเข้าแอปธนาคาร แล้วกดเปิดกลับเมื่อเสร็จ (ปุ่มลอย ➕ จะหายไประหว่างนั้น)")

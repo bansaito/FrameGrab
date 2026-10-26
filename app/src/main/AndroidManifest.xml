@@ -2,6 +2,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- แจ้งเตือนค้างไว้ตอนเก็บปุ่มลอย -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <!-- อ่านรายชื่อ deck จาก AnkiDroid (API ทางการของ AnkiDroid) -->
     <uses-permission android:name="com.ichi2.anki.permission.READ_WRITE_DATABASE" />
 
@@ -56,6 +59,8 @@
                 <action android:name="android.service.quicksettings.action.QS_TILE" />
             </intent-filter>
         </service>
+
+        <receiver android:name=".ParkReceiver" android:exported="false" />
 
         <!-- ปุ่ม "โหมดธนาคาร" ในแผงควบคุม -->
         <service

@@ -136,6 +136,26 @@ class Prefs(ctx: Context) {
         get() = p.getBoolean("feat_groups", true)
         set(v) = p.edit().putBoolean("feat_groups", v).apply()
 
+    /** ปุ่มลอยถูกเก็บไว้ในแจ้งเตือน */
+    var parked: Boolean
+        get() = p.getBoolean("parked", false)
+        set(v) = p.edit().putBoolean("parked", v).apply()
+
+    /** ลากไปทิ้งที่ขอบล่าง → เก็บในแจ้งเตือน (เปิดไว้) */
+    var featTrash: Boolean
+        get() = p.getBoolean("feat_trash", true)
+        set(v) = p.edit().putBoolean("feat_trash", v).apply()
+
+    /** ปุ่มชิดขอบจอ ซ่อนครึ่งหนึ่ง (ปิดไว้) */
+    var featEdge: Boolean
+        get() = p.getBoolean("feat_edge", false)
+        set(v) = p.edit().putBoolean("feat_edge", v).apply()
+
+    /** ซ่อนปุ่มตอนเลื่อนรายการใน AnkiDroid (ปิดไว้) */
+    var featScrollHide: Boolean
+        get() = p.getBoolean("feat_scroll_hide", false)
+        set(v) = p.edit().putBoolean("feat_scroll_hide", v).apply()
+
     /** ปุ่ม ↶ ย้อน 1 รอบ */
     var featUndo: Boolean
         get() = p.getBoolean("feat_undo", true)

@@ -51,10 +51,13 @@ class RoundsService : AccessibilityService() {
         refreshBubble()
         refreshTiles()
         main.post(countLoop)
+        if (prefs.parked) Parking.show(this)
     }
 
     override fun onDestroy() {
         main.removeCallbacksAndMessages(null)
+        Parking.hide(this)
+        hideTrash()
         hideMenu()
         removeBubble()
         if (instance === this) instance = null
@@ -84,9 +87,18 @@ class RoundsService : AccessibilityService() {
                 if (now) requestCount(0)
             }
         } else if (pkg == Prefs.ANKI_PKG) {
+            if (event.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED) {
+                if (prefs.featScrollHide && menu == null && !busy) {
+                    bubble?.let { b -> main.removeCallbacks(fade); b.animate().cancel(); b.alpha = 0f }
+                    main.removeCallbacks(afterScroll); main.postDelayed(afterScroll, 900)
+                }
+                return
+            }
             requestCount(1500)       // เนื้อหาใน AnkiDroid เปลี่ยน (เช่นตอบการ์ดไป 1 ใบ)
         }
     }
+
+    private val afterScroll = Runnable { wake() }
 
     private fun currentIme(): String =
         Settings.Secure.getString(contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD)
@@ -287,7 +299,7 @@ class RoundsService : AccessibilityService() {
     // ------------------------------------------------------------------ bubble
 
     private fun shouldShow(): Boolean =
-        prefs.bubble && (!prefs.onlyInAnki || ankiInFront || busy || menu != null)
+        prefs.bubble && (busy || (!prefs.parked && (!prefs.onlyInAnki || ankiInFront || menu != null)))
 
     fun refreshBubble() {
         if (!::prefs.isInitialized) return
@@ -312,7 +324,10 @@ class RoundsService : AccessibilityService() {
 
     // จางลงเองเมื่อไม่ได้ใช้ 3 วินาที (แตะเมื่อไหร่ก็กลับมาชัด)
     private val fade = Runnable {
-        if (menu == null) bubble?.animate()?.alpha(0.25f)?.setDuration(600)?.start()
+        if (menu == null) {
+            bubble?.animate()?.alpha(0.25f)?.setDuration(600)?.start()
+            tuck(true)
+        }
     }
 
     private fun wake() {
@@ -362,7 +377,7 @@ class RoundsService : AccessibilityService() {
 
         var downX = 0f; var downY = 0f; var startX = 0; var startY = 0
         var moved = false; var longFired = false
-        val longPress = Runnable { longFired = true; showMenu() }
+        val longPress = Runnable { longFired = true; tuck(false); showMenu() }
         v.setOnTouchListener { _, e ->
             when (e.action) {
                 MotionEvent.ACTION_DOWN -> {
@@ -375,19 +390,27 @@ class RoundsService : AccessibilityService() {
                     val dx = e.rawX - downX; val dy = e.rawY - downY
                     if (!moved && (abs(dx) > 12 || abs(dy) > 12)) {
                         moved = true; main.removeCallbacks(longPress); hideMenu()
+                        if (prefs.featTrash) showTrash()
                     }
                     if (moved) {
                         lp.x = startX + dx.toInt(); lp.y = startY + dy.toInt()
                         try { wm.updateViewLayout(v, lp) } catch (_: Exception) {}
+                        highlightTrash(overTrash(lp))
                     }
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     main.removeCallbacks(longPress)
-                    wake()
-                    if (moved) {
-                        prefs.bubbleX = lp.x; prefs.bubbleY = lp.y
-                    } else if (!longFired && e.action == MotionEvent.ACTION_UP) {
-                        if (menu != null) hideMenu() else showMenu()   // แตะ = เปิดเมนูให้เลือกก่อน
+                    val drop = moved && prefs.featTrash && overTrash(lp)
+                    hideTrash()
+                    if (drop) {
+                        park()
+                    } else {
+                        wake()
+                        if (moved) {
+                            if (prefs.featEdge) snapToEdge() else { prefs.bubbleX = lp.x; prefs.bubbleY = lp.y }
+                        } else if (!longFired && e.action == MotionEvent.ACTION_UP) {
+                            if (menu != null) hideMenu() else { tuck(false); showMenu() }   // แตะ = เปิดเมนูให้เลือกก่อน
+                        }
                     }
                 }
             }
@@ -401,6 +424,103 @@ class RoundsService : AccessibilityService() {
             wake()
         } catch (e: Exception) {
             toast("แสดงปุ่มลอยไม่ได้: ${e.message}")
+        }
+    }
+
+    // ------------------------------------------------------------------ park / trash / edge
+
+    /** เก็บปุ่มลอยไว้ในแจ้งเตือน */
+    fun park() {
+        hideMenu()
+        prefs.parked = true
+        removeBubble()
+        Parking.show(this)
+        if (!Parking.canNotify(this)) {
+            toast("เก็บปุ่มแล้ว แต่แจ้งเตือนถูกปิดอยู่ · เรียกปุ่มกลับได้ที่หน้าแอป AnkiRounds")
+        } else {
+            Toast.makeText(this, "เก็บไว้ในแจ้งเตือนแล้ว", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private var trash: TextView? = null
+    private var trashLp: WindowManager.LayoutParams? = null
+
+    private fun showTrash() {
+        if (trash != null) return
+        val dp = resources.displayMetrics.density
+        val size = (64 * dp).toInt()
+        val t = TextView(this).apply {
+            text = "✕"
+            textSize = 24f
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.parseColor("#CC374151"))
+                setStroke((2 * dp).toInt(), Color.parseColor("#80FFFFFF"))
+            }
+        }
+        val dm = resources.displayMetrics
+        val lp = WindowManager.LayoutParams(
+            size, size,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.TRANSLUCENT,
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = (dm.widthPixels - size) / 2
+            y = dm.heightPixels - size - (90 * dp).toInt()
+        }
+        try { wm.addView(t, lp); trash = t; trashLp = lp } catch (_: Exception) {}
+    }
+
+    private fun hideTrash() {
+        val t = trash ?: return
+        try { wm.removeView(t) } catch (_: Exception) {}
+        trash = null; trashLp = null
+    }
+
+    private fun overTrash(blp: WindowManager.LayoutParams): Boolean {
+        val tl = trashLp ?: return false
+        val dp = resources.displayMetrics.density
+        val b = (56 * dp) / 2; val t = (64 * dp) / 2
+        val dx = (blp.x + b) - (tl.x + t); val dy = (blp.y + b) - (tl.y + t)
+        return dx * dx + dy * dy < (80 * dp) * (80 * dp)
+    }
+
+    private fun highlightTrash(on: Boolean) {
+        val t = trash ?: return
+        (t.background as? GradientDrawable)?.setColor(Color.parseColor(if (on) "#E6DC2626" else "#CC374151"))
+        t.scaleX = if (on) 1.2f else 1f; t.scaleY = t.scaleX
+    }
+
+    /** ปล่อยปุ่มแล้วไหลไปชิดขอบที่ใกล้กว่า (แล้วซ่อนครึ่งหนึ่งเมื่อไม่ได้ใช้) */
+    private fun snapToEdge() {
+        val v = bubble ?: return; val lp = bubbleLp ?: return
+        val size = lp.width
+        val w = resources.displayMetrics.widthPixels
+        lp.x = if (lp.x + size / 2 < w / 2) 0 else w - size
+        try { wm.updateViewLayout(v, lp) } catch (_: Exception) {}
+        prefs.bubbleX = lp.x; prefs.bubbleY = lp.y
+    }
+
+    /** ซ่อนครึ่งหนึ่งที่ขอบจอ (true) / ดึงออกมาเต็ม (false) */
+    private fun tuck(hide: Boolean) {
+        if (!::prefs.isInitialized || !prefs.featEdge) return
+        val v = bubble ?: return; val lp = bubbleLp ?: return
+        val size = lp.width
+        val w = resources.displayMetrics.widthPixels
+        val left = lp.x + size / 2 < w / 2
+        val x = when {
+            hide && left -> -size / 2
+            hide -> w - size / 2
+            left -> 0
+            else -> w - size
+        }
+        if (lp.x != x) {
+            lp.x = x
+            try { wm.updateViewLayout(v, lp) } catch (_: Exception) {}
         }
     }
 
@@ -488,6 +608,7 @@ class RoundsService : AccessibilityService() {
         val bottom = row().apply { setPadding(0, px(10), 0, 0) }
         addChip(bottom, chip("🏦 ธนาคาร", "#2A2F38") { hideMenu(); Bank.enterBankMode(this@RoundsService) })
         addChip(bottom, chip("⚙️", "#2A2F38") { hideMenu(); openApp() })
+        addChip(bottom, chip("📥 เก็บ", "#2A2F38") { park() })
         addChip(bottom, chip("✕", "#2A2F38") { hideMenu() })
         box.addView(bottom)
 
