@@ -139,42 +139,63 @@ class RoundsService : AccessibilityService() {
 
     // ------------------------------------------------------------------ jobs
 
-    /** ➕ อีก 1 รอบ */
-    fun bump(g: Int = prefs.lastGroup) = run(g, prefs.round(g) + 1, "${label(g)} รอบ ${prefs.round(g) + 1}")
+    private enum class Kind { BUMP, UNDO, RESET }
 
-    /** ↶ ย้อน 1 รอบ */
+    /** ➕ อีก 1 รอบ: ค่าปัจจุบันใน AnkiDroid + ค่าเพิ่ม */
+    fun bump(g: Int = prefs.lastGroup) = run(g, Kind.BUMP)
+
+    /** ↶ ย้อน 1 รอบ: ค่าปัจจุบัน − ค่าเพิ่ม */
     fun undo(g: Int = prefs.lastGroup) {
-        val r = prefs.round(g)
-        if (r <= 1) { toast("${label(g)} อยู่รอบแรกแล้ว"); return }
-        run(g, r - 1, "${label(g)} ย้อนเป็นรอบ ${r - 1}")
+        if (prefs.round(g) <= 1) { toast("ยังไม่ได้เพิ่มรอบ ไม่มีอะไรให้ย้อน"); return }
+        run(g, Kind.UNDO)
     }
 
-    /** ↺ เริ่มชุดใหม่ */
-    fun reset(g: Int = prefs.lastGroup) = run(g, 1, "${label(g)} เริ่มชุดใหม่")
+    /** ↺ เริ่มใหม่: กลับเป็นค่าที่จำไว้ตอนกด ➕ ครั้งแรกของชุด */
+    fun reset(g: Int = prefs.lastGroup) = run(g, Kind.RESET)
 
-    private fun label(g: Int) = if (prefs.visibleGroups().size > 1) prefs.groupName(g) else ""
-
-    private fun run(g: Int, newRound: Int, title: String) {
+    private fun run(g: Int, kind: Kind) {
         hideMenu()
         if (busy) { toast("กำลังทำงานอยู่ รอสักครู่"); return }
         val decks = prefs.decks(g)
-        if (decks.isEmpty()) { toast("ยังไม่ได้ตั้งชื่อ deck ใน ${prefs.groupName(g)}"); return }
+        if (decks.isEmpty()) { toast("ยังไม่ได้เลือก deck ใน ${prefs.groupName(g)}"); return }
+        if (!AnkiApi.hasPermission(this)) {
+            toast("ต้องอนุญาตให้อ่าน AnkiDroid ก่อน (แอปจะได้รู้ค่าปัจจุบัน)")
+            openApp(); return
+        }
         busy = true
         updateBubbleFace()
-        val targets = dedupeByPreset(decks.map { it.name to prefs.valueFor(it, newRound) })
         Thread {
             val a = Automator(this, prefs)
             var ok = false
-            var msg: String
+            var msg = ""
             try {
-                a.apply(targets)
-                val bad = verify(targets, a)
-                if (bad.isEmpty()) {
-                    ok = true
-                    msg = "${title.trim()} ✓  ${targets.joinToString(" / ") { it.second.toString() }}"
-                } else {
-                    msg = "บันทึกไม่ติด: " + bad.joinToString(", ")
+                val all = AnkiApi.decks(this)
+                val firstBump = kind == Kind.BUMP && prefs.round(g) <= 1
+                val raw = ArrayList<Pair<String, Int>>()
+                for ((i, d) in prefs.deckSlots(g)) {
+                    val info = AnkiApi.find(all, d.name)
+                        ?: throw Automator.StepFailed("ไม่พบ deck \"${d.name}\" ใน AnkiDroid")
+                    val cur = info.reviewsPerDay
+                    if (firstBump) prefs.setDeck(g, i, d.copy(base = cur))   // จำค่าตอนเริ่มไว้ใช้กับ ↺
+                    val start = if (firstBump) cur else d.base
+                    val want = when (kind) {
+                        Kind.BUMP -> cur + d.step
+                        Kind.UNDO -> (cur - d.step).coerceAtLeast(start)
+                        Kind.RESET -> start
+                    }
+                    raw.add(d.name to want)
                 }
+                val targets = dedupeByPreset(raw)
+                a.log("ค่าใหม่: " + targets.joinToString { "${it.first}=${it.second}" })
+                a.apply(targets)
+                var bad = verify(targets, a)
+                if (bad.isNotEmpty() && a.speed < 1f) {
+                    a.log("ลองใหม่ด้วยความเร็วปกติ")
+                    a.speed = 1f
+                    a.apply(targets)
+                    bad = verify(targets, a)
+                }
+                if (bad.isEmpty()) ok = true else msg = "บันทึกไม่ติด: " + bad.joinToString(", ")
             } catch (e: Automator.StepFailed) {
                 msg = "ทำไม่สำเร็จ: ${e.message}"
             } catch (e: Exception) {
@@ -183,13 +204,25 @@ class RoundsService : AccessibilityService() {
             }
             prefs.lastLog = a.logText()
             main.post {
-                if (ok) { prefs.setRound(g, newRound); prefs.lastGroup = g }
+                if (ok) {
+                    prefs.setRound(g, when (kind) {
+                        Kind.BUMP -> prefs.round(g) + 1
+                        Kind.UNDO -> prefs.round(g) - 1
+                        Kind.RESET -> 1
+                    })
+                    prefs.lastGroup = g
+                }
                 busy = false
                 lastCountAt = 0
                 refreshBubble()
                 requestCount(0)
                 refreshTiles()
-                toast(msg + if (ok) "" else "\nแตะปุ่มลอย → ⚙️ ตั้งค่า → ส่ง log ให้ผู้ช่วยดูได้")
+                if (ok) {
+                    val name = if (prefs.visibleGroups().size > 1) prefs.groupName(g) + " " else ""
+                    Toast.makeText(this, name + when (kind) {
+                        Kind.BUMP -> "✓ เพิ่มแล้ว"; Kind.UNDO -> "✓ ย้อนแล้ว"; Kind.RESET -> "✓ เริ่มใหม่แล้ว"
+                    }, Toast.LENGTH_SHORT).show()
+                } else toast("$msg\nแตะปุ่มลอย → ⚙️ → ส่ง log ให้ผู้ช่วยดูได้")
             }
         }.start()
     }
@@ -416,37 +449,39 @@ class RoundsService : AccessibilityService() {
         val groups = prefs.visibleGroups().ifEmpty { listOf(0) }
         val multi = groups.size > 1
         for ((k, g) in groups.withIndex()) {
-            // หัวข้อ: ชื่อชุด + สถานะ
+            // หัวข้อ: ชื่อชุด + การ์ดที่เหลือ (ไม่มีตัวเลขเพดาน)
+            val left = remainingBy[g]
             val head = buildString {
                 if (multi) append(prefs.groupName(g))
-                if (prefs.featStatus) {
+                if (prefs.featStatus && left != null) {
                     if (isNotEmpty()) append("  ·  ")
-                    append("ตอนนี้ ").append(prefs.summary(g))
-                    remainingBy[g]?.let { n -> append(if (n > 0) "  ·  เหลือ $n ใบ" else "  ·  ครบแล้ว ✓") }
+                    append(if (left > 0) "เหลือ $left ใบ" else "ครบแล้ว ✓")
                 }
             }
             if (head.isNotEmpty()) {
                 box.addView(TextView(this).apply {
                     text = head
                     textSize = 13f
-                    setTextColor(Color.parseColor(if (remainingBy[g] == 0) "#86EFAC" else "#B0B6C0"))
+                    setTextColor(Color.parseColor(if (left == 0) "#86EFAC" else "#B0B6C0"))
                     setPadding(px(4), if (k == 0) 0 else px(10), px(4), px(6))
                 })
             }
             val r = row()
-            addChip(r, chip("➕  ${prefs.summary(g, prefs.round(g) + 1)}", "#2563EB") { bump(g) })
+            addChip(r, chip("➕ อีก 1 รอบ", "#2563EB") { bump(g) })
             if (prefs.featUndo && prefs.round(g) > 1) {
-                addChip(r, chip("↶ ${prefs.summary(g, prefs.round(g) - 1)}", "#374151") { undo(g) })
+                addChip(r, chip("↶ ย้อน", "#374151") { undo(g) })
             }
-            var confirm = false
-            addChip(r, chip("↺", "#374151") { tv ->
-                if (!confirm) {
-                    confirm = true
-                    tv.text = "↺ แตะอีกครั้ง (${prefs.summary(g, 1)})"
-                    tv.setTextColor(Color.parseColor("#FBBF24"))
-                    main.removeCallbacks(autoClose); main.postDelayed(autoClose, 6000)
-                } else reset(g)
-            })
+            if (prefs.round(g) > 1) {
+                var confirm = false
+                addChip(r, chip("↺ เริ่มใหม่", "#374151") { tv ->
+                    if (!confirm) {
+                        confirm = true
+                        tv.text = "↺ แตะอีกครั้ง"
+                        tv.setTextColor(Color.parseColor("#FBBF24"))
+                        main.removeCallbacks(autoClose); main.postDelayed(autoClose, 6000)
+                    } else reset(g)
+                })
+            }
             box.addView(r)
         }
 

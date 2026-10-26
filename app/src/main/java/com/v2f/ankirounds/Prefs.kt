@@ -71,6 +71,10 @@ class Prefs(ctx: Context) {
             .putInt("${pre(g)}deck${i}_base", d.base).putInt("${pre(g)}deck${i}_step", d.step).apply()
     }
 
+    /** deck ที่ตั้งชื่อไว้ พร้อมช่องที่อยู่ */
+    fun deckSlots(g: Int): List<Pair<Int, Deck>> =
+        (0 until MAX_DECKS).map { it to deck(g, it) }.filter { it.second.name.isNotBlank() }
+
     /** deck ที่ตั้งชื่อไว้ในชุดนี้ */
     fun decks(g: Int): List<Deck> = (0 until MAX_DECKS).map { deck(g, it) }.filter { it.name.isNotBlank() }
 
@@ -107,6 +111,13 @@ class Prefs(ctx: Context) {
     var bubbleY: Int
         get() = p.getInt("bubble_y", 400)
         set(v) = p.edit().putInt("bubble_y", v).apply()
+
+    /** 0 = ปกติ, 1 = เร็ว, 2 = เร็วสุด */
+    var speed: Int
+        get() = p.getInt("speed", 1)
+        set(v) = p.edit().putInt("speed", v.coerceIn(0, 2)).apply()
+
+    val speedFactor: Float get() = floatArrayOf(1f, 0.6f, 0.35f)[speed]
 
     // ------------------------------------------------------------------ feature switches (เปิดไว้ก่อน ปิดได้)
 

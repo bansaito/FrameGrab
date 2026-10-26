@@ -305,7 +305,10 @@ class Automator(private val svc: AccessibilityService, private val prefs: Prefs)
         return t.isNotEmpty() && t.length < 80 && labels.any { t.contains(it) }
     }
 
-    private fun sleep(ms: Long) = Thread.sleep(ms)
+    /** ความเร็ว: ช่วงรอแบบตายตัวคูณด้วยค่านี้ (การรอหน้าโหลดยังรอจนเจอเหมือนเดิม) */
+    var speed: Float = prefs.speedFactor
+
+    private fun sleep(ms: Long) = Thread.sleep((ms * speed).toLong().coerceAtLeast(60))
 
     private fun fail(msg: String): Nothing {
         log("✗ $msg")

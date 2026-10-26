@@ -40,6 +40,7 @@ class MainActivity : Activity() {
     private var group = 0                       // ชุดที่กำลังแก้
     private lateinit var groupBar: LinearLayout
     private lateinit var groupNameField: EditText
+    private lateinit var speedRow: LinearLayout
 
     private val dp get() = resources.displayMetrics.density
 
@@ -86,7 +87,7 @@ class MainActivity : Activity() {
             addView(groupBar)
         })
         groupNameField = labeled("ชื่อชุด (เช่น ไทย / Bio / Math)", prefs.groupName(group))
-        note("กด 🔎 เพื่อเลือก deck จาก AnkiDroid (ไม่ต้องพิมพ์) · deck ที่ใช้ preset ร่วมกัน แอปจะแก้ให้ครั้งเดียวเอง")
+        note("กด 🔎 เลือก deck จาก AnkiDroid · ช่อง + คือเพิ่มครั้งละกี่ใบ\nแอปอ่านค่าปัจจุบันจาก AnkiDroid เอง ไม่ต้องใส่ค่าเริ่ม · deck ที่ใช้ preset ร่วมกัน แก้ให้ครั้งเดียว")
         for (i in 0 until Prefs.MAX_DECKS) {
             val d = prefs.deck(group, i)
             val row = LinearLayout(this).apply {
@@ -100,9 +101,7 @@ class MainActivity : Activity() {
             val idx = i
             row.addView(btn("🔎", false) { pickDeck(idx) },
                 LinearLayout.LayoutParams(px(48), px(44)).apply { marginStart = px(4) })
-            row.addView(small("เริ่ม"))
-            row.addView(base, LinearLayout.LayoutParams(px(56), ViewGroup.LayoutParams.WRAP_CONTENT))
-            row.addView(small("เพิ่ม"))
+            row.addView(small("+"))
             row.addView(step, LinearLayout.LayoutParams(px(56), ViewGroup.LayoutParams.WRAP_CONTENT))
             root.addView(row)
             nameFields.add(name); baseFields.add(base); stepFields.add(step)
@@ -117,7 +116,7 @@ class MainActivity : Activity() {
         row.addView(btn("↺ เริ่มชุดใหม่", false) { confirmReset() },
             LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         root.addView(row)
-        note("ปุ่มลอย: แตะ = เปิดเมนูให้เลือก (➕ / ↶ / ↺ / 🏦 / ⚙️) · ลาก = ย้ายที่\nตัวเลขบนปุ่ม = การ์ดที่เหลือในรอบนี้ · ครบแล้วเปลี่ยนเป็น ➕ สีเขียวและเด้งเรียก")
+        note("ปุ่มลอย: แตะ = เปิดเมนู · ลาก = ย้ายที่\nตัวเลขบนปุ่ม = การ์ดที่เหลือ · ครบแล้วเปลี่ยนเป็น ➕ สีเขียวและเด้งเรียก")
         val sw = Switch(this).apply {
             text = "แสดงปุ่มลอย ➕"
             setTextColor(Color.WHITE)
@@ -150,7 +149,11 @@ class MainActivity : Activity() {
                 RoundsService.instance?.refreshBubble()
             }
         })
-        button("ตั้งรอบเองโดยไม่แตะ AnkiDroid…") { pickRound() }
+        section("⚡ ความเร็ว")
+        note("เร็วขึ้น = รอหน้าจอสั้นลง ถ้าเครื่องหรือ AnkiDroid ช้าอาจกดพลาด แอปจะลองใหม่ด้วยความเร็วปกติให้เอง")
+        speedRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        root.addView(speedRow)
+        renderSpeed()
 
         section("✨ ฟีเจอร์เสริม (ปิดได้ถ้าไม่ชอบ)")
         featSwitch("ช่องค้นหาในหน้าเลือก deck", prefs.featSearch) { prefs.featSearch = it }
@@ -202,7 +205,7 @@ class MainActivity : Activity() {
         val on = RoundsService.instance != null
         status.text = if (on) "✅ เปิดสิทธิ์ช่วยเหลือพิเศษแล้ว" else "⚠️ ยังไม่ได้เปิดสิทธิ์ช่วยเหลือพิเศษ"
         status.setTextColor(if (on) Color.parseColor("#4ADE80") else Color.parseColor("#FBBF24"))
-        roundView.text = "${prefs.groupName(group)}: รอบ ${prefs.round(group)}  ·  ${prefs.summary(group)}"
+        roundView.text = "${prefs.groupName(group)}: เพิ่มไปแล้ว ${prefs.round(group) - 1} รอบ"
         val perm = AnkiApi.hasPermission(this)
         permView.text = if (perm) "✅ อ่านข้อมูล AnkiDroid ได้: ปุ่มบอกจำนวนการ์ดที่เหลือ และตรวจผลหลัง Save"
                         else "⚠️ ยังไม่ได้อนุญาตให้อ่าน AnkiDroid: ปุ่มจะไม่บอกจำนวนการ์ด และไม่ตรวจผลหลัง Save"
@@ -236,9 +239,11 @@ class MainActivity : Activity() {
     private fun saveFields() {
         if (nameFields.isEmpty()) return
         for (i in 0 until Prefs.MAX_DECKS) {
+            val old = prefs.deck(group, i)
+            val name = nameFields[i].text.toString()
             prefs.setDeck(group, i, Prefs.Deck(
-                nameFields[i].text.toString(),
-                baseFields[i].text.toString().toIntOrNull() ?: 0,
+                name,
+                old.base,                          // ค่าเริ่ม แอปจำเองตอนกด ➕ ครั้งแรก
                 stepFields[i].text.toString().toIntOrNull() ?: 0,
             ))
         }
@@ -247,7 +252,7 @@ class MainActivity : Activity() {
         prefs.fieldLabels = fieldField.text.toString()
         prefs.saveLabels = saveField.text.toString()
         if (::roundView.isInitialized) {
-            roundView.text = "${prefs.groupName(group)}: รอบ ${prefs.round(group)}  ·  ${prefs.summary(group)}"
+            roundView.text = "${prefs.groupName(group)}: เพิ่มไปแล้ว ${prefs.round(group) - 1} รอบ"
         }
     }
 
@@ -301,6 +306,14 @@ class MainActivity : Activity() {
             }
             .setNegativeButton("ยกเลิก", null)
             .show()
+    }
+
+    private fun renderSpeed() {
+        speedRow.removeAllViews()
+        listOf("ปกติ", "เร็ว", "เร็วสุด").forEachIndexed { k, label ->
+            speedRow.addView(btn(label, k == prefs.speed) { prefs.speed = k; renderSpeed() },
+                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = px(6) })
+        }
     }
 
     private fun featSwitch(label: String, on: Boolean, set: (Boolean) -> Unit) {
@@ -463,12 +476,7 @@ class MainActivity : Activity() {
 
     private fun choose(i: Int, d: AnkiApi.DeckInfo, chosen: List<AnkiApi.DeckInfo>) {
         nameFields[i].setText(d.name)
-        if (d.reviewsPerDay > 0) {
-            baseFields[i].setText(d.reviewsPerDay.toString())
-            if ((stepFields[i].text.toString().toIntOrNull() ?: 0) <= 0) {
-                stepFields[i].setText(d.reviewsPerDay.toString())
-            }
-        }
+        if ((stepFields[i].text.toString().toIntOrNull() ?: 0) <= 0) stepFields[i].setText("1")
         saveFields()
         val dup = chosen.firstOrNull { it.presetId == d.presetId && d.presetId >= 0 }
         if (dup != null) {
@@ -490,7 +498,7 @@ class MainActivity : Activity() {
     private fun confirmReset() {
         AlertDialog.Builder(this)
             .setTitle("เริ่มชุดใหม่?")
-            .setMessage("ตั้ง ${prefs.groupName(group)} กลับเป็นค่าเริ่มต้น (${prefs.summary(group, 1)}) ใน AnkiDroid")
+            .setMessage("ตั้ง ${prefs.groupName(group)} กลับเป็นค่าก่อนกด ➕ ครั้งแรก ใน AnkiDroid")
             .setPositiveButton("เริ่มชุดใหม่") { _, _ -> withService { it.reset(group) } }
             .setNegativeButton("ยกเลิก", null)
             .show()
