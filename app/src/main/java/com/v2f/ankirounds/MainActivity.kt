@@ -131,6 +131,15 @@ class MainActivity : Activity() {
         }
         root.addView(sw)
         root.addView(Switch(this).apply {
+            text = "แสดงปุ่มเฉพาะหน้าแรกและหน้า Congratulations (ซ่อนตอนรีวิวการ์ด)"
+            setTextColor(Color.WHITE)
+            isChecked = prefs.onlyHome
+            setOnCheckedChangeListener { _, on ->
+                prefs.onlyHome = on
+                RoundsService.instance?.refreshBubble()
+            }
+        })
+        root.addView(Switch(this).apply {
             text = "แสดงปุ่มลอยเฉพาะตอนเปิด AnkiDroid"
             setTextColor(Color.WHITE)
             isChecked = prefs.onlyInAnki

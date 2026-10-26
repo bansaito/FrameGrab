@@ -81,12 +81,16 @@ class RoundsService : AccessibilityService() {
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             if (pkg == packageName || pkg == "com.android.systemui" || pkg == currentIme()) return
             val now = pkg == Prefs.ANKI_PKG
+            if (now) classify(event.className?.toString() ?: "")
             if (now != ankiInFront) {
                 ankiInFront = now
                 refreshBubble()
                 if (now) requestCount(0)
             }
         } else if (pkg == Prefs.ANKI_PKG) {
+            if (screen == Screen.UNKNOWN && event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+                main.removeCallbacks(checkScreen); main.postDelayed(checkScreen, 400)
+            }
             if (event.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED) {
                 if (prefs.featScrollHide && menu == null && !busy) {
                     bubble?.let { b -> main.removeCallbacks(fade); b.animate().cancel(); b.alpha = 0f }
@@ -99,6 +103,53 @@ class RoundsService : AccessibilityService() {
     }
 
     private val afterScroll = Runnable { wake() }
+
+    // ------------------------------------------------------------------ which AnkiDroid screen
+
+    private enum class Screen { HOME, CONGRATS, OTHER, UNKNOWN }
+    private var screen = Screen.HOME
+
+    /** แยกหน้าจาก class ของหน้าต่าง (dialog/เมนูเล็ก ๆ ไม่นับ คงสถานะเดิมไว้) */
+    private fun classify(cls: String) {
+        if (!cls.startsWith("com.ichi2")) return
+        val s = when {
+            cls.endsWith(".DeckPicker") -> Screen.HOME
+            cls.contains("StudyOptions") || cls.contains("Congrats") -> Screen.CONGRATS
+            cls.contains("Reviewer") || cls.contains("Previewer") -> Screen.OTHER
+            else -> Screen.UNKNOWN          // เช่น SingleFragmentActivity: ดูจากเนื้อหาบนจอ
+        }
+        setScreen(s)
+        if (s == Screen.UNKNOWN) { main.removeCallbacks(checkScreen); main.postDelayed(checkScreen, 400) }
+    }
+
+    private val checkScreen = Runnable {
+        val root = rootInActiveWindow ?: return@Runnable
+        if (root.packageName?.toString() != Prefs.ANKI_PKG) return@Runnable
+        val words = listOf("congratulations", "ยินดีด้วย", "custom study", "เรียนแบบกำหนดเอง")
+        val answer = listOf("show answer", "แสดงคำตอบ")
+        var congrats = false; var reviewing = false
+        fun walk(n: android.view.accessibility.AccessibilityNodeInfo?, d: Int) {
+            if (n == null || d > 40 || congrats) return
+            val t = (n.text ?: n.contentDescription)?.toString()?.lowercase() ?: ""
+            if (t.isNotEmpty()) {
+                if (words.any { t.contains(it) }) congrats = true
+                if (answer.any { t == it }) reviewing = true
+            }
+            for (i in 0 until n.childCount) walk(n.getChild(i), d + 1)
+        }
+        walk(root, 0)
+        setScreen(when { congrats -> Screen.CONGRATS; reviewing -> Screen.OTHER; else -> Screen.UNKNOWN })
+    }
+
+    private fun setScreen(s: Screen) {
+        if (s == screen) return
+        screen = s
+        refreshBubble()
+        if (s == Screen.HOME || s == Screen.CONGRATS) requestCount(0)
+    }
+
+    private fun screenOk(): Boolean =
+        !prefs.onlyHome || screen == Screen.HOME || screen == Screen.CONGRATS
 
     private fun currentIme(): String =
         Settings.Secure.getString(contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD)
@@ -199,7 +250,12 @@ class RoundsService : AccessibilityService() {
                 }
                 val targets = dedupeByPreset(raw)
                 a.log("ค่าใหม่: " + targets.joinToString { "${it.first}=${it.second}" })
-                a.apply(targets)
+                val shortcut = if (screen == Screen.CONGRATS) {
+                    AnkiApi.selectedDeckName(this)?.let { sel -> targets.firstOrNull { AnkiApi.find(all, it.first)?.name == sel }?.first }
+                } else null
+                // deck ที่เปิดหน้า Congratulations อยู่ ทำก่อน (ใช้ทางลัด ⚙)
+                val ordered = if (shortcut != null) targets.sortedBy { if (it.first == shortcut) 0 else 1 } else targets
+                a.apply(ordered, shortcut)
                 var bad = verify(targets, a)
                 if (bad.isNotEmpty() && a.speed < 1f) {
                     a.log("ลองใหม่ด้วยความเร็วปกติ")
@@ -298,8 +354,13 @@ class RoundsService : AccessibilityService() {
 
     // ------------------------------------------------------------------ bubble
 
-    private fun shouldShow(): Boolean =
-        prefs.bubble && (busy || (!prefs.parked && (!prefs.onlyInAnki || ankiInFront || menu != null)))
+    private fun shouldShow(): Boolean {
+        if (!prefs.bubble) return false
+        if (busy || menu != null) return true
+        if (prefs.parked) return false
+        if (!prefs.onlyInAnki) return true
+        return ankiInFront && screenOk()
+    }
 
     fun refreshBubble() {
         if (!::prefs.isInitialized) return

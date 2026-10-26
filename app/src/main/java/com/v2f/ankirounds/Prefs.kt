@@ -104,6 +104,11 @@ class Prefs(ctx: Context) {
         get() = p.getBoolean("only_in_anki", true)
         set(v) = p.edit().putBoolean("only_in_anki", v).apply()
 
+    /** แสดงปุ่มเฉพาะหน้าแรก (รายการ deck) และหน้า Congratulations · ซ่อนตอนรีวิวการ์ด */
+    var onlyHome: Boolean
+        get() = p.getBoolean("only_home", true)
+        set(v) = p.edit().putBoolean("only_home", v).apply()
+
     var bubbleX: Int
         get() = p.getInt("bubble_x", 0)
         set(v) = p.edit().putInt("bubble_x", v).apply()

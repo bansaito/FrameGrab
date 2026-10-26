@@ -37,13 +37,42 @@ class Automator(private val svc: AccessibilityService, private val prefs: Prefs)
     fun logText(): String = log.toString()
 
     /** ตั้งค่า Maximum reviews/day ของแต่ละ deck  คืนข้อความผลลัพธ์ */
-    fun apply(targets: List<Pair<String, Int>>) {
+    /**
+     * @param shortcutDeck deck ที่กำลังเปิดหน้า Congratulations อยู่ (ถ้ามี) — ใช้ไอคอน ⚙ มุมขวาบนเป็นทางลัด
+     */
+    fun apply(targets: List<Pair<String, Int>>, shortcutDeck: String? = null) {
         log("เริ่ม: " + targets.joinToString { "${it.first}=${it.second}" })
         for ((name, value) in targets) {
+            if (shortcutDeck != null && name == shortcutDeck && tryShortcut(name, value)) continue
             setDeckLimit(name, value)
         }
         openDeckList()
         log("เสร็จ ✓")
+    }
+
+    private val congratsWords = listOf("congratulations", "ยินดีด้วย", "custom study", "เรียนแบบกำหนดเอง")
+
+    /** อยู่หน้า Congratulations ของ deck นี้ → แตะ ⚙ (Deck options) แล้วแก้ค่าเลย ไม่ต้องหาในรายการ */
+    private fun tryShortcut(deckName: String, value: Int): Boolean {
+        if (findNode { containsAny(it, congratsWords) } == null) return false
+        val menuLabels = split(prefs.menuLabels)
+        val gear = findNode { n ->
+            n.packageName?.toString() == Prefs.ANKI_PKG && (exactAny(n, menuLabels) ||
+                (n.viewIdResourceName ?: "").contains("deck_options", ignoreCase = true))
+        }
+        if (gear == null) {
+            log("หน้า Congratulations: ไม่เจอไอคอน ⚙ → ใช้ทางปกติ")
+            return false
+        }
+        log("— deck \"$deckName\" → $value (ทางลัด ⚙ จากหน้า Congratulations)")
+        click(gear)
+        return try {
+            editOpenOptions(value)
+            true
+        } catch (e: StepFailed) {
+            log("ทางลัดไม่สำเร็จ → ใช้ทางปกติ")
+            false
+        }
     }
 
     // ------------------------------------------------------------------ steps
@@ -62,7 +91,11 @@ class Automator(private val svc: AccessibilityService, private val prefs: Prefs)
             ?: fail("ไม่เจอเมนู ${menuLabels.joinToString(" / ")} หลังกดค้าง")
         log("เจอเมนู \"${label(menu)}\"")
         click(menu)
+        editOpenOptions(value)
+    }
 
+    /** อยู่ในหน้าตั้งค่า deck แล้ว: แก้ Maximum reviews/day แล้วกด Save */
+    private fun editOpenOptions(value: Int) {
         val fieldLabels = split(prefs.fieldLabels)
         val fieldLabel = waitFor(15000) { n -> containsAny(n, fieldLabels) }
             ?: fail("ไม่เจอข้อความ ${fieldLabels.joinToString(" / ")} ในหน้าตั้งค่า")
