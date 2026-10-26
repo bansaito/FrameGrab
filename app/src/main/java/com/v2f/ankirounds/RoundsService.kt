@@ -25,7 +25,7 @@ import kotlin.math.abs
  * บริการช่วยเหลือพิเศษ: แสดงปุ่มลอยและกดแทนใน AnkiDroid เมื่อผู้ใช้สั่งเท่านั้น
  *  - ปุ่มลอยแสดงจำนวนการ์ดที่เหลือในรอบนี้ (ครบแล้วเปลี่ยนเป็น ➕ และกะพริบ)
  *  - แสดงเฉพาะตอนเปิด AnkiDroid (ตั้งค่าได้)
- *  - แตะ = อีก 1 รอบ · ลาก = ย้าย · กดค้าง = เมนู
+ *  - แตะ (หรือกดค้าง) = เมนูให้เลือกก่อน · ลาก = ย้าย
  */
 class RoundsService : AccessibilityService() {
 
@@ -336,7 +336,7 @@ class RoundsService : AccessibilityService() {
                     if (moved) {
                         prefs.bubbleX = lp.x; prefs.bubbleY = lp.y
                     } else if (!longFired && e.action == MotionEvent.ACTION_UP) {
-                        if (menu != null) hideMenu() else bump()     // แตะ = อีก 1 รอบ
+                        if (menu != null) hideMenu() else showMenu()   // แตะ = เปิดเมนูให้เลือกก่อน
                     }
                 }
             }

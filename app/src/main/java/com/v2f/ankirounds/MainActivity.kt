@@ -106,7 +106,7 @@ class MainActivity : Activity() {
         row.addView(btn("↺ เริ่มชุดใหม่", false) { confirmReset() },
             LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         root.addView(row)
-        note("ปุ่มลอย: แตะ = อีก 1 รอบ · ลาก = ย้ายที่ · กดค้าง = เมนู (➕ / ↺ / 🏦 / ⚙️)\nตัวเลขบนปุ่ม = การ์ดที่เหลือในรอบนี้ · ครบแล้วเปลี่ยนเป็น ➕ สีเขียวและเด้งเรียก")
+        note("ปุ่มลอย: แตะ = เปิดเมนูให้เลือก (➕ / ↺ / 🏦 / ⚙️) · ลาก = ย้ายที่\nตัวเลขบนปุ่ม = การ์ดที่เหลือในรอบนี้ · ครบแล้วเปลี่ยนเป็น ➕ สีเขียวและเด้งเรียก")
         val sw = Switch(this).apply {
             text = "แสดงปุ่มลอย ➕"
             setTextColor(Color.WHITE)
