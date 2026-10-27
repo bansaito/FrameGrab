@@ -111,15 +111,19 @@ class RoundsService : AccessibilityService() {
         }
     }
 
-    private val afterScroll = Runnable { wake() }
+    private val afterScroll = Runnable { if (calm()) rest() else wake() }
 
     /** เพิ่งเปิด AnkiDroid เข้ามาจากแอปอื่น (ให้ปุ่มชัดได้ครั้งเดียว) */
     private var freshEntry = true
+    private var leftAt = 0L        // ออกจาก AnkiDroid ล่าสุดเมื่อไหร่
 
     private fun setFront(now: Boolean) {
         if (now == ankiInFront) return
         ankiInFront = now
-        if (now) freshEntry = true
+        // นับเป็น "เข้าแอปใหม่" เฉพาะเมื่อออกไปนานเกิน 1 นาที
+        // (แผงควบคุม ป๊อปอัป หรือสลับแอปแป๊บเดียว ไม่ทำให้ปุ่มเด้งชัดขึ้นมาอีก)
+        if (now) { if (System.currentTimeMillis() - leftAt > 60_000) freshEntry = true }
+        else leftAt = System.currentTimeMillis()
         refreshBubble()
         if (now) requestCount(0)
     }
@@ -467,7 +471,7 @@ class RoundsService : AccessibilityService() {
         if (shouldShow()) showBubble() else { hideMenu(); removeBubble() }
         updateBubbleFace()
         if (calm()) rest() else wake()
-        if (bubble != null) freshEntry = false
+        if (ankiInFront) freshEntry = false     // ใช้สิทธิ์ "ชัดครั้งแรก" ไปแล้ว แม้ตอนนั้นยังไม่เห็นปุ่ม (เช่นเข้าไปหน้าท่องเลย)
     }
 
     /** โหมดนิ่ง: ปุ่มชัดเต็มเฉพาะตอนเพิ่งเข้า AnkiDroid · ระหว่างใช้งานจางค้างไว้ */
