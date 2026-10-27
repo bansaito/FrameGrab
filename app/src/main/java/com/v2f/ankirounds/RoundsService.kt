@@ -88,11 +88,13 @@ class RoundsService : AccessibilityService() {
                 return
             }
             val now = pkg == Prefs.ANKI_PKG
-            if (now) classify(event.className?.toString() ?: "")
-            if (now != ankiInFront) {
-                ankiInFront = now
-                refreshBubble()
-                if (now) requestCount(0)
+            if (now) {
+                classify(event.className?.toString() ?: "")
+                setFront(true)
+            } else {
+                // หน้าต่างอื่นเด้งขึ้นมา (แผงควบคุม Xiaomi, ป๊อปอัประบบ ฯลฯ) ไม่ได้แปลว่าออกจาก AnkiDroid
+                // → เช็กจากแอปที่อยู่บนสุดจริงอีกที แทนการซ่อนปุ่มทันที
+                main.removeCallbacks(recheckFront); main.postDelayed(recheckFront, 350)
             }
         } else if (pkg == Prefs.ANKI_PKG) {
             if (screen == Screen.UNKNOWN && event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
@@ -111,6 +113,24 @@ class RoundsService : AccessibilityService() {
 
     private val afterScroll = Runnable { wake() }
 
+    private fun setFront(now: Boolean) {
+        if (now == ankiInFront) return
+        ankiInFront = now
+        refreshBubble()
+        if (now) requestCount(0)
+    }
+
+    /** แอปที่อยู่บนสุดจริง (ดูเฉพาะหน้าต่างแอป ไม่นับแผงควบคุม/ป๊อปอัประบบ) */
+    private fun topAppPkg(): String? = try {
+        windows.filter { it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION }
+            .maxByOrNull { it.layer }?.root?.packageName?.toString()
+    } catch (_: Exception) { null }
+
+    private val recheckFront = Runnable {
+        val top = topAppPkg() ?: return@Runnable
+        setFront(top == Prefs.ANKI_PKG)
+    }
+
     private fun appLabel(pkg: String): String = try {
         packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
     } catch (_: Exception) { pkg }
@@ -123,6 +143,11 @@ class RoundsService : AccessibilityService() {
     /** แยกหน้าจาก class ของหน้าต่าง (dialog/เมนูเล็ก ๆ ไม่นับ คงสถานะเดิมไว้) */
     private fun classify(cls: String) {
         if (!cls.startsWith("com.ichi2")) return
+        // dialog / เมนู / กล่อง sync ของ AnkiDroid ไม่ใช่หน้าใหม่ → คงสถานะเดิม (เดิมทำให้ปุ่มหายบนหน้าแรก)
+        val isActivity = try {
+            packageManager.getActivityInfo(android.content.ComponentName(Prefs.ANKI_PKG, cls), 0); true
+        } catch (_: Exception) { false }
+        if (!isActivity) return
         val s = when {
             cls.endsWith(".DeckPicker") -> Screen.HOME
             cls.contains("StudyOptions") || cls.contains("Congrats") -> Screen.CONGRATS
@@ -171,6 +196,7 @@ class RoundsService : AccessibilityService() {
     private val countLoop = object : Runnable {
         override fun run() {
             if (ankiInFront && bubble != null) requestCount(0)
+            if (!busy) recheckFront.run()          // ซ่อมตัวเอง: ถ้าพลาดไป ปุ่มกลับมาภายใน 5 วิ
             main.postDelayed(this, 5000)
         }
     }
