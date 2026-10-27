@@ -22,6 +22,10 @@ class Prefs(ctx: Context) {
                 e.putInt("${pre(g)}deck${i}_base", DEFAULT_BASE[i])
             e.putBoolean("base_fixed_v13", true).apply()
         }
+        // v1.20: ไม่แสดงจำนวนการ์ดที่เหลือในเมนูเป็นค่าเริ่มต้น (ปิดครั้งเดียว เปิดกลับเองได้)
+        if (!p.getBoolean("status_off_v20", false)) {
+            p.edit().putBoolean("feat_status", false).putBoolean("status_off_v20", true).apply()
+        }
     }
 
     // ------------------------------------------------------------------ groups (ชุด)
@@ -183,7 +187,7 @@ class Prefs(ctx: Context) {
 
     /** หัวเมนูบอกสถานะ (ตอนนี้ … · เหลือ … ใบ) */
     var featStatus: Boolean
-        get() = p.getBoolean("feat_status", true)
+        get() = p.getBoolean("feat_status", false)
         set(v) = p.edit().putBoolean("feat_status", v).apply()
 
     /** หลายชุดในเมนู */
