@@ -97,8 +97,8 @@ class RoundsService : AccessibilityService() {
                 main.removeCallbacks(recheckFront); main.postDelayed(recheckFront, 350)
             }
         } else if (pkg == Prefs.ANKI_PKG) {
-            if (screen == Screen.UNKNOWN && event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
-                main.removeCallbacks(checkScreen); main.postDelayed(checkScreen, 400)
+            if (screen == Screen.OTHER && event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+                scheduleCheck(null)
             }
             if (event.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED) {
                 if (prefs.featScrollHide && menu == null && !busy) {
@@ -137,13 +137,16 @@ class RoundsService : AccessibilityService() {
 
     // ------------------------------------------------------------------ which AnkiDroid screen
 
-    private enum class Screen { HOME, CONGRATS, OTHER, UNKNOWN }
+    /** หน้าต่าง ๆ ของ AnkiDroid (ตั้งในแอปได้ว่าให้ปุ่มลอยแสดงหน้าไหน) */
+    enum class Screen { HOME, CONGRATS, REVIEW, ADD, BROWSER, OTHER }
     private var screen = Screen.HOME
+    private var pendingFallback: Screen? = null
 
     /** แยกหน้าจาก class ของหน้าต่าง (dialog/เมนูเล็ก ๆ ไม่นับ คงสถานะเดิมไว้) */
     private fun classify(cls: String) {
-        if (!cls.startsWith("com.ichi2")) return
-        // dialog / เมนู / กล่อง sync ของ AnkiDroid ไม่ใช่หน้าใหม่ → คงสถานะเดิม (เดิมทำให้ปุ่มหายบนหน้าแรก)
+        // class ที่ไม่ใช่ของ AnkiDroid (เช่นกลับมาหน้าเดิม) → ดูจากเนื้อหาบนจอ ถ้าไม่แน่ใจคงสถานะเดิม
+        if (!cls.startsWith("com.ichi2")) { scheduleCheck(null); return }
+        // dialog / เมนู / กล่อง sync ของ AnkiDroid ไม่ใช่หน้าใหม่ → คงสถานะเดิม
         val isActivity = try {
             packageManager.getActivityInfo(android.content.ComponentName(Prefs.ANKI_PKG, cls), 0); true
         } catch (_: Exception) { false }
@@ -151,30 +154,52 @@ class RoundsService : AccessibilityService() {
         val s = when {
             cls.endsWith(".DeckPicker") -> Screen.HOME
             cls.contains("StudyOptions") || cls.contains("Congrats") -> Screen.CONGRATS
-            cls.contains("Reviewer") || cls.contains("Previewer") -> Screen.OTHER
-            else -> Screen.UNKNOWN          // เช่น SingleFragmentActivity: ดูจากเนื้อหาบนจอ
+            cls.contains("Reviewer") || cls.contains("Previewer") -> Screen.REVIEW
+            cls.contains("NoteEditor") -> Screen.ADD
+            cls.contains("CardBrowser") -> Screen.BROWSER
+            cls.contains("SingleFragment") -> null      // ดูจากเนื้อหาบนจอ
+            else -> Screen.OTHER
         }
-        setScreen(s)
-        if (s == Screen.UNKNOWN) { main.removeCallbacks(checkScreen); main.postDelayed(checkScreen, 400) }
+        if (s != null) setScreen(s) else scheduleCheck(Screen.OTHER)
     }
 
+    private fun scheduleCheck(fallback: Screen?) {
+        if (fallback != null || pendingFallback == null) pendingFallback = fallback
+        main.removeCallbacks(checkScreen); main.postDelayed(checkScreen, 400)
+    }
+
+    /** หน้าต่างแอป AnkiDroid ที่อยู่บนสุด */
+    private fun ankiRoot(): android.view.accessibility.AccessibilityNodeInfo? = try {
+        windows.filter { it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION }
+            .maxByOrNull { it.layer }?.root?.takeIf { it.packageName?.toString() == Prefs.ANKI_PKG }
+    } catch (_: Exception) { null } ?: rootInActiveWindow?.takeIf { it.packageName?.toString() == Prefs.ANKI_PKG }
+
     private val checkScreen = Runnable {
-        val root = rootInActiveWindow ?: return@Runnable
-        if (root.packageName?.toString() != Prefs.ANKI_PKG) return@Runnable
+        val fallback = pendingFallback
+        pendingFallback = null
+        val root = ankiRoot() ?: return@Runnable
         val words = listOf("congratulations", "ยินดีด้วย", "custom study", "เรียนแบบกำหนดเอง")
         val answer = listOf("show answer", "แสดงคำตอบ")
-        var congrats = false; var reviewing = false
+        var congrats = false; var reviewing = false; var home = false
         fun walk(n: android.view.accessibility.AccessibilityNodeInfo?, d: Int) {
             if (n == null || d > 40 || congrats) return
             val t = (n.text ?: n.contentDescription)?.toString()?.lowercase() ?: ""
             if (t.isNotEmpty()) {
                 if (words.any { t.contains(it) }) congrats = true
                 if (answer.any { t == it }) reviewing = true
+                // หน้าแรก: หัวข้อ "AnkiDroid" หรือบรรทัดล่าง "Studied … today"
+                if (t == "ankidroid" || (t.startsWith("studied") && t.contains("today"))) home = true
             }
             for (i in 0 until n.childCount) walk(n.getChild(i), d + 1)
         }
         walk(root, 0)
-        setScreen(when { congrats -> Screen.CONGRATS; reviewing -> Screen.OTHER; else -> Screen.UNKNOWN })
+        val s = when {
+            congrats -> Screen.CONGRATS
+            reviewing -> Screen.REVIEW
+            home -> Screen.HOME
+            else -> fallback
+        }
+        if (s != null) setScreen(s)
     }
 
     private fun setScreen(s: Screen) {
@@ -184,8 +209,7 @@ class RoundsService : AccessibilityService() {
         if (s == Screen.HOME || s == Screen.CONGRATS) requestCount(0)
     }
 
-    private fun screenOk(): Boolean =
-        !prefs.onlyHome || screen == Screen.HOME || screen == Screen.CONGRATS
+    private fun screenOk(): Boolean = prefs.showOn(screen.name)
 
     private fun currentIme(): String =
         Settings.Secure.getString(contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD)
@@ -196,7 +220,10 @@ class RoundsService : AccessibilityService() {
     private val countLoop = object : Runnable {
         override fun run() {
             if (ankiInFront && bubble != null) requestCount(0)
-            if (!busy) recheckFront.run()          // ซ่อมตัวเอง: ถ้าพลาดไป ปุ่มกลับมาภายใน 5 วิ
+            if (!busy) {                           // ซ่อมตัวเอง: ถ้าพลาดไป ปุ่มกลับมาภายใน 5 วิ
+                recheckFront.run()
+                if (ankiInFront && bubble == null && menu == null) scheduleCheck(null)
+            }
             main.postDelayed(this, 5000)
         }
     }
@@ -318,6 +345,7 @@ class RoundsService : AccessibilityService() {
                     prefs.lastGroup = g
                 }
                 busy = false
+                if (ok) screen = Screen.HOME         // จบที่หน้ารายการ deck เสมอ
                 lastCountAt = 0
                 refreshBubble()
                 requestCount(0)

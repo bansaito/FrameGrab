@@ -119,6 +119,12 @@ class Prefs(ctx: Context) {
         get() = p.getBoolean("only_home", true)
         set(v) = p.edit().putBoolean("only_home", v).apply()
 
+    /** ให้ปุ่มลอยแสดงที่หน้านี้ไหม (key = ชื่อหน้า HOME/CONGRATS/REVIEW/ADD/BROWSER/OTHER) */
+    fun showOn(key: String): Boolean =
+        p.getBoolean("show_$key", if (!onlyHome) true else key in DEFAULT_SHOW)
+
+    fun setShowOn(key: String, v: Boolean) = p.edit().putBoolean("show_$key", v).apply()
+
     var bubbleX: Int
         get() = p.getInt("bubble_x", 0)
         set(v) = p.edit().putInt("bubble_x", v).apply()
@@ -221,6 +227,7 @@ class Prefs(ctx: Context) {
 
     companion object {
         const val MAX_DECKS = 3
+        val DEFAULT_SHOW = setOf("HOME", "CONGRATS")
         val DEFAULT_NAMES = arrayOf("deck 1", "deck 2", "")
         val DEFAULT_BASE = intArrayOf(2, 1, 1)
         val DEFAULT_STEP = intArrayOf(2, 1, 1)

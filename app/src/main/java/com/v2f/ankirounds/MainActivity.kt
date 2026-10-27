@@ -132,15 +132,15 @@ class MainActivity : Activity() {
             }
         }
         root.addView(sw)
-        root.addView(Switch(this).apply {
-            text = "แสดงปุ่มเฉพาะหน้าแรกและหน้า Congratulations (ซ่อนตอนรีวิวการ์ด)"
-            setTextColor(Color.WHITE)
-            isChecked = prefs.onlyHome
-            setOnCheckedChangeListener { _, on ->
-                prefs.onlyHome = on
-                RoundsService.instance?.refreshBubble()
-            }
-        })
+        note("แสดงปุ่มลอยที่หน้าไหนของ AnkiDroid บ้าง")
+        for ((key, label) in listOf(
+            "HOME" to "   หน้าแรก (รายการ deck)",
+            "CONGRATS" to "   หน้า Congratulations / หน้าเริ่มท่อง",
+            "REVIEW" to "   ระหว่างท่องการ์ด",
+            "ADD" to "   หน้าเพิ่ม / แก้ไขการ์ด",
+            "BROWSER" to "   หน้า Browse (ค้นการ์ด)",
+            "OTHER" to "   หน้าอื่น ๆ (ตั้งค่า สถิติ ฯลฯ)",
+        )) featSwitch(label, prefs.showOn(key)) { prefs.setShowOn(key, it) }
         root.addView(Switch(this).apply {
             text = "แสดงปุ่มลอยเฉพาะตอนเปิด AnkiDroid"
             setTextColor(Color.WHITE)
