@@ -72,14 +72,17 @@ class GuideView(ctx: Context) : View(ctx) {
             )
             for ((x, y) in pts) { canvas.drawCircle(x, y, hs, handle); canvas.drawCircle(x, y, hs, handleRing) }
         } else {
-            val L = minOf(22f * d, r.width() / 4, r.height() / 4)
+            // กำลังลาก: มุมใหญ่และหนาขึ้น ให้เห็นชัดว่าจับอยู่
+            val L = minOf((if (bigCorners) 36f else 22f) * d, r.width() / 4, r.height() / 4)
+            corner.strokeWidth = (if (bigCorners) 5f else 3f) * d
             for ((x, sx) in listOf(r.left to 1f, r.right to -1f)) for ((y, sy) in listOf(r.top to 1f, r.bottom to -1f)) {
                 canvas.drawLine(x, y, x + L * sx, y, corner)
                 canvas.drawLine(x, y, x, y + L * sy, corner)
             }
         }
         // ป้ายสัดส่วนแสดงเฉพาะตอนลาก/แก้กรอบ (ปกติดูที่ปุ่มลอย)
-        val tag = if (editing || showRatio) Cropper.ratioTag(r.width().toInt(), r.height().toInt()) else ""
+        // ตอนลากด้วยจุดมุม สัดส่วนไปแสดงที่ปุ่มลอยแทน (ป้ายบนกรอบมักถูกนิ้วบัง)
+        val tag = if (editing) Cropper.ratioTag(r.width().toInt(), r.height().toInt()) else ""
         if (tag.isNotEmpty()) {
             val pad = 6f * d
             val w = tagText.measureText(tag) + pad * 2
@@ -126,6 +129,9 @@ class GuideView(ctx: Context) : View(ctx) {
     private var snapped: Float? = null  // สัดส่วนที่ดูดอยู่
     /** แสดงสัดส่วนบนป้ายแทนชื่อกรอบ */
     var showRatio = false
+    /** กำลังลากด้วยจุดมุม: วาดมุมใหญ่ขึ้น */
+    var bigCorners = false
+        set(v) { field = v; invalidate() }
 
     private fun inBounds(n: RectF) = n.left >= bounds.left - 0.5f && n.top >= bounds.top - 0.5f &&
         n.right <= bounds.right + 0.5f && n.bottom <= bounds.bottom + 0.5f
@@ -137,9 +143,10 @@ class GuideView(ctx: Context) : View(ctx) {
         val cur = snapped
         // ดูดเบา ๆ: เข้าใกล้ ≤3% ดูด, ลากเกิน 5% หลุด (9:16 / 3:4 ได้สิทธิ์ก่อนถ้าใกล้พอ ๆ กัน)
         fun primary(t: Float) = abs(t - 9 / 16f) < 0.001f || abs(t - 3 / 4f) < 0.001f
-        val target = if (cur != null && abs(r - cur) / cur < 0.05f) cur
-            else SNAPS.filter { abs(r - it) / it < 0.03f }
-                .minByOrNull { abs(r - it) / it * (if (primary(it)) 0.8f else 1f) }
+        // 9:16 / 3:4 ดูดแรงกว่า: เข้าใกล้ ≤7% ดูด, ลากเกิน 9% หลุด (อื่น ๆ 3% / 5%)
+        val target = if (cur != null && abs(r - cur) / cur < (if (primary(cur)) 0.09f else 0.05f)) cur
+            else SNAPS.filter { abs(r - it) / it < (if (primary(it)) 0.07f else 0.03f) }
+                .minByOrNull { abs(r - it) / it * (if (primary(it)) 0.5f else 1f) }
         snapped = target
         if (target == null) return n
         val out = RectF(n)

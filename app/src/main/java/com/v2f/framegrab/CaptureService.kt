@@ -1361,7 +1361,7 @@ class CaptureService : Service() {
     // ---------- จุดจับบนกรอบ (ลากได้ทันที ไม่ต้องเข้าเมนู) ----------
     @SuppressLint("ClickableViewAccessibility")
     private fun addHandles() {
-        val size = dp(44f)
+        val size = dp(60f)   // พื้นที่แตะของมุมใหญ่ขึ้น จับง่ายขึ้น (มองไม่เห็น)
         val made = arrayOfNulls<Pair<HandleView, WindowManager.LayoutParams>>(9)
         // ใส่แถบขอบก่อน ให้จุดมุมและปุ่มย้ายอยู่ชั้นบนกว่า
         for (i in listOf(5, 6, 7, 8, 0, 1, 2, 3, 4)) {
@@ -1383,6 +1383,10 @@ class CaptureService : Service() {
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 draggingGuide = true
+                g.bigCorners = true
+                main.removeCallbacks(restoreDragLabel)
+                root?.alpha = 1f
+                bubble.text = dragLabel(g.rect)
                 wakeGuide(stay = true)
                 closeMenu()
                 g.bounds.set(0f, 0f, screenW.toFloat(), screenH.toFloat())
@@ -1393,6 +1397,7 @@ class CaptureService : Service() {
             MotionEvent.ACTION_MOVE -> {
                 g.dragTo(e.rawX, e.rawY)
                 syncHandles()
+                bubble.text = dragLabel(g.rect)
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 draggingGuide = false
@@ -1409,6 +1414,9 @@ class CaptureService : Service() {
                     overrideRect = android.graphics.RectF(r)
                 }
                 g.showRatio = false
+                g.bigCorners = false
+                bubble.text = dragLabel(g.rect)
+                main.postDelayed(restoreDragLabel, 1500)
                 g.label = Cropper.ratioTag(r.width().toInt(), r.height().toInt())
                 g.invalidate()
                 updateNotification()
@@ -1457,6 +1465,21 @@ class CaptureService : Service() {
         main.removeCallbacks(fadeGuide)
         guide?.animate()?.cancel(); guide?.alpha = 1f
         if (!stay) main.postDelayed(fadeGuide, 2000)
+    }
+
+    // ---------- ตัวเลขสัดส่วนบนปุ่มลอยระหว่างลากกรอบ (ไม่ถูกนิ้วบัง) ----------
+    private val restoreDragLabel = Runnable { if (!recording) bubble.text = bubbleLabel(); scheduleFade() }
+    private fun dragLabel(r: android.graphics.RectF?): CharSequence {
+        val name = r?.let { Cropper.ratioName(it.width().roundToInt(), it.height().roundToInt()) } ?: "?"
+        val head = "✋"
+        val sb = android.text.SpannableStringBuilder("$head\n$name")
+        sb.setSpan(android.text.style.AbsoluteSizeSpan(13, true), 0, head.length, 0)
+        sb.setSpan(android.text.style.AbsoluteSizeSpan(if (name.length <= 4) 16 else 13, true), head.length + 1, sb.length, 0)
+        sb.setSpan(android.text.style.StyleSpan(android.graphics.Typeface.BOLD), head.length + 1, sb.length, 0)
+        // 9:16 / 3:4 = สีเขียว (ขนาดที่ใช้บ่อย) ให้รู้ทันทีว่าลากเข้าแล้ว
+        if (name == "9:16" || name == "3:4")
+            sb.setSpan(android.text.style.ForegroundColorSpan(0xFF86EFAC.toInt()), head.length + 1, sb.length, 0)
+        return sb
     }
 
     /** วางจุดจับให้ตรงมุมกรอบ และซ่อน/แสดงตามกรอบ */

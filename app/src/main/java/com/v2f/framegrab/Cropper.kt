@@ -99,8 +99,11 @@ object Cropper {
     fun ratioName(w: Int, h: Int): String {
         if (w <= 0 || h <= 0) return "?"
         val r = w / h.toDouble()
-        val best = COMMON.minByOrNull { kotlin.math.abs(it.second - r) / it.second }!!
-        return if (kotlin.math.abs(best.second - r) / best.second <= 0.04) best.first else "≈" + best.first
+        // 9:16 กับ 3:4 ใช้บ่อยที่สุด: ได้สิทธิ์ก่อน และนับว่าตรงได้กว้างกว่า (±6% แทน ±4%)
+        fun prim(n: String) = n == "9:16" || n == "3:4"
+        val best = COMMON.minByOrNull { kotlin.math.abs(it.second - r) / it.second * (if (prim(it.first)) 0.6 else 1.0) }!!
+        val tol = if (prim(best.first)) 0.06 else 0.04
+        return if (kotlin.math.abs(best.second - r) / best.second <= tol) best.first else "≈" + best.first
     }
 
     fun ratioTag(w: Int, h: Int): String = ratioName(w, h)
