@@ -97,19 +97,31 @@ class Automator(private val svc: AccessibilityService, private val prefs: Prefs)
     /** อยู่ในหน้าตั้งค่า deck แล้ว: แก้ Maximum reviews/day แล้วกด Save */
     private fun editOpenOptions(value: Int) {
         val fieldLabels = split(prefs.fieldLabels)
-        val fieldLabel = waitFor(15000, fieldLabels) { n -> containsAny(n, fieldLabels) }
-            ?: fail("ไม่เจอข้อความ ${fieldLabels.joinToString(" / ")} ในหน้าตั้งค่า")
-        log("เจอ \"${label(fieldLabel)}\"")
-        sleep(600)
-
-        // อ่านหน้าครั้งเดียว: เอาทั้งช่องตัวเลขและปุ่ม Save จากรอบเดียวกัน (หน้าเว็บนี้อ่านทีละรอบช้ามาก)
         val saveLabels = split(prefs.saveLabels)
-        val page = snapshot()
-        val input = inputAfter(page, fieldLabels)
-            ?: fail("ไม่เจอช่องตัวเลขถัดจาก \"${label(fieldLabel)}\"")
-        val save = page.firstOrNull { it.isVisibleToUser && exactAny(it, saveLabels) }
-            ?: byText(saveLabels) { exactAny(it, saveLabels) }
-            ?: fail("ไม่เจอปุ่ม ${saveLabels.joinToString(" / ")}")
+        // รอหน้าโหลด และหาข้อความ + ช่องตัวเลข + ปุ่ม Save ในรอบอ่านเดียวกัน
+        // อ่านเฉพาะส่วนที่เห็นบนจอ (หน้าเว็บนี้ยาวมาก) · ถ้า 6 วิแล้วยังไม่เจอ ค่อยอ่านทั้งหน้า
+        val t0 = System.currentTimeMillis()
+        var fieldLabel: AccessibilityNodeInfo? = null
+        var input: AccessibilityNodeInfo? = null
+        var save: AccessibilityNodeInfo? = null
+        while (System.currentTimeMillis() - t0 < 15000) {
+            val full = System.currentTimeMillis() - t0 > 6000
+            val page = snapshot(visibleOnly = !full)
+            val i = page.indexOfFirst { it.isVisibleToUser && containsAny(it, fieldLabels) }
+            if (i >= 0) {
+                fieldLabel = page[i]
+                input = inputAfter(page, fieldLabels)
+                save = page.firstOrNull { it.isVisibleToUser && exactAny(it, saveLabels) }
+                    ?: byText(saveLabels) { exactAny(it, saveLabels) }
+                if (input != null && save != null) break
+            }
+            sleep(150)
+        }
+        if (fieldLabel == null) fail("ไม่เจอข้อความ ${fieldLabels.joinToString(" / ")} ในหน้าตั้งค่า")
+        log("เจอ \"${label(fieldLabel)}\"")
+        if (input == null) fail("ไม่เจอช่องตัวเลขถัดจาก \"${label(fieldLabel)}\"")
+        if (save == null) fail("ไม่เจอปุ่ม ${saveLabels.joinToString(" / ")}")
+        sleep(150)
         val before = label(input)
         val want = value.toString()
 
@@ -179,9 +191,9 @@ class Automator(private val svc: AccessibilityService, private val prefs: Prefs)
     }
 
     /** ทุกชิ้นบนจอของ AnkiDroid เรียงตามลำดับ (อ่านครั้งเดียว) */
-    private fun snapshot(): List<AccessibilityNodeInfo> {
+    private fun snapshot(visibleOnly: Boolean = false): List<AccessibilityNodeInfo> {
         val all = ArrayList<AccessibilityNodeInfo>()
-        for (root in roots()) collect(root, all)
+        for (root in roots()) collect(root, all, visibleOnly)
         return all
     }
 
@@ -285,10 +297,13 @@ class Automator(private val svc: AccessibilityService, private val prefs: Prefs)
         return out
     }
 
-    private fun collect(n: AccessibilityNodeInfo?, out: MutableList<AccessibilityNodeInfo>) {
+    /** visibleOnly = ข้ามส่วนที่อยู่นอกจอทั้งก้อน (เร็วขึ้นมากกับหน้าเว็บยาว ๆ) */
+    private fun collect(n: AccessibilityNodeInfo?, out: MutableList<AccessibilityNodeInfo>,
+                        visibleOnly: Boolean = false) {
         if (n == null) return
+        if (visibleOnly && !n.isVisibleToUser) return
         out.add(n)
-        for (i in 0 until n.childCount) collect(n.getChild(i), out)
+        for (i in 0 until n.childCount) collect(n.getChild(i), out, visibleOnly)
     }
 
     private fun findNode(pred: (AccessibilityNodeInfo) -> Boolean): AccessibilityNodeInfo? {
