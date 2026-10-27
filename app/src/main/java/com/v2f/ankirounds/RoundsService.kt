@@ -233,11 +233,13 @@ class RoundsService : AccessibilityService() {
         if (System.currentTimeMillis() - lastCountAt < minGapMs) return
         counting = true
         lastCountAt = System.currentTimeMillis()
-        val groups = prefs.visibleGroups().associateWith { g -> prefs.decks(g).map { it.name } }
+        val groups = allGroups().associateWith { g -> prefs.decks(g).map { it.name } }
+        val counted = menuGroups().toSet()          // ชุดที่นับรวมเป็นวงแหวน/สีปุ่ม
         Thread {
             var total = -1
             val by = HashMap<Int, Int>()
             try {
+                selDeck = AnkiApi.selectedDeckName(this)
                 val all = AnkiApi.decks(this)
                 val seen = HashSet<Long>()
                 total = 0
@@ -247,7 +249,7 @@ class RoundsService : AccessibilityService() {
                     for (name in names) {
                         val d = AnkiApi.find(all, name) ?: continue
                         if (ids.add(d.id)) n += d.due
-                        if (seen.add(d.id)) total += d.due
+                        if (g in counted && seen.add(d.id)) total += d.due
                     }
                     by[g] = n
                 }
@@ -270,17 +272,44 @@ class RoundsService : AccessibilityService() {
 
     private enum class Kind { BUMP, UNDO, RESET }
 
+    // ------------------------------------------------------------------ which set (ชุด) is "the" set
+
+    @Volatile private var selDeck: String? = null     // deck ที่เลือกอยู่ใน AnkiDroid (อ่านจาก API)
+
+    /** ชุดที่มี deck */
+    private fun allGroups(): List<Int> =
+        (0 until prefs.groupCount).filter { prefs.decks(it).isNotEmpty() }.ifEmpty { listOf(0) }
+
+    private fun groupOfDeck(name: String?): Int? {
+        if (name.isNullOrBlank()) return null
+        val short = name.substringAfterLast("::")
+        return allGroups().firstOrNull { g ->
+            prefs.decks(g).any { it.name.equals(name, true) || it.name.substringAfterLast("::").equals(short, true) }
+        }
+    }
+
+    /** ชุดหลัก: ชุดของ deck ที่เปิดหน้า Congratulations อยู่ → ไม่งั้นชุดที่กด ➕/↶/↺ ล่าสุด → ชุดแรก */
+    fun primaryGroup(): Int {
+        val gs = allGroups()
+        if (screen == Screen.CONGRATS) groupOfDeck(selDeck)?.let { return it }
+        prefs.lastUsedGroup.takeIf { it in gs }?.let { return it }
+        return gs.first()
+    }
+
+    /** ชุดที่นับรวม (วงแหวน/สีปุ่ม): หลายชุด = ทุกชุด · ชุดเดียว = ชุดหลัก */
+    private fun menuGroups(): List<Int> = if (prefs.featGroups) allGroups() else listOf(primaryGroup())
+
     /** ➕ อีก 1 รอบ: ค่าปัจจุบันใน AnkiDroid + ค่าเพิ่ม */
-    fun bump(g: Int = prefs.lastGroup) = run(g, Kind.BUMP)
+    fun bump(g: Int = primaryGroup()) = run(g, Kind.BUMP)
 
     /** ↶ ย้อน 1 รอบ: ค่าปัจจุบัน − ค่าเพิ่ม */
-    fun undo(g: Int = prefs.lastGroup) {
+    fun undo(g: Int = primaryGroup()) {
         if (prefs.round(g) <= 1) { toast("ยังไม่ได้เพิ่มรอบ ไม่มีอะไรให้ย้อน"); return }
         run(g, Kind.UNDO)
     }
 
     /** ↺ เริ่มใหม่: กลับเป็นค่าที่จำไว้ตอนกด ➕ ครั้งแรกของชุด */
-    fun reset(g: Int = prefs.lastGroup) = run(g, Kind.RESET)
+    fun reset(g: Int = primaryGroup()) = run(g, Kind.RESET)
 
     private fun run(g: Int, kind: Kind) {
         hideMenu()
@@ -352,7 +381,7 @@ class RoundsService : AccessibilityService() {
                 requestCount(0)
                 refreshTiles()
                 if (ok) {
-                    val name = if (prefs.visibleGroups().size > 1) prefs.groupName(g) + " " else ""
+                    val name = if (allGroups().size > 1) prefs.groupName(g) + " " else ""
                     Toast.makeText(this, name + when (kind) {
                         Kind.BUMP -> "✓ เพิ่มแล้ว"; Kind.UNDO -> "✓ ย้อนแล้ว"; Kind.RESET -> "✓ เริ่มใหม่แล้ว"
                     }, Toast.LENGTH_SHORT).show()
@@ -662,7 +691,8 @@ class RoundsService : AccessibilityService() {
     // ------------------------------------------------------------------ long-press menu
 
     @SuppressLint("ClickableViewAccessibility")
-    private fun showMenu() {
+    /** @param pick ชุดที่แตะเลือกจากแถวชิป (null = ชุดหลักตามกติกา) */
+    private fun showMenu(pick: Int? = null) {
         hideMenu()
         val blp = bubbleLp ?: return
         val dp = resources.displayMetrics.density
@@ -694,46 +724,70 @@ class RoundsService : AccessibilityService() {
             ).apply { marginEnd = px(6) })
         }
 
-        var groups = prefs.visibleGroups().ifEmpty { listOf(0) }
-        val multi = groups.size > 1
-        val recent = prefs.lastUsedGroup
-        if (multi && prefs.featRecentFirst && recent in groups) groups = listOf(recent) + (groups - recent)
-        for ((k, g) in groups.withIndex()) {
-            // หัวข้อ: ชื่อชุด + การ์ดที่เหลือ (ไม่มีตัวเลขเพดาน)
-            val left = remainingBy[g]
-            val head = buildString {
-                append(prefs.groupName(g))                    // ชื่อชุดแสดงเสมอ (แม้ปิดหลายชุด)
-                val showLeft = prefs.featStatus && (!multi || prefs.featGroupRemaining)
-                if (showLeft && left != null) {
-                    if (isNotEmpty()) append("  ·  ")
-                    append(if (left > 0) "เหลือ $left ใบ" else "ครบแล้ว ✓")
-                }
+        if (screen == Screen.CONGRATS && pick == null) selDeck = AnkiApi.selectedDeckName(this)
+        val all = allGroups()
+        val multi = prefs.featGroups && all.size > 1
+        val g = pick?.takeIf { it in all } ?: primaryGroup()
+
+        // ชุดหลัก: ชื่อ (+ การ์ดที่เหลือถ้าเปิดไว้) และปุ่มเต็ม
+        val left = remainingBy[g]
+        val head = buildString {
+            append(prefs.groupName(g))                        // ชื่อชุดแสดงเสมอ (แม้ปิดหลายชุด)
+            val showLeft = prefs.featStatus && (!multi || prefs.featGroupRemaining)
+            if (showLeft && left != null) {
+                append("  ·  ")
+                append(if (left > 0) "เหลือ $left ใบ" else "ครบแล้ว ✓")
             }
-            if (head.isNotEmpty()) {
-                box.addView(TextView(this).apply {
-                    text = head
+        }
+        box.addView(TextView(this).apply {
+            text = head
+            textSize = 13f
+            setTextColor(Color.parseColor(if (left == 0) "#86EFAC" else "#B0B6C0"))
+            setPadding(px(4), 0, px(4), px(6))
+        })
+        val r = row()
+        addChip(r, chip("➕ อีก 1 รอบ", "#2563EB") { bump(g) })
+        if (prefs.featUndo && prefs.round(g) > 1) {
+            addChip(r, chip("↶ ย้อน", "#374151") { undo(g) })
+        }
+        if (prefs.round(g) > 1) {
+            var confirm = false
+            addChip(r, chip("↺ เริ่มใหม่", "#374151") { tv ->
+                if (!confirm) {
+                    confirm = true
+                    tv.text = "↺ แตะอีกครั้ง"
+                    tv.setTextColor(Color.parseColor("#FBBF24"))
+                    main.removeCallbacks(autoClose); main.postDelayed(autoClose, 3000)
+                } else reset(g)
+            })
+        }
+        box.addView(r)
+
+        // ชุดอื่น: ชิปชื่อเล็ก ๆ แถวเดียว (เลื่อนซ้ายขวาได้) · แตะ = สลับไปชุดนั้น
+        if (multi) {
+            box.addView(android.view.View(this).apply { setBackgroundColor(Color.parseColor("#33FFFFFF")) },
+                LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1).apply { topMargin = px(10) })
+            val strip = row().apply { setPadding(0, px(8), 0, 0) }
+            for (o in all) {
+                if (o == g) continue
+                val done = remainingBy[o] == 0 && prefs.featGroupRemaining
+                strip.addView(TextView(this).apply {
+                    text = prefs.groupName(o)
                     textSize = 13f
-                    setTextColor(Color.parseColor(if (left == 0) "#86EFAC" else "#B0B6C0"))
-                    setPadding(px(4), if (k == 0) 0 else px(10), px(4), px(6))
-                })
+                    setTextColor(Color.parseColor(if (done) "#86EFAC" else "#D1D5DB"))
+                    setPadding(px(10), px(5), px(10), px(5))
+                    background = GradientDrawable().apply {
+                        cornerRadius = 10 * dp; setColor(Color.parseColor("#2A2F38"))
+                    }
+                    setOnClickListener { showMenu(o) }
+                }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT).apply { marginEnd = px(6) })
             }
-            val r = row()
-            addChip(r, chip("➕ อีก 1 รอบ", "#2563EB") { bump(g) })
-            if (prefs.featUndo && prefs.round(g) > 1) {
-                addChip(r, chip("↶ ย้อน", "#374151") { undo(g) })
+            val scroll = android.widget.HorizontalScrollView(this).apply {
+                isHorizontalScrollBarEnabled = false
+                addView(strip)
             }
-            if (prefs.round(g) > 1) {
-                var confirm = false
-                addChip(r, chip("↺ เริ่มใหม่", "#374151") { tv ->
-                    if (!confirm) {
-                        confirm = true
-                        tv.text = "↺ แตะอีกครั้ง"
-                        tv.setTextColor(Color.parseColor("#FBBF24"))
-                        main.removeCallbacks(autoClose); main.postDelayed(autoClose, 3000)
-                    } else reset(g)
-                })
-            }
-            box.addView(r)
+            box.addView(scroll, LinearLayout.LayoutParams(px(260), LinearLayout.LayoutParams.WRAP_CONTENT))
         }
 
         val bottom = row().apply { setPadding(0, px(10), 0, 0) }

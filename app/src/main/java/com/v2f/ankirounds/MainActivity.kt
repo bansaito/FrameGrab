@@ -175,7 +175,6 @@ class MainActivity : Activity() {
         featSwitch("หัวเมนูบอกการ์ดที่เหลือ (เมื่อมีชุดเดียว)", prefs.featStatus) { prefs.featStatus = it }
         featSwitch("หลายชุดในเมนู (ปิด = แสดงเฉพาะชุดแรก)", prefs.featGroups) { prefs.featGroups = it }
         featSwitch("      ↳ บอกการ์ดที่เหลือของแต่ละชุด", prefs.featGroupRemaining) { prefs.featGroupRemaining = it }
-        featSwitch("      ↳ ชุดที่ใช้ล่าสุด (เช่นเพิ่งกด ➕) ขึ้นบนสุด", prefs.featRecentFirst) { prefs.featRecentFirst = it }
         featSwitch("ปุ่ม ↶ ย้อน 1 รอบ ในเมนู", prefs.featUndo) { prefs.featUndo = it }
         featSwitch("วงแหวนความคืบหน้ารอบปุ่มลอย", prefs.featRing) { prefs.featRing = it }
         featSwitch("ลากปุ่มลงขอบล่างเพื่อเก็บไว้ในแจ้งเตือน", prefs.featTrash) { on ->

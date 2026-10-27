@@ -18,7 +18,7 @@ class RoundsTile : TileService() {
             it.label = "อีก 1 รอบ"
             it.icon = android.graphics.drawable.Icon.createWithResource(this, R.drawable.ic_tile_plus)
             if (Build.VERSION.SDK_INT >= 29) {
-                it.subtitle = if (RoundsService.instance != null) Prefs(this).let { pr -> if (pr.visibleGroups().size > 1) pr.groupName(pr.lastGroup) else "แตะเพื่อเพิ่มรอบ" }
+                it.subtitle = if (RoundsService.instance != null) Prefs(this).let { pr -> if (pr.featGroups && pr.visibleGroups().size > 1) pr.groupName(RoundsService.instance!!.primaryGroup()) else "แตะเพื่อเพิ่มรอบ" }
                               else "🏦 โหมดธนาคาร"
             }
             it.updateTile()
