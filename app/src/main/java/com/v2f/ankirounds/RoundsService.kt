@@ -113,9 +113,13 @@ class RoundsService : AccessibilityService() {
 
     private val afterScroll = Runnable { wake() }
 
+    /** เพิ่งเปิด AnkiDroid เข้ามาจากแอปอื่น (ให้ปุ่มชัดได้ครั้งเดียว) */
+    private var freshEntry = true
+
     private fun setFront(now: Boolean) {
         if (now == ankiInFront) return
         ankiInFront = now
+        if (now) freshEntry = true
         refreshBubble()
         if (now) requestCount(0)
     }
@@ -263,7 +267,8 @@ class RoundsService : AccessibilityService() {
                 if (total > roundTotal || before <= 0) roundTotal = total
                 remainingBy.clear(); remainingBy.putAll(by)
                 updateBubbleFace()
-                if (before > 0 && total == 0) { wake(); pulse() }   // เพิ่งท่องครบ → เรียกให้เห็น
+                // เพิ่งท่องครบ → เรียกให้เห็น (โหมดนิ่ง: แค่เปลี่ยนเป็น ➕ เขียวเงียบ ๆ)
+                if (before > 0 && total == 0 && !prefs.featCalm) { wake(); pulse() }
             }
         }.start()
     }
@@ -461,7 +466,20 @@ class RoundsService : AccessibilityService() {
         if (!::prefs.isInitialized) return
         if (shouldShow()) showBubble() else { hideMenu(); removeBubble() }
         updateBubbleFace()
-        wake()
+        if (calm()) rest() else wake()
+        if (bubble != null) freshEntry = false
+    }
+
+    /** โหมดนิ่ง: ปุ่มชัดเต็มเฉพาะตอนเพิ่งเข้า AnkiDroid · ระหว่างใช้งานจางค้างไว้ */
+    private fun calm(): Boolean = prefs.featCalm && prefs.bubbleFade && !freshEntry && menu == null && !busy
+
+    /** จางทันที (ไม่กระพริบขึ้นมาชัดก่อน) */
+    private fun rest() {
+        val v = bubble ?: return
+        main.removeCallbacks(fade)
+        v.animate().cancel()
+        v.alpha = 0.25f
+        tuck(true)
     }
 
     /** ปุ่มบอกแค่ 2 สถานะ: 📚 ยังท่องไม่ครบ · ➕ เขียว = ครบรอบแล้ว (ไม่มีตัวเลข) */
@@ -578,7 +596,7 @@ class RoundsService : AccessibilityService() {
             bubble = v
             bubbleLp = lp
             updateBubbleFace()
-            wake()
+            if (calm()) rest() else wake()
         } catch (e: Exception) {
             toast("แสดงปุ่มลอยไม่ได้: ${e.message}")
         }

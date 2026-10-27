@@ -225,6 +225,11 @@ class Prefs(ctx: Context) {
         get() = p.getBoolean("feat_ring", true)
         set(v) = p.edit().putBoolean("feat_ring", v).apply()
 
+    /** โหมดนิ่ง: ปุ่มลอยชัดเฉพาะตอนเพิ่งเปิด AnkiDroid · ท่องจบ/เปลี่ยนหน้าไม่เด้งขึ้นมา (เปิดไว้) */
+    var featCalm: Boolean
+        get() = p.getBoolean("feat_calm", true)
+        set(v) = p.edit().putBoolean("feat_calm", v).apply()
+
     /** ปุ่ม ↶ ย้อน 1 รอบ */
     var featUndo: Boolean
         get() = p.getBoolean("feat_undo", true)
