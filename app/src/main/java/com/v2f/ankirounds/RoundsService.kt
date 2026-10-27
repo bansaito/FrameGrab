@@ -398,10 +398,10 @@ class RoundsService : AccessibilityService() {
         v.contentDescription = if (done) "ครบรอบแล้ว แตะเพื่อเพิ่มรอบ" else "AnkiRounds"
     }
 
-    // จางลงเองเมื่อไม่ได้ใช้ 3 วินาที (แตะเมื่อไหร่ก็กลับมาชัด)
+    // จางลงเองเมื่อไม่ได้ใช้ 1.5 วินาที (แตะเมื่อไหร่ก็กลับมาชัด)
     private val fade = Runnable {
         if (menu == null) {
-            bubble?.animate()?.alpha(0.25f)?.setDuration(600)?.start()
+            bubble?.animate()?.alpha(0.25f)?.setDuration(300)?.start()
             tuck(true)
         }
     }
@@ -411,7 +411,7 @@ class RoundsService : AccessibilityService() {
         main.removeCallbacks(fade)
         v.animate().cancel()
         v.alpha = 0.9f
-        if (prefs.bubbleFade && !busy) main.postDelayed(fade, if (remaining == 0) 6000 else 3000)
+        if (prefs.bubbleFade && !busy) main.postDelayed(fade, if (remaining == 0) 3000 else 1500)
     }
 
     private fun pulse() {
@@ -672,7 +672,7 @@ class RoundsService : AccessibilityService() {
                         confirm = true
                         tv.text = "↺ แตะอีกครั้ง"
                         tv.setTextColor(Color.parseColor("#FBBF24"))
-                        main.removeCallbacks(autoClose); main.postDelayed(autoClose, 6000)
+                        main.removeCallbacks(autoClose); main.postDelayed(autoClose, 3000)
                     } else reset(g)
                 })
             }
@@ -711,7 +711,7 @@ class RoundsService : AccessibilityService() {
             menu = box
             main.removeCallbacks(fade)
             bubble?.alpha = 0.95f
-            main.removeCallbacks(autoClose); main.postDelayed(autoClose, 8000)
+            main.removeCallbacks(autoClose); main.postDelayed(autoClose, 3000)
             requestCount(0)
         } catch (e: Exception) {
             toast("เปิดเมนูไม่ได้: ${e.message}")
