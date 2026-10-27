@@ -11,6 +11,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.text.InputType
+import android.view.DragEvent
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -90,7 +91,7 @@ class MainActivity : Activity() {
             addView(groupBar)
         })
         groupNameField = labeled("ชื่อชุด (เช่น ไทย / Bio / Math)", prefs.groupName(group))
-        note("กด 🔎 เลือก deck จาก AnkiDroid · ช่อง เริ่ม = ค่าที่ ↺ เริ่มใหม่ กลับไป · ช่อง + คือเพิ่มครั้งละกี่ใบ\ndeck ที่ใช้ preset ร่วมกัน แก้ให้ครั้งเดียว")
+        note("กดค้างที่ชุดแล้วลาก = ย้ายตำแหน่ง · กด 🔎 เลือก deck จาก AnkiDroid · ช่อง เริ่ม = ค่าที่ ↺ เริ่มใหม่ กลับไป · ช่อง + คือเพิ่มครั้งละกี่ใบ\ndeck ที่ใช้ preset ร่วมกัน แก้ให้ครั้งเดียว")
         for (i in 0 until Prefs.MAX_DECKS) {
             val d = prefs.deck(group, i)
             val row = LinearLayout(this).apply {
@@ -174,6 +175,7 @@ class MainActivity : Activity() {
         featSwitch("หัวเมนูบอกการ์ดที่เหลือ (เมื่อมีชุดเดียว)", prefs.featStatus) { prefs.featStatus = it }
         featSwitch("หลายชุดในเมนู (ปิด = แสดงเฉพาะชุดแรก)", prefs.featGroups) { prefs.featGroups = it }
         featSwitch("      ↳ บอกการ์ดที่เหลือของแต่ละชุด", prefs.featGroupRemaining) { prefs.featGroupRemaining = it }
+        featSwitch("      ↳ ชุดที่ใช้ล่าสุด (เช่นเพิ่งกด ➕) ขึ้นบนสุด", prefs.featRecentFirst) { prefs.featRecentFirst = it }
         featSwitch("ปุ่ม ↶ ย้อน 1 รอบ ในเมนู", prefs.featUndo) { prefs.featUndo = it }
         featSwitch("วงแหวนความคืบหน้ารอบปุ่มลอย", prefs.featRing) { prefs.featRing = it }
         featSwitch("ลากปุ่มลงขอบล่างเพื่อเก็บไว้ในแจ้งเตือน", prefs.featTrash) { on ->
@@ -305,6 +307,40 @@ class MainActivity : Activity() {
                     setColor(Color.parseColor(if (sel) "#2563EB" else "#2A2F38"))
                 }
                 setOnClickListener { switchGroup(g) }
+                // กดค้างแล้วลากไปวางบนชุดอื่น = ย้ายตำแหน่ง
+                tag = g
+                setOnLongClickListener { v ->
+                    saveFields()
+                    v.startDragAndDrop(null, View.DragShadowBuilder(v), g, 0)
+                    v.alpha = 0.4f
+                    true
+                }
+                setOnDragListener { v, e ->
+                    when (e.action) {
+                        DragEvent.ACTION_DRAG_STARTED -> e.localState is Int
+                        DragEvent.ACTION_DRAG_ENTERED -> { if (v.tag != e.localState) v.scaleX = 1.12f; v.scaleY = v.scaleX; true }
+                        DragEvent.ACTION_DRAG_EXITED -> { v.scaleX = 1f; v.scaleY = 1f; true }
+                        DragEvent.ACTION_DROP -> {
+                            val from = e.localState as Int
+                            val to = v.tag as Int
+                            if (from != to) {
+                                val cur = group
+                                prefs.moveGroup(from, to)
+                                // ชุดที่เปิดอยู่ตามไปตำแหน่งใหม่
+                                group = when {
+                                    cur == from -> to
+                                    from < to && cur in (from + 1)..to -> cur - 1
+                                    from > to && cur in to until from -> cur + 1
+                                    else -> cur
+                                }
+                                v.post { switchGroup(group) }
+                            }
+                            true
+                        }
+                        DragEvent.ACTION_DRAG_ENDED -> { v.scaleX = 1f; v.scaleY = 1f; v.alpha = 1f; true }
+                        else -> true
+                    }
+                }
             }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(40)).apply { marginEnd = px(6) })
         }
         groupBar.addView(btn("＋ ชุด", false) {

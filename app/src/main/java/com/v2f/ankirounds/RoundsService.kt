@@ -343,6 +343,7 @@ class RoundsService : AccessibilityService() {
                         Kind.RESET -> 1
                     })
                     prefs.lastGroup = g
+                    prefs.lastUsedGroup = g
                 }
                 busy = false
                 if (ok) screen = Screen.HOME         // จบที่หน้ารายการ deck เสมอ
@@ -693,8 +694,10 @@ class RoundsService : AccessibilityService() {
             ).apply { marginEnd = px(6) })
         }
 
-        val groups = prefs.visibleGroups().ifEmpty { listOf(0) }
+        var groups = prefs.visibleGroups().ifEmpty { listOf(0) }
         val multi = groups.size > 1
+        val recent = prefs.lastUsedGroup
+        if (multi && prefs.featRecentFirst && recent in groups) groups = listOf(recent) + (groups - recent)
         for ((k, g) in groups.withIndex()) {
             // หัวข้อ: ชื่อชุด + การ์ดที่เหลือ (ไม่มีตัวเลขเพดาน)
             val left = remainingBy[g]

@@ -60,6 +60,40 @@ class Prefs(ctx: Context) {
         for (k in g until n - 1) copyGroup(k + 1, k)
         groupCount = n - 1
         if (lastGroup >= n - 1) lastGroup = 0
+        lastUsedGroup = when { lastUsedGroup == g -> -1; lastUsedGroup > g -> lastUsedGroup - 1; else -> lastUsedGroup }
+    }
+
+    /** ชุดที่เพิ่ง ➕/↶/↺ ล่าสุด (-1 = ยังไม่มี) */
+    var lastUsedGroup: Int
+        get() = p.getInt("last_used_group", -1)
+        set(v) = p.edit().putInt("last_used_group", v).apply()
+
+    /** (ย่อยของหลายชุด) ชุดที่ใช้ล่าสุดขึ้นบนสุดในเมนู — เปิดไว้ */
+    var featRecentFirst: Boolean
+        get() = p.getBoolean("feat_recent_first", true)
+        set(v) = p.edit().putBoolean("feat_recent_first", v).apply()
+
+    /** ย้ายชุด from ไปไว้ตำแหน่ง to (ชุดอื่นเลื่อนตาม) */
+    fun moveGroup(from: Int, to: Int) {
+        val n = groupCount
+        if (from == to || from !in 0 until n || to !in 0 until n) return
+        data class G(val decks: List<Deck>, val round: Int, val name: String)
+        val all = (0 until n).map { g -> G((0 until MAX_DECKS).map { deck(g, it) }, round(g), groupName(g)) }
+            .toMutableList()
+        all.add(to, all.removeAt(from))
+        for ((g, x) in all.withIndex()) {
+            for (i in 0 until MAX_DECKS) setDeck(g, i, x.decks[i])
+            setRound(g, x.round); setGroupName(g, x.name)
+        }
+        fun remap(i: Int): Int = when {
+            i < 0 -> i
+            i == from -> to
+            from < to && i in (from + 1)..to -> i - 1
+            from > to && i in to until from -> i + 1
+            else -> i
+        }
+        lastGroup = remap(lastGroup)
+        lastUsedGroup = remap(lastUsedGroup)
     }
 
     private fun copyGroup(from: Int, to: Int) {
