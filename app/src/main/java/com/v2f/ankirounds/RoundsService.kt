@@ -120,9 +120,9 @@ class RoundsService : AccessibilityService() {
     private fun setFront(now: Boolean) {
         if (now == ankiInFront) return
         ankiInFront = now
-        // นับเป็น "เข้าแอปใหม่" เฉพาะเมื่อออกไปนานเกิน 1 นาที
-        // (แผงควบคุม ป๊อปอัป หรือสลับแอปแป๊บเดียว ไม่ทำให้ปุ่มเด้งชัดขึ้นมาอีก)
-        if (now) { if (System.currentTimeMillis() - leftAt > 60_000) freshEntry = true }
+        // นับเป็น "เปิดครั้งแรก" เฉพาะเมื่อออกไปนานเกิน 30 นาที
+        // (ย่อแอป สลับแอป แผงควบคุม ป๊อปอัป แล้วกลับมา ไม่ทำให้ปุ่มเด้งชัดขึ้นมาอีก)
+        if (now) { if (System.currentTimeMillis() - leftAt > 30 * 60_000L) freshEntry = true }
         else leftAt = System.currentTimeMillis()
         refreshBubble()
         if (now) requestCount(0)
