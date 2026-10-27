@@ -87,7 +87,7 @@ class Automator(private val svc: AccessibilityService, private val prefs: Prefs)
         log("กดค้างที่ deck แล้ว")
 
         val menuLabels = split(prefs.menuLabels)
-        val menu = waitFor(4000) { n -> exactAny(n, menuLabels) }
+        val menu = waitFor(4000, menuLabels) { n -> exactAny(n, menuLabels) }
             ?: fail("ไม่เจอเมนู ${menuLabels.joinToString(" / ")} หลังกดค้าง")
         log("เจอเมนู \"${label(menu)}\"")
         click(menu)
@@ -97,32 +97,47 @@ class Automator(private val svc: AccessibilityService, private val prefs: Prefs)
     /** อยู่ในหน้าตั้งค่า deck แล้ว: แก้ Maximum reviews/day แล้วกด Save */
     private fun editOpenOptions(value: Int) {
         val fieldLabels = split(prefs.fieldLabels)
-        val fieldLabel = waitFor(15000) { n -> containsAny(n, fieldLabels) }
+        val fieldLabel = waitFor(15000, fieldLabels) { n -> containsAny(n, fieldLabels) }
             ?: fail("ไม่เจอข้อความ ${fieldLabels.joinToString(" / ")} ในหน้าตั้งค่า")
         log("เจอ \"${label(fieldLabel)}\"")
         sleep(600)
 
-        val input = findInputAfter(fieldLabels)
-            ?: fail("ไม่เจอช่องตัวเลขถัดจาก \"${label(fieldLabel)}\"")
-        val before = label(input)
-        setText(input, value.toString())
-        sleep(500)
-        val after = findInputAfter(fieldLabels)?.let { label(it) } ?: "?"
-        log("ช่องตัวเลข: \"$before\" → \"$after\"")
-        if (after.trim() != value.toString()) {
-            log("⚠ ค่าในช่องยังไม่ตรง ลองพิมพ์ทับอีกครั้ง")
-            findInputAfter(fieldLabels)?.let { setText(it, value.toString()) }
-            sleep(500)
-        }
-
+        // อ่านหน้าครั้งเดียว: เอาทั้งช่องตัวเลขและปุ่ม Save จากรอบเดียวกัน (หน้าเว็บนี้อ่านทีละรอบช้ามาก)
         val saveLabels = split(prefs.saveLabels)
-        val save = findNode { n -> exactAny(n, saveLabels) }
+        val page = snapshot()
+        val input = inputAfter(page, fieldLabels)
+            ?: fail("ไม่เจอช่องตัวเลขถัดจาก \"${label(fieldLabel)}\"")
+        val save = page.firstOrNull { it.isVisibleToUser && exactAny(it, saveLabels) }
+            ?: byText(saveLabels) { exactAny(it, saveLabels) }
             ?: fail("ไม่เจอปุ่ม ${saveLabels.joinToString(" / ")}")
+        val before = label(input)
+        val want = value.toString()
+
+        var ok = setText(input, want)
+        sleep(300)
+        // เช็กค่าจากช่องเดิมโดยตรง (เร็ว ไม่ต้องอ่านทั้งหน้าใหม่)
+        var after = if (input.refresh()) label(input) else "?"
+        if (!ok || (after != "?" && after.trim() != want)) {
+            log("⚠ ค่าในช่องยังไม่ตรง (\"$after\") ลองพิมพ์ทับอีกครั้ง")
+            val again = inputAfter(snapshot(), fieldLabels) ?: input
+            ok = setText(again, want)
+            sleep(400)
+            after = if (again.refresh()) label(again) else "?"
+        }
+        log("ช่องตัวเลข: \"$before\" → \"$after\"")
+
         click(save)
         log("กด \"${label(save)}\" แล้ว")
 
-        // รอให้กลับออกจากหน้าตั้งค่า
-        val left = waitGone(6000) { n -> containsAny(n, fieldLabels) }
+        // รอให้กลับออกจากหน้าตั้งค่า: ถ้าข้อความเดิมหายไปจากระบบ = ออกแล้ว (เช็กเร็ว)
+        val end = System.currentTimeMillis() + 6000
+        var k = 0
+        var left = false
+        while (System.currentTimeMillis() < end) {
+            if (!fieldLabel.refresh() || !fieldLabel.isVisibleToUser) { left = true; break }
+            if (++k % 4 == 0 && findNode { n -> containsAny(n, fieldLabels) } == null) { left = true; break }
+            sleep(250)
+        }
         if (!left) fail("กด Save แล้วยังอยู่หน้าตั้งค่า (อาจบันทึกไม่สำเร็จ)")
     }
 
@@ -150,39 +165,51 @@ class Automator(private val svc: AccessibilityService, private val prefs: Prefs)
         val match: (AccessibilityNodeInfo) -> Boolean = { n ->
             n.packageName?.toString() == Prefs.ANKI_PKG && norm(label(n)) == want
         }
-        findNode(match)?.let { return it }
+        val find = { byText(listOf(want), match) ?: findNode(match) }
+        find()?.let { return it }
         // เลื่อนขึ้นบนสุดก่อน แล้วค่อยเลื่อนลงหา
         repeat(15) { if (!scroll(false)) return@repeat; sleep(250) }
-        findNode(match)?.let { return it }
+        find()?.let { return it }
         repeat(25) {
             if (!scroll(true)) return null
             sleep(350)
-            findNode(match)?.let { return it }
+            find()?.let { return it }
         }
         return null
     }
 
+    /** ทุกชิ้นบนจอของ AnkiDroid เรียงตามลำดับ (อ่านครั้งเดียว) */
+    private fun snapshot(): List<AccessibilityNodeInfo> {
+        val all = ArrayList<AccessibilityNodeInfo>()
+        for (root in roots()) collect(root, all)
+        return all
+    }
+
     /** ช่องกรอก (editable) ตัวแรกที่อยู่ถัดจากข้อความ label ตามลำดับบนจอ */
-    private fun findInputAfter(labels: List<String>): AccessibilityNodeInfo? {
-        for (root in roots()) {
-            val all = ArrayList<AccessibilityNodeInfo>()
-            collect(root, all)
-            val i = all.indexOfFirst { containsAny(it, labels) }
-            if (i < 0) continue
-            all.drop(i + 1).firstOrNull { isInput(it) }?.let { return it }
-            // สำรอง: ช่องกรอกที่อยู่ใต้ label ใกล้ที่สุด
-            val lb = Rect().also { all[i].getBoundsInScreen(it) }
-            return all.filter { isInput(it) }
-                .map { n -> n to Rect().also { n.getBoundsInScreen(it) } }
-                .filter { it.second.top >= lb.top - 10 }
-                .minByOrNull { it.second.top - lb.top }?.first
+    private fun inputAfter(all: List<AccessibilityNodeInfo>, labels: List<String>): AccessibilityNodeInfo? {
+        val i = all.indexOfFirst { containsAny(it, labels) }
+        if (i < 0) return null
+        all.drop(i + 1).firstOrNull { isInput(it) }?.let { return it }
+        // สำรอง: ช่องกรอกที่อยู่ใต้ label ใกล้ที่สุด
+        val lb = Rect().also { all[i].getBoundsInScreen(it) }
+        return all.filter { isInput(it) }
+            .map { n -> n to Rect().also { n.getBoundsInScreen(it) } }
+            .filter { it.second.top >= lb.top - 10 }
+            .minByOrNull { it.second.top - lb.top }?.first
+    }
+
+    /** ให้ระบบ Android ค้นข้อความให้ (เร็วกว่าไล่อ่านทีละชิ้นมาก) — บางหน้าไม่รองรับ จะได้ null */
+    private fun byText(texts: List<String>, pred: (AccessibilityNodeInfo) -> Boolean): AccessibilityNodeInfo? {
+        for (root in roots()) for (t in texts) {
+            val hits = try { root.findAccessibilityNodeInfosByText(t) } catch (_: Exception) { null } ?: continue
+            hits.firstOrNull { it.isVisibleToUser && pred(it) }?.let { return it }
         }
         return null
     }
 
     // ------------------------------------------------------------------ actions
 
-    private fun setText(n: AccessibilityNodeInfo, text: String) {
+    private fun setText(n: AccessibilityNodeInfo, text: String): Boolean {
         n.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
         n.performAction(AccessibilityNodeInfo.ACTION_CLICK)
         sleep(200)
@@ -196,6 +223,7 @@ class Automator(private val svc: AccessibilityService, private val prefs: Prefs)
             n.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id)
         }
         n.performAction(AccessibilityNodeInfo.ACTION_CLEAR_FOCUS)
+        return ok
     }
 
     private fun click(n: AccessibilityNodeInfo) {
@@ -241,7 +269,13 @@ class Automator(private val svc: AccessibilityService, private val prefs: Prefs)
 
     // ------------------------------------------------------------------ tree helpers
 
+    /** หน้าต่างของ AnkiDroid เท่านั้น (ข้ามคีย์บอร์ด/แถบระบบ ซึ่งมีชิ้นส่วนเยอะและทำให้ช้า) */
     private fun roots(): List<AccessibilityNodeInfo> {
+        val all = allRoots()
+        return all.filter { it.packageName?.toString() == Prefs.ANKI_PKG }.ifEmpty { all }
+    }
+
+    private fun allRoots(): List<AccessibilityNodeInfo> {
         val out = ArrayList<AccessibilityNodeInfo>()
         try {
             for (w in svc.windows) w.root?.let { out.add(it) }
@@ -266,9 +300,11 @@ class Automator(private val svc: AccessibilityService, private val prefs: Prefs)
         return null
     }
 
-    private fun waitFor(ms: Long, pred: (AccessibilityNodeInfo) -> Boolean): AccessibilityNodeInfo? {
+    private fun waitFor(ms: Long, texts: List<String>? = null,
+                        pred: (AccessibilityNodeInfo) -> Boolean): AccessibilityNodeInfo? {
         val end = System.currentTimeMillis() + ms
         while (System.currentTimeMillis() < end) {
+            if (texts != null) byText(texts, pred)?.let { return it }
             findNode(pred)?.let { return it }
             sleep(250)
         }
@@ -289,7 +325,7 @@ class Automator(private val svc: AccessibilityService, private val prefs: Prefs)
 
     fun dump(): String {
         val sb = StringBuilder()
-        for ((wi, root) in roots().withIndex()) {
+        for ((wi, root) in allRoots().withIndex()) {
             sb.append("=== window $wi  pkg=${root.packageName}\n")
             dumpNode(root, 0, sb)
         }
