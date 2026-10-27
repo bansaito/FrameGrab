@@ -186,6 +186,16 @@ class Prefs(ctx: Context) {
         get() = p.getBoolean("feat_undo", true)
         set(v) = p.edit().putBoolean("feat_undo", v).apply()
 
+    /** 🏦 ปิดผู้ช่วยเองเมื่อเปิดแอปธนาคารที่เลือกไว้ (ปิดไว้ · ตั้งแยกแต่ละเครื่อง) */
+    var featAutoBank: Boolean
+        get() = p.getBoolean("feat_auto_bank", false)
+        set(v) = p.edit().putBoolean("feat_auto_bank", v).apply()
+
+    /** package ของแอปธนาคารที่เลือกไว้ */
+    var bankApps: Set<String>
+        get() = p.getStringSet("bank_apps", emptySet())?.toSet() ?: emptySet()
+        set(v) = p.edit().putStringSet("bank_apps", v).apply()
+
     /** ชุดที่แสดงในเมนู (ปิดหลายชุด = เฉพาะชุดแรก) */
     fun visibleGroups(): List<Int> =
         if (featGroups) (0 until groupCount).filter { decks(it).isNotEmpty() } else listOf(0)

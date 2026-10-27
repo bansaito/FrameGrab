@@ -43,6 +43,38 @@ object Parking {
         try { nm.notify(ID, n) } catch (_: SecurityException) {}
     }
 
+    private const val BANK_ID = 43
+    const val ACT_BANK_ON = "com.v2f.ankirounds.BANK_ON"
+
+    /** แจ้งเตือนหลังปิดผู้ช่วยเองเพราะเปิดแอปธนาคาร · แตะ = เปิดผู้ช่วยกลับ */
+    fun showBankOff(ctx: Context, app: String) {
+        val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
+        nm.createNotificationChannel(
+            NotificationChannel("bank", "โหมดธนาคาร", NotificationManager.IMPORTANCE_LOW).apply {
+                setShowBadge(false)
+            })
+        // เปิดกลับในแตะเดียวได้ (เคยอนุญาตผ่าน adb) → ส่งให้ receiver · ไม่งั้นพาไปหน้าตั้งค่า
+        val tap = if (Bank.canToggleDirectly(ctx))
+            PendingIntent.getBroadcast(ctx, 5, Intent(ctx, ParkReceiver::class.java).setAction(ACT_BANK_ON),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        else
+            PendingIntent.getActivity(ctx, 6, Bank.accessibilitySettingsIntent(ctx),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val n = Notification.Builder(ctx, "bank")
+            .setSmallIcon(R.drawable.ic_tile_bank)
+            .setContentTitle("🏦 ปิดผู้ช่วยแล้ว (เปิด $app)")
+            .setContentText("ใช้แอปธนาคารเสร็จแล้ว แตะเพื่อเปิดผู้ช่วยกลับ")
+            .setContentIntent(tap)
+            .setAutoCancel(true)
+            .setShowWhen(false)
+            .build()
+        try { nm.notify(BANK_ID, n) } catch (_: SecurityException) {}
+    }
+
+    fun hideBankOff(ctx: Context) {
+        ctx.getSystemService(NotificationManager::class.java)?.cancel(BANK_ID)
+    }
+
     fun hide(ctx: Context) {
         ctx.getSystemService(NotificationManager::class.java)?.cancel(ID)
     }
@@ -65,6 +97,10 @@ class ParkReceiver : BroadcastReceiver() {
             Parking.ACT_BUMP -> {
                 if (svc != null) svc.bump()
                 else Toast.makeText(ctx, "ผู้ช่วยปิดอยู่ กด \"แสดงปุ่มลอย\" เพื่อเปิดก่อน", Toast.LENGTH_LONG).show()
+            }
+            Parking.ACT_BANK_ON -> {
+                Parking.hideBankOff(ctx)
+                Bank.leaveBankMode(ctx)
             }
             Parking.ACT_CLOSE -> {
                 prefs.parked = false          // เปิดผู้ช่วยครั้งหน้า ปุ่มลอยกลับมาตามปกติ

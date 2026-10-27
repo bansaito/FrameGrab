@@ -201,6 +201,14 @@ class MainActivity : Activity() {
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         root.addView(bankRow)
         button("📋 คัดลอกคำสั่งให้เปิดกลับได้ในแตะเดียว (ทำครั้งเดียวผ่านคอม)") { showAdbHelp() }
+        featSwitch("ปิดผู้ช่วยเองเมื่อเปิดแอปธนาคาร (ตั้งแยกแต่ละเครื่อง)", prefs.featAutoBank) { on ->
+            prefs.featAutoBank = on
+            if (on && prefs.bankApps.isEmpty()) pickBankApps()
+            if (on && android.os.Build.VERSION.SDK_INT >= 33 && !Parking.canNotify(this)) {
+                requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 9)
+            }
+        }
+        button("🏦 เลือกแอปธนาคาร") { pickBankApps() }
 
         section("➕ ปุ่มในแผงควบคุม")
         note("ดึงแถบแจ้งเตือนลงแล้วกดได้เลย ไม่ต้องเปิดแอป")
@@ -342,6 +350,34 @@ class MainActivity : Activity() {
             speedRow.addView(btn(label, k == prefs.speed) { prefs.speed = k; renderSpeed() },
                 LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = px(6) })
         }
+    }
+
+    /** เลือกแอปธนาคาร (แอปที่ชื่อเหมือนธนาคารขึ้นก่อน) */
+    private fun pickBankApps() {
+        val pm = packageManager
+        val launch = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val words = listOf("bank", "ธนาคาร", "k plus", "k+", "scb", "krungthai", "กรุงไทย", "เป๋าตัง",
+            "paotang", "ttb", "mymo", "kma", "krungsri", "กรุงศรี", "bualuang", "บัวหลวง", "truemoney",
+            "uob", "cimb", "ghb", "baac", "ธ.ก.ส", "lh bank", "kkp", "tisco", "wallet", "pay")
+        val apps = pm.queryIntentActivities(launch, 0)
+            .map { it.activityInfo.packageName to it.loadLabel(pm).toString() }
+            .distinctBy { it.first }
+            .filter { it.first != packageName && it.first != Prefs.ANKI_PKG }
+            .sortedWith(compareBy({ a -> if (words.any { a.second.lowercase().contains(it) }) 0 else 1 },
+                { it.second.lowercase() }))
+        val chosen = prefs.bankApps.toMutableSet()
+        val checked = BooleanArray(apps.size) { apps[it].first in chosen }
+        AlertDialog.Builder(this)
+            .setTitle("แอปธนาคาร (เปิดแล้วจะปิดผู้ช่วยให้เอง)")
+            .setMultiChoiceItems(apps.map { it.second }.toTypedArray(), checked) { _, i, on ->
+                if (on) chosen.add(apps[i].first) else chosen.remove(apps[i].first)
+            }
+            .setPositiveButton("บันทึก") { _, _ ->
+                prefs.bankApps = chosen
+                Toast.makeText(this, "เลือกไว้ ${chosen.size} แอป", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("ยกเลิก", null)
+            .show()
     }
 
     private fun featSwitch(label: String, on: Boolean, set: (Boolean) -> Unit) {

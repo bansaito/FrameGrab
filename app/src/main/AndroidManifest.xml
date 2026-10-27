@@ -15,6 +15,11 @@
     <!-- ให้มองเห็นและเปิด AnkiDroid ได้ (Android 11+) -->
     <queries>
         <package android:name="com.ichi2.anki" />
+        <!-- รายชื่อแอปให้เลือกแอปธนาคาร (โหมดธนาคารอัตโนมัติ) -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
     </queries>
 
     <application

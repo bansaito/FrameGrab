@@ -49,6 +49,7 @@ class RoundsService : AccessibilityService() {
         super.onServiceConnected()
         instance = this
         prefs = Prefs(this)
+        Parking.hideBankOff(this)
         refreshBubble()
         refreshTiles()
         main.post(countLoop)
@@ -81,6 +82,11 @@ class RoundsService : AccessibilityService() {
         val pkg = event.packageName?.toString() ?: return
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             if (pkg == packageName || pkg == "com.android.systemui" || pkg == currentIme()) return
+            if (prefs.featAutoBank && !busy && pkg in prefs.bankApps) {
+                Parking.showBankOff(this, appLabel(pkg))
+                Bank.enterBankMode(this)
+                return
+            }
             val now = pkg == Prefs.ANKI_PKG
             if (now) classify(event.className?.toString() ?: "")
             if (now != ankiInFront) {
@@ -104,6 +110,10 @@ class RoundsService : AccessibilityService() {
     }
 
     private val afterScroll = Runnable { wake() }
+
+    private fun appLabel(pkg: String): String = try {
+        packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
+    } catch (_: Exception) { pkg }
 
     // ------------------------------------------------------------------ which AnkiDroid screen
 
