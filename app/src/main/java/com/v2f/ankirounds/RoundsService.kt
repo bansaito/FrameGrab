@@ -779,7 +779,12 @@ class RoundsService : AccessibilityService() {
                     confirm = true
                     tv.text = "↺ แตะอีกครั้ง"
                     tv.setTextColor(Color.parseColor("#FBBF24"))
-                    main.removeCallbacks(autoClose); main.postDelayed(autoClose, 3000)
+                    // ไม่แตะซ้ำภายใน 3 วิ → กลับเป็นปุ่มเดิม (เมนูไม่ปิด)
+                    tv.postDelayed({
+                        confirm = false
+                        tv.text = "↺ เริ่มใหม่"
+                        tv.setTextColor(Color.WHITE)
+                    }, 3000)
                 } else reset(g)
             })
         }
@@ -844,7 +849,7 @@ class RoundsService : AccessibilityService() {
             menu = box
             main.removeCallbacks(fade)
             bubble?.alpha = 0.95f
-            main.removeCallbacks(autoClose); main.postDelayed(autoClose, 3000)
+            // ไม่ปิดเอง: ปิดเมื่อกดปุ่มในเมนู, ✕, แตะนอกเมนู หรือแตะปุ่มลอยอีกครั้ง
             requestCount(0)
         } catch (e: Exception) {
             toast("เปิดเมนูไม่ได้: ${e.message}")
