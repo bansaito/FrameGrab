@@ -90,7 +90,7 @@ class MainActivity : Activity() {
             addView(groupBar)
         })
         groupNameField = labeled("ชื่อชุด (เช่น ไทย / Bio / Math)", prefs.groupName(group))
-        note("กด 🔎 เลือก deck จาก AnkiDroid · ช่อง + คือเพิ่มครั้งละกี่ใบ\nแอปอ่านค่าปัจจุบันจาก AnkiDroid เอง ไม่ต้องใส่ค่าเริ่ม · deck ที่ใช้ preset ร่วมกัน แก้ให้ครั้งเดียว")
+        note("กด 🔎 เลือก deck จาก AnkiDroid · ช่อง เริ่ม = ค่าที่ ↺ เริ่มใหม่ กลับไป · ช่อง + คือเพิ่มครั้งละกี่ใบ\ndeck ที่ใช้ preset ร่วมกัน แก้ให้ครั้งเดียว")
         for (i in 0 until Prefs.MAX_DECKS) {
             val d = prefs.deck(group, i)
             val row = LinearLayout(this).apply {
@@ -104,6 +104,8 @@ class MainActivity : Activity() {
             val idx = i
             row.addView(btn("🔎", false) { pickDeck(idx) },
                 LinearLayout.LayoutParams(px(48), px(44)).apply { marginStart = px(4) })
+            row.addView(small("เริ่ม"))
+            row.addView(base, LinearLayout.LayoutParams(px(52), ViewGroup.LayoutParams.WRAP_CONTENT))
             row.addView(small("+"))
             row.addView(step, LinearLayout.LayoutParams(px(56), ViewGroup.LayoutParams.WRAP_CONTENT))
             root.addView(row)
@@ -269,7 +271,7 @@ class MainActivity : Activity() {
             val name = nameFields[i].text.toString()
             prefs.setDeck(group, i, Prefs.Deck(
                 name,
-                old.base,                          // ค่าเริ่ม แอปจำเองตอนกด ➕ ครั้งแรก
+                baseFields[i].text.toString().toIntOrNull() ?: old.base,   // ค่าที่ ↺ เริ่มใหม่ จะกลับไป
                 stepFields[i].text.toString().toIntOrNull() ?: 0,
             ))
         }

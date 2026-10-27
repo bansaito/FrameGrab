@@ -14,6 +14,16 @@ class Prefs(ctx: Context) {
 
     private fun pre(g: Int) = if (g == 0) "" else "g${g}_"
 
+    init {
+        // v1.13: ค่าเริ่มไม่จำจากตอนกด ➕ แล้ว → ตั้งกลับเป็น 2/1/1 ครั้งเดียว
+        if (!p.getBoolean("base_fixed_v13", false)) {
+            val e = p.edit()
+            for (g in 0 until groupCount) for (i in 0 until MAX_DECKS)
+                e.putInt("${pre(g)}deck${i}_base", DEFAULT_BASE[i])
+            e.putBoolean("base_fixed_v13", true).apply()
+        }
+    }
+
     // ------------------------------------------------------------------ groups (ชุด)
 
     var groupCount: Int

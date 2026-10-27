@@ -236,14 +236,12 @@ class RoundsService : AccessibilityService() {
             var msg = ""
             try {
                 val all = AnkiApi.decks(this)
-                val firstBump = kind == Kind.BUMP && prefs.round(g) <= 1
                 val raw = ArrayList<Pair<String, Int>>()
                 for ((i, d) in prefs.deckSlots(g)) {
                     val info = AnkiApi.find(all, d.name)
                         ?: throw Automator.StepFailed("ไม่พบ deck \"${d.name}\" ใน AnkiDroid")
                     val cur = info.reviewsPerDay
-                    if (firstBump) prefs.setDeck(g, i, d.copy(base = cur))   // จำค่าตอนเริ่มไว้ใช้กับ ↺
-                    val start = if (firstBump) cur else d.base
+                    val start = d.base                 // ค่าเริ่ม (ตั้งในแอป ค่าเริ่มต้น 2/1/1) ใช้กับ ↺
                     val want = when (kind) {
                         Kind.BUMP -> cur + d.step
                         Kind.UNDO -> (cur - d.step).coerceAtLeast(start)
