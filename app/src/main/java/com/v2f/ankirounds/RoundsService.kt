@@ -39,6 +39,7 @@ class RoundsService : AccessibilityService() {
     private var ankiInFront = false
     private var remaining = -1          // รวมทุกชุดที่แสดง · -1 = ไม่รู้ (ยังไม่ได้รับสิทธิ์อ่าน AnkiDroid)
     private val remainingBy = HashMap<Int, Int>()
+    @Volatile private var lastDecks: List<AnkiApi.DeckInfo> = emptyList()   // ไว้แสดงตอนกดค้าง 👁
     private var roundTotal = 0
     private var lastCountAt = 0L
     @Volatile private var counting = false
@@ -249,6 +250,7 @@ class RoundsService : AccessibilityService() {
             try {
                 selDeck = AnkiApi.selectedDeckName(this)
                 val all = AnkiApi.decks(this)
+                lastDecks = all
                 val seen = HashSet<Long>()
                 total = 0
                 for ((g, names) in groups) {
@@ -420,6 +422,55 @@ class RoundsService : AccessibilityService() {
                 } else toast("$msg\nแตะปุ่มลอย → ⚙️ → ส่ง log ให้ผู้ช่วยดูได้")
             }
         }.start()
+    }
+
+    // ------------------------------------------------------------------ 👁 peek (กดค้างดูการ์ดที่เหลือ)
+
+    private var peek: TextView? = null
+
+    private fun hidePeek() {
+        peek?.let { try { wm.removeView(it) } catch (_: Exception) {} }
+        peek = null
+    }
+
+    /** การ์ดที่เหลือของแต่ละ deck ในชุด (สีแบบ AnkiDroid: learn แดง · review เขียว · new น้ำเงิน) */
+    private fun showPeek(g: Int, anchor: android.view.View) {
+        hidePeek()
+        val dp = resources.displayMetrics.density
+        val all = lastDecks
+        val sb = StringBuilder()
+        fun n(v: Int, c: String) = "<font color='${if (v > 0) c else "#6B7280"}'>$v</font>"
+        for (d in prefs.decks(g)) {
+            val info = AnkiApi.find(all, d.name)
+            if (sb.isNotEmpty()) sb.append("<br>")
+            sb.append(android.text.TextUtils.htmlEncode(d.name.substringAfterLast("::"))).append("&nbsp;&nbsp;")
+            if (info == null) sb.append("–")
+            else sb.append(n(info.new, "#60A5FA")).append("&nbsp;&nbsp;").append(n(info.learn, "#F87171"))
+                .append("&nbsp;&nbsp;").append(n(info.review, "#4ADE80"))
+        }
+        if (all.isEmpty()) sb.append("ยังอ่านจาก AnkiDroid ไม่ได้")
+        val v = TextView(this).apply {
+            text = android.text.Html.fromHtml(sb.toString(), android.text.Html.FROM_HTML_MODE_COMPACT)
+            textSize = 13f
+            setTextColor(Color.WHITE)
+            setPadding((10 * dp).toInt(), (6 * dp).toInt(), (10 * dp).toInt(), (6 * dp).toInt())
+            background = GradientDrawable().apply { cornerRadius = 10 * dp; setColor(Color.parseColor("#F2111318")) }
+        }
+        v.measure(android.view.View.MeasureSpec.UNSPECIFIED, android.view.View.MeasureSpec.UNSPECIFIED)
+        val loc = IntArray(2).also { anchor.getLocationOnScreen(it) }
+        val screenW = resources.displayMetrics.widthPixels
+        val lp = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+            PixelFormat.TRANSLUCENT,
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = loc[0].coerceAtMost((screenW - v.measuredWidth).coerceAtLeast(0))
+            val above = loc[1] - v.measuredHeight - (6 * dp).toInt()
+            y = if (above >= 0) above else loc[1] + anchor.height + (6 * dp).toInt()
+        }
+        try { wm.addView(v, lp); peek = v } catch (_: Exception) {}
     }
 
     private var undoChip: TextView? = null
@@ -847,6 +898,21 @@ class RoundsService : AccessibilityService() {
         if (prefs.round(g) > 1) {
             addChip(r, chip("↺ เริ่มใหม่", "#374151") { reset(g) })   // กดครั้งเดียว · มี ↶ ยกเลิก 5 วิ
         }
+        // 👁 กดค้าง = ดูการ์ดที่เหลือ · ปล่อย = หาย (ปุ่มเล็กสุด ท้ายแถว)
+        r.addView(TextView(this).apply {
+            text = "👁"
+            textSize = 12f
+            gravity = Gravity.CENTER
+            setPadding(px(6), px(6), px(6), px(6))
+            contentDescription = "กดค้างเพื่อดูการ์ดที่เหลือ"
+            setOnTouchListener { v, e ->
+                when (e.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> { v.alpha = 0.5f; showPeek(g, box); true }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> { v.alpha = 1f; hidePeek(); true }
+                    else -> true
+                }
+            }
+        })
         box.addView(r)
 
         // ชุดอื่น: ชิปชื่อเล็ก ๆ แถวเดียว (เลื่อนซ้ายขวาได้) · แตะ = สลับไปชุดนั้น
@@ -918,6 +984,7 @@ class RoundsService : AccessibilityService() {
     private val autoClose = Runnable { hideMenu() }
 
     private fun hideMenu() {
+        hidePeek()
         val m = menu ?: return
         main.removeCallbacks(autoClose)
         try { wm.removeView(m) } catch (_: Exception) {}

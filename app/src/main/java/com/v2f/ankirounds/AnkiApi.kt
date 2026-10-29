@@ -21,6 +21,9 @@ object AnkiApi {
         val reviewsPerDay: Int,
         val filtered: Boolean,
         val due: Int,              // การ์ดที่ยังท่องได้วันนี้ (learn + review + new) ตามเพดานปัจจุบัน
+        val learn: Int = 0,
+        val review: Int = 0,
+        val new: Int = 0,
     ) {
         val shortName: String get() = name.substringAfterLast("::")
     }
@@ -56,14 +59,19 @@ object AnkiApi {
                 }
                 val dyn = iDyn >= 0 && (it.getInt(iDyn) != 0)
                 var due = 0
+                var cnt = IntArray(3)       // [learn, review, new] ตาม API ของ AnkiDroid
                 if (iCnt >= 0) {
                     try {
                         val a = org.json.JSONArray(it.getString(iCnt) ?: "[]")
-                        for (k in 0 until a.length()) due += a.optInt(k, 0)
+                        for (k in 0 until a.length()) {
+                            due += a.optInt(k, 0)
+                            if (k < 3) cnt[k] = a.optInt(k, 0)
+                        }
                     } catch (_: Exception) {
                     }
                 }
-                out.add(DeckInfo(if (iId >= 0) it.getLong(iId) else -1, name, pid, pname, rev, dyn, due))
+                out.add(DeckInfo(if (iId >= 0) it.getLong(iId) else -1, name, pid, pname, rev, dyn, due,
+                    cnt[0], cnt[1], cnt[2]))
             }
         }
         return out.sortedBy { it.name.lowercase() }
