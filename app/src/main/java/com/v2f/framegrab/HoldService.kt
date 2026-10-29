@@ -48,9 +48,10 @@ class HoldService : AccessibilityService() {
     private fun point() = Path().apply { moveTo(hx, hy) }
 
     /**
-     * ชื่อบัญชีของคนโพสต์บนจอตอนนี้ (ใช้ตั้งชื่อไฟล์) หรือ null
-     *  1) ข้อความ @ชื่อ (TikTok)  2) ข้อความแบบชื่อบัญชี (a-z0-9._) บนส่วนหัว 30% ของจอ (หัวสตอรี่ IG/TikTok)
-     *  3) ชื่อที่แสดงบนส่วนหัว (เช่นชื่อเล่น) ถ้าไม่เจอแบบแรก ๆ
+     * ชื่อเจ้าของโพสต์ที่แสดงบนจอ (ใช้ตั้งชื่อไฟล์) หรือ null
+     * ไม่เอา @ชื่อในแคปชัน (มักเป็นการแท็กคนอื่น) — ดูจาก "ตำแหน่ง" ของชื่อบนจอแทน:
+     *  1) หน้าสตอรี่: ชื่อบนแถบหัว (ส่วนบน 30% ของจอ ฝั่งซ้าย ข้างรูปโปรไฟล์) อันบนสุด-ซ้ายสุด
+     *  2) หน้าคลิป/Reels: ชื่อเหนือแคปชันมุมซ้ายล่าง (ช่วง 55–93% ของจอ ฝั่งซ้าย) อันบนสุด
      */
     fun findUsername(): String? {
         if (android.os.Build.VERSION.SDK_INT >= 34) try { clearCache() } catch (e: Exception) { }
@@ -58,29 +59,34 @@ class HoldService : AccessibilityService() {
             windows.filter { it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION }.mapNotNull { it.root }
         } catch (e: Exception) { emptyList() }
         val list = if (roots.isEmpty()) listOfNotNull(rootInActiveWindow) else roots
+        val w = resources.displayMetrics.widthPixels
         val h = resources.displayMetrics.heightPixels
-        val at = ArrayList<String>(); val handle = ArrayList<String>(); val shown = ArrayList<String>()
+        data class C(val t: String, val x: Int, val y: Int)
+        val cands = ArrayList<C>()
         val r = android.graphics.Rect()
-        val AT = Regex("""^@([A-Za-z0-9._]{2,30})$""")
-        val HANDLE = Regex("""^[A-Za-z0-9._]{3,30}$""")
-        val NOISE = Regex("""(ก่อน|นาที|ชม\.|ชั่วโมง|วัน|ติดตาม|ข้อความ|LIVE|ไลฟ์|\d+[:.]\d+|^\d+$)""", RegexOption.IGNORE_CASE)
+        // คำที่ไม่ใช่ชื่อ: เวลา, ปุ่ม, ตัวเลข, แท็บ
+        val NOISE = Regex("""(ก่อน|นาที|ชม\.|ชั่วโมง|วัน|สัปดาห์|ติดตาม|ข้อความ|ส่งข้อความ|แชร์|ถูกใจ|ความคิดเห็น|เพิ่มเติม|แปล|ไฮไลท์|สตอรี่|Stories|ค้นหา|สำหรับคุณ|เพื่อน|LIVE|ไลฟ์|Follow|Reply|Send|\d+[:.,]\d+|^\d+[KMk]?$)""", RegexOption.IGNORE_CASE)
+        fun nameLike(t: String) = t.length in 2..30 && !t.startsWith("#") && !t.contains('\n') && !t.contains('…') &&
+            t.split(' ').size <= 4 && t.any { it.isLetter() } && !NOISE.containsMatchIn(t)
         fun walk(n: android.view.accessibility.AccessibilityNodeInfo?, depth: Int) {
             if (n == null || depth > 60) return
             if (n.packageName?.toString() == packageName) return
-            val t = (n.text ?: n.contentDescription)?.toString()?.trim()
-            if (!t.isNullOrEmpty() && t.length <= 40) {
+            val t = n.text?.toString()?.trim()
+            if (!t.isNullOrEmpty() && n.isVisibleToUser) {
                 n.getBoundsInScreen(r)
-                val top = r.top < h * 0.30f
-                AT.matchEntire(t)?.let { at.add(it.groupValues[1]) }
-                    ?: run {
-                        if (top && HANDLE.matches(t) && t.any { it.isLetter() } && !NOISE.containsMatchIn(t)) handle.add(t)
-                        else if (top && !NOISE.containsMatchIn(t) && t.any { it.isLetter() } && t.split(' ').size <= 4) shown.add(t)
-                    }
+                if (r.width() > 0 && r.height() > 0 && nameLike(t)) cands.add(C(t, r.left, r.top))
             }
             for (i in 0 until n.childCount) walk(n.getChild(i), depth + 1)
         }
         for (root in list) walk(root, 0)
-        return (at.firstOrNull() ?: handle.firstOrNull() ?: shown.firstOrNull())?.trimEnd('.')
+        // 1) แถบหัวสตอรี่: บน 30%, ฝั่งซ้าย 75% ของจอ (ไม่เอาแถวบนสุดที่เป็นแถบสถานะ)
+        val head = cands.filter { it.y in (h * 0.03f).toInt()..(h * 0.30f).toInt() && it.x < w * 0.75f }
+            .minWithOrNull(compareBy<C>({ it.y / (h / 40) }, { it.x }))
+        // 2) ชื่อเหนือแคปชันมุมซ้ายล่าง
+        val foot = cands.filter { it.y in (h * 0.55f).toInt()..(h * 0.93f).toInt() && it.x < w * 0.45f }
+            .minByOrNull { it.y }
+        val pick = head ?: foot ?: return null
+        return pick.t.removePrefix("@").trimEnd('.')
     }
 
     /**
