@@ -86,6 +86,21 @@ object AnkiApi {
         }
     } catch (_: Exception) { null }
 
+    private val NOTES: Uri = Uri.parse("content://com.ichi2.anki.flashcards/notes")
+
+    /**
+     * จำนวน due ทั้งหมด (ถึงวันนี้ + ค้างจากวันก่อน ไม่สนเพดาน reviews/day) ของ deck นี้รวม deck ย่อย
+     * AnkiDroid ค้นได้ระดับโน้ต → นับเป็นโน้ต (การ์ดแบบ 1 โน้ต = 1 การ์ด ตัวเลขตรงกัน) · null = ค้นไม่ได้
+     */
+    fun countDue(ctx: Context, deckName: String): Int? = try {
+        val esc = deckName.replace("\\", "\\\\").replace("\"", "\\\"")
+            .replace("*", "\\*").replace("_", "\\_")
+        val q = "\"deck:$esc\" is:due -is:suspended -is:buried"
+        ctx.contentResolver.query(NOTES, arrayOf("_id"), q, null, null)?.use { it.count }
+    } catch (_: Exception) {
+        null
+    }
+
     /** หา deck จากชื่อ (ชื่อเต็มหรือชื่อสั้นก็ได้) */
     fun find(list: List<DeckInfo>, name: String): DeckInfo? {
         val n = name.trim()

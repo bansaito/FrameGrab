@@ -39,7 +39,6 @@ class RoundsService : AccessibilityService() {
     private var ankiInFront = false
     private var remaining = -1          // รวมทุกชุดที่แสดง · -1 = ไม่รู้ (ยังไม่ได้รับสิทธิ์อ่าน AnkiDroid)
     private val remainingBy = HashMap<Int, Int>()
-    @Volatile private var lastDecks: List<AnkiApi.DeckInfo> = emptyList()   // ไว้แสดงตอนกดค้าง 👁
     private var roundTotal = 0
     private var lastCountAt = 0L
     @Volatile private var counting = false
@@ -250,7 +249,6 @@ class RoundsService : AccessibilityService() {
             try {
                 selDeck = AnkiApi.selectedDeckName(this)
                 val all = AnkiApi.decks(this)
-                lastDecks = all
                 val seen = HashSet<Long>()
                 total = 0
                 for ((g, names) in groups) {
@@ -433,30 +431,54 @@ class RoundsService : AccessibilityService() {
         peek = null
     }
 
-    /** การ์ดที่เหลือของแต่ละ deck ในชุด (สีแบบ AnkiDroid: learn แดง · review เขียว · new น้ำเงิน) */
+    /** due ทั้งหมดของแต่ละ deck ที่นับไว้ล่าสุด: ชุด → (เวลา, [(ชื่อสั้น, จำนวน|null)]) */
+    private val dueCache = HashMap<Int, Pair<Long, List<Pair<String, Int?>>>>()
+
+    /** นับ due ทั้งหมด (วันนี้ + ค้าง) ของชุด g เบื้องหลัง แล้วเรียก done บน main thread */
+    private fun countDueAsync(g: Int, done: (() -> Unit)? = null) {
+        val cached = dueCache[g]
+        if (cached != null && System.currentTimeMillis() - cached.first < 10_000) { done?.invoke(); return }
+        val decks = prefs.decks(g)
+        Thread {
+            val all = try { AnkiApi.decks(this) } catch (_: Exception) { emptyList() }
+            val rows = decks.map { d ->
+                val full = AnkiApi.find(all, d.name)?.name ?: d.name
+                d.name.substringAfterLast("::") to AnkiApi.countDue(this, full)
+            }
+            main.post {
+                dueCache[g] = System.currentTimeMillis() to rows
+                done?.invoke()
+            }
+        }.start()
+    }
+
+    private fun peekText(g: Int): CharSequence {
+        val rows = dueCache[g]?.second ?: return "กำลังนับ…"
+        val green = "#4ADE80"
+        val sb = StringBuilder("<font color='#9CA3AF'>due ทั้งหมด (วันนี้ + ค้าง)</font>")
+        var total = 0
+        var unknown = false
+        for ((name, n) in rows) {
+            sb.append("<br>").append(android.text.TextUtils.htmlEncode(name)).append("&nbsp;&nbsp;")
+            if (n == null) { unknown = true; sb.append("–") }
+            else { total += n; sb.append("<font color='${if (n > 0) green else "#6B7280"}'><b>$n</b></font>") }
+        }
+        if (rows.size > 1) sb.append("<br>รวม&nbsp;&nbsp;<font color='$green'><b>$total</b></font>")
+        if (unknown) sb.append("<br><font color='#9CA3AF'>– = ค้นใน AnkiDroid ไม่ได้</font>")
+        return android.text.Html.fromHtml(sb.toString(), android.text.Html.FROM_HTML_MODE_COMPACT)
+    }
+
+    /** กดค้าง 👁: กล่องเล็กบอก due ทั้งหมดของแต่ละ deck ในชุด */
     private fun showPeek(g: Int, anchor: android.view.View) {
         hidePeek()
         val dp = resources.displayMetrics.density
-        val all = lastDecks
-        val sb = StringBuilder()
-        fun n(v: Int, c: String) = "<font color='${if (v > 0) c else "#6B7280"}'>$v</font>"
-        for (d in prefs.decks(g)) {
-            val info = AnkiApi.find(all, d.name)
-            if (sb.isNotEmpty()) sb.append("<br>")
-            sb.append(android.text.TextUtils.htmlEncode(d.name.substringAfterLast("::"))).append("&nbsp;&nbsp;")
-            if (info == null) sb.append("–")
-            else sb.append(n(info.new, "#60A5FA")).append("&nbsp;&nbsp;").append(n(info.learn, "#F87171"))
-                .append("&nbsp;&nbsp;").append(n(info.review, "#4ADE80"))
-        }
-        if (all.isEmpty()) sb.append("ยังอ่านจาก AnkiDroid ไม่ได้")
         val v = TextView(this).apply {
-            text = android.text.Html.fromHtml(sb.toString(), android.text.Html.FROM_HTML_MODE_COMPACT)
+            text = peekText(g)
             textSize = 13f
             setTextColor(Color.WHITE)
             setPadding((10 * dp).toInt(), (6 * dp).toInt(), (10 * dp).toInt(), (6 * dp).toInt())
             background = GradientDrawable().apply { cornerRadius = 10 * dp; setColor(Color.parseColor("#F2111318")) }
         }
-        v.measure(android.view.View.MeasureSpec.UNSPECIFIED, android.view.View.MeasureSpec.UNSPECIFIED)
         val loc = IntArray(2).also { anchor.getLocationOnScreen(it) }
         val screenW = resources.displayMetrics.widthPixels
         val lp = WindowManager.LayoutParams(
@@ -464,13 +486,23 @@ class RoundsService : AccessibilityService() {
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
             PixelFormat.TRANSLUCENT,
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            x = loc[0].coerceAtMost((screenW - v.measuredWidth).coerceAtLeast(0))
+        )
+        fun place() {
+            v.measure(android.view.View.MeasureSpec.UNSPECIFIED, android.view.View.MeasureSpec.UNSPECIFIED)
+            lp.gravity = Gravity.TOP or Gravity.START
+            lp.x = loc[0].coerceAtMost((screenW - v.measuredWidth).coerceAtLeast(0))
             val above = loc[1] - v.measuredHeight - (6 * dp).toInt()
-            y = if (above >= 0) above else loc[1] + anchor.height + (6 * dp).toInt()
+            lp.y = if (above >= 0) above else loc[1] + anchor.height + (6 * dp).toInt()
         }
-        try { wm.addView(v, lp); peek = v } catch (_: Exception) {}
+        place()
+        try { wm.addView(v, lp); peek = v } catch (_: Exception) { return }
+        countDueAsync(g) {
+            if (peek === v) {
+                v.text = peekText(g)
+                place()
+                try { wm.updateViewLayout(v, lp) } catch (_: Exception) {}
+            }
+        }
     }
 
     private var undoChip: TextView? = null
@@ -898,13 +930,14 @@ class RoundsService : AccessibilityService() {
         if (prefs.round(g) > 1) {
             addChip(r, chip("↺ เริ่มใหม่", "#374151") { reset(g) })   // กดครั้งเดียว · มี ↶ ยกเลิก 5 วิ
         }
-        // 👁 กดค้าง = ดูการ์ดที่เหลือ · ปล่อย = หาย (ปุ่มเล็กสุด ท้ายแถว)
+        countDueAsync(g)            // นับไว้ก่อน กดค้าง 👁 แล้วขึ้นทันที
+        // 👁 กดค้าง = ดู due ทั้งหมด (วันนี้ + ค้าง) · ปล่อย = หาย (ปุ่มเล็กสุด ท้ายแถว)
         r.addView(TextView(this).apply {
             text = "👁"
             textSize = 12f
             gravity = Gravity.CENTER
             setPadding(px(6), px(6), px(6), px(6))
-            contentDescription = "กดค้างเพื่อดูการ์ดที่เหลือ"
+            contentDescription = "กดค้างเพื่อดู due ทั้งหมด"
             setOnTouchListener { v, e ->
                 when (e.actionMasked) {
                     MotionEvent.ACTION_DOWN -> { v.alpha = 0.5f; showPeek(g, box); true }
