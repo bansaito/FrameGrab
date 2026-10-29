@@ -279,7 +279,10 @@ class RoundsService : AccessibilityService() {
 
     // ------------------------------------------------------------------ jobs
 
-    private enum class Kind { BUMP, UNDO, RESET }
+    private enum class Kind { BUMP, UNDO, RESET, RESTORE }
+
+    /** ค่าก่อนกด ↺ (ไว้ใช้กับปุ่ม "↶ ยกเลิก" 5 วินาทีหลังเริ่มใหม่): ชุด, รอบเดิม, ค่าเดิมของแต่ละ deck */
+    private var beforeReset: Triple<Int, Int, Map<String, Int>>? = null
 
     // ------------------------------------------------------------------ which set (ชุด) is "the" set
 
@@ -345,15 +348,19 @@ class RoundsService : AccessibilityService() {
             try {
                 val all = AnkiApi.decks(this)
                 val raw = ArrayList<Pair<String, Int>>()
+                val prev = HashMap<String, Int>()
+                val restore = beforeReset?.takeIf { it.first == g }?.third
                 for ((i, d) in prefs.deckSlots(g)) {
                     val info = AnkiApi.find(all, d.name)
                         ?: throw Automator.StepFailed("ไม่พบ deck \"${d.name}\" ใน AnkiDroid")
                     val cur = info.reviewsPerDay
+                    prev[d.name] = cur
                     val start = d.base                 // ค่าเริ่ม (ตั้งในแอป ค่าเริ่มต้น 2/1/1) ใช้กับ ↺
                     val want = when (kind) {
                         Kind.BUMP -> cur + d.step
                         Kind.UNDO -> (cur - d.step).coerceAtLeast(start)
                         Kind.RESET -> start
+                        Kind.RESTORE -> restore?.get(d.name) ?: cur
                     }
                     raw.add(d.name to want)
                 }
@@ -373,6 +380,10 @@ class RoundsService : AccessibilityService() {
                     bad = verify(targets, a)
                 }
                 if (bad.isEmpty()) ok = true else msg = "บันทึกไม่ติด: " + bad.joinToString(", ")
+                if (ok && kind == Kind.RESET) {
+                    val r0 = prefs.round(g)
+                    main.post { beforeReset = Triple(g, r0, prev) }
+                }
             } catch (e: Automator.StepFailed) {
                 msg = "ทำไม่สำเร็จ: ${e.message}"
             } catch (e: Exception) {
@@ -386,7 +397,9 @@ class RoundsService : AccessibilityService() {
                         Kind.BUMP -> prefs.round(g) + 1
                         Kind.UNDO -> prefs.round(g) - 1
                         Kind.RESET -> 1
+                        Kind.RESTORE -> beforeReset?.second ?: prefs.round(g)
                     })
+                    if (kind == Kind.RESTORE) beforeReset = null
                     prefs.lastGroup = g
                     prefs.lastUsedGroup = g
                 }
@@ -396,14 +409,66 @@ class RoundsService : AccessibilityService() {
                 refreshBubble()
                 requestCount(0)
                 refreshTiles()
-                if (ok) {
+                if (ok && kind == Kind.RESET) {
+                    showUndoReset(g)
+                } else if (ok) {
                     val name = if (allGroups().size > 1) prefs.groupName(g) + " " else ""
                     Toast.makeText(this, name + when (kind) {
-                        Kind.BUMP -> "✓ เพิ่มแล้ว"; Kind.UNDO -> "✓ ย้อนแล้ว"; Kind.RESET -> "✓ เริ่มใหม่แล้ว"
+                        Kind.BUMP -> "✓ เพิ่มแล้ว"; Kind.UNDO -> "✓ ย้อนแล้ว"
+                        Kind.RESET -> "✓ เริ่มใหม่แล้ว"; Kind.RESTORE -> "✓ ยกเลิกการเริ่มใหม่แล้ว"
                     }, Toast.LENGTH_SHORT).show()
                 } else toast("$msg\nแตะปุ่มลอย → ⚙️ → ส่ง log ให้ผู้ช่วยดูได้")
             }
         }.start()
+    }
+
+    private var undoChip: TextView? = null
+    private val hideUndo = Runnable { removeUndoChip() }
+
+    private fun removeUndoChip() {
+        main.removeCallbacks(hideUndo)
+        undoChip?.let { try { wm.removeView(it) } catch (_: Exception) {} }
+        undoChip = null
+    }
+
+    /** หลังกด ↺: ชิป "✓ เริ่มใหม่แล้ว · ↶ ยกเลิก" ข้างปุ่มลอย 5 วินาที */
+    private fun showUndoReset(g: Int) {
+        removeUndoChip()
+        val dp = resources.displayMetrics.density
+        val v = TextView(this).apply {
+            text = "✓ เริ่มใหม่แล้ว   ↶ ยกเลิก"
+            textSize = 14f
+            setTextColor(Color.WHITE)
+            setPadding((14 * dp).toInt(), (9 * dp).toInt(), (14 * dp).toInt(), (9 * dp).toInt())
+            background = GradientDrawable().apply { cornerRadius = 14 * dp; setColor(Color.parseColor("#F21E222A")) }
+            setOnClickListener {
+                removeUndoChip()
+                run(g, Kind.RESTORE)
+            }
+        }
+        val size = (BUBBLE_DP * dp).toInt()
+        val bx = bubbleLp?.x ?: prefs.bubbleX
+        val by = bubbleLp?.y ?: prefs.bubbleY
+        val screenW = resources.displayMetrics.widthPixels
+        v.measure(android.view.View.MeasureSpec.UNSPECIFIED, android.view.View.MeasureSpec.UNSPECIFIED)
+        val lp = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.TRANSLUCENT,
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            val right = bx + size + (8 * dp).toInt()
+            x = if (right + v.measuredWidth <= screenW) right else (bx - v.measuredWidth - (8 * dp).toInt()).coerceAtLeast(0)
+            y = by
+        }
+        try {
+            wm.addView(v, lp)
+            undoChip = v
+            main.postDelayed(hideUndo, 5000)
+        } catch (_: Exception) {
+            Toast.makeText(this, "✓ เริ่มใหม่แล้ว", Toast.LENGTH_SHORT).show()
+        }
     }
 
     /** อ่านค่าจาก AnkiDroid กลับมาเช็กว่าบันทึกเป็นตัวเลขใหม่จริง  คืนรายการที่ไม่ตรง */
@@ -780,20 +845,7 @@ class RoundsService : AccessibilityService() {
             addChip(r, chip("↶ ย้อน", "#374151") { undo(g) })
         }
         if (prefs.round(g) > 1) {
-            var confirm = false
-            addChip(r, chip("↺ เริ่มใหม่", "#374151") { tv ->
-                if (!confirm) {
-                    confirm = true
-                    tv.text = "↺ แตะอีกครั้ง"
-                    tv.setTextColor(Color.parseColor("#FBBF24"))
-                    // ไม่แตะซ้ำภายใน 3 วิ → กลับเป็นปุ่มเดิม (เมนูไม่ปิด)
-                    tv.postDelayed({
-                        confirm = false
-                        tv.text = "↺ เริ่มใหม่"
-                        tv.setTextColor(Color.WHITE)
-                    }, 3000)
-                } else reset(g)
-            })
+            addChip(r, chip("↺ เริ่มใหม่", "#374151") { reset(g) })   // กดครั้งเดียว · มี ↶ ยกเลิก 5 วิ
         }
         box.addView(r)
 
