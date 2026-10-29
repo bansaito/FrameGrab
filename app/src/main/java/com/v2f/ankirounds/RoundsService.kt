@@ -289,18 +289,25 @@ class RoundsService : AccessibilityService() {
     private fun allGroups(): List<Int> =
         (0 until prefs.groupCount).filter { prefs.decks(it).isNotEmpty() }.ifEmpty { listOf(0) }
 
+    /** ชุดที่มี deck นี้ (ชื่อเต็มตรงกัน > เป็น deck แม่/ลูกของ deck ในชุด > ชื่อสั้นตรงกันแค่ชุดเดียว) */
     private fun groupOfDeck(name: String?): Int? {
         if (name.isNullOrBlank()) return null
-        val short = name.substringAfterLast("::")
-        return allGroups().firstOrNull { g ->
-            prefs.decks(g).any { it.name.equals(name, true) || it.name.substringAfterLast("::").equals(short, true) }
-        }
+        val gs = allGroups()
+        val n = name.trim()
+        fun any(test: (String) -> Boolean) = gs.firstOrNull { g -> prefs.decks(g).any { test(it.name.trim()) } }
+        any { it.equals(n, true) }?.let { return it }
+        any { it.startsWith("$n::", true) }?.let { return it }     // เปิด deck แม่ของ deck ในชุด
+        any { n.startsWith("$it::", true) }?.let { return it }     // เปิด deck ย่อยของ deck ในชุด
+        // ชื่อสั้น (เช่น ".1") ซ้ำกันได้หลายชุด → ใช้เฉพาะเมื่อมีชุดเดียวที่ตรง
+        val short = n.substringAfterLast("::")
+        val hits = gs.filter { g -> prefs.decks(g).any { it.name.trim().substringAfterLast("::").equals(short, true) } }
+        return hits.singleOrNull()
     }
 
-    /** ชุดหลัก: ชุดของ deck ที่เปิดหน้า Congratulations อยู่ → ไม่งั้นชุดที่กด ➕/↶/↺ ล่าสุด → ชุดแรก */
+    /** ชุดหลัก: ชุดของ deck ที่ท่องล่าสุด (deck ที่เลือกอยู่ใน AnkiDroid) → ไม่งั้นชุดที่กด ➕/↶/↺ ล่าสุด → ชุดแรก */
     fun primaryGroup(): Int {
         val gs = allGroups()
-        if (screen == Screen.CONGRATS) groupOfDeck(selDeck)?.let { return it }
+        groupOfDeck(selDeck)?.let { return it }
         prefs.lastUsedGroup.takeIf { it in gs }?.let { return it }
         return gs.first()
     }
@@ -746,7 +753,7 @@ class RoundsService : AccessibilityService() {
             ).apply { marginEnd = px(6) })
         }
 
-        if (screen == Screen.CONGRATS && pick == null) selDeck = AnkiApi.selectedDeckName(this)
+        if (pick == null) selDeck = AnkiApi.selectedDeckName(this)   // deck ที่ท่องล่าสุด (อ่านสด)
         val all = allGroups()
         val multi = prefs.featGroups && all.size > 1
         val g = pick?.takeIf { it in all } ?: primaryGroup()
