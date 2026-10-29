@@ -201,6 +201,7 @@ class MainActivity : Activity() {
             Prefs.setReplaySec(this, arr[(arr.indexOf(cur) + 1).let { if (it <= 0 || it >= arr.size) 0 else it }]); refresh()
         }
         col.addView(replayBtn, gap(8f))
+        col.addView(box("ใส่ชื่อบัญชีจากหน้าจอในชื่อไฟล์ (ปิด = FrameGrab-วันที่-เลขรัน)", Prefs.nameFromScreen(this)) { Prefs.setNameFromScreen(this, it) }, gap(8f))
         col.addView(box("📋 เมนูคัดลอกข้อความบนจอ (แคปชัน/คอมเมนต์ที่กดคัดลอกไม่ได้)", Prefs.copyText(this)) {
             Prefs.setCopyText(this, it)
             if (it && !HoldService.isEnabled(this)) askHoldPermission()

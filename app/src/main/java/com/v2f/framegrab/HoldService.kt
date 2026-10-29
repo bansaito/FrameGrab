@@ -54,6 +54,7 @@ class HoldService : AccessibilityService() {
      *  2) หน้าคลิป/Reels: ชื่อเหนือแคปชันมุมซ้ายล่าง (ช่วง 55–93% ของจอ ฝั่งซ้าย) อันบนสุด
      */
     fun findUsername(): String? {
+        if (!Prefs.nameFromScreen(this)) return null   // ปิดไว้ = ใช้ FrameGrab-วันที่-เลขรัน
         if (android.os.Build.VERSION.SDK_INT >= 34) try { clearCache() } catch (e: Exception) { }
         val roots = try {
             windows.filter { it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION }.mapNotNull { it.root }

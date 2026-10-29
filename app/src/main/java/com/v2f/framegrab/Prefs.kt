@@ -22,6 +22,9 @@ object Prefs {
     /** หยุดอัดเองเมื่อคลิปวนกลับมาต้น */
     fun autoStop(c: Context): Boolean = sp(c).getBoolean("autoStop", true)
     fun setAutoStop(c: Context, v: Boolean) = sp(c).edit().putBoolean("autoStop", v).apply()
+    /** ใส่ชื่อบัญชีจากหน้าจอในชื่อไฟล์ (ปิดได้ถ้าได้ชื่อผิด) */
+    fun nameFromScreen(c: Context): Boolean = sp(c).getBoolean("nameFromScreen", true)
+    fun setNameFromScreen(c: Context, v: Boolean) = sp(c).edit().putBoolean("nameFromScreen", v).apply()
     /** ⟲ บันทึกย้อนหลังกี่วินาที */
     val REPLAY_SECS = intArrayOf(15, 30, 60, 120)
     fun replaySec(c: Context): Int = sp(c).getInt("replaySec", 30)
