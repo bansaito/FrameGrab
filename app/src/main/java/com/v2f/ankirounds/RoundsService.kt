@@ -432,7 +432,7 @@ class RoundsService : AccessibilityService() {
     }
 
     /** due ทั้งหมดของแต่ละ deck ที่นับไว้ล่าสุด: ชุด → (เวลา, [(ชื่อสั้น, จำนวน|null)]) */
-    private val dueCache = HashMap<Int, Pair<Long, List<Pair<String, Int?>>>>()
+    private val dueCache = HashMap<Int, Pair<Long, List<Triple<String, Int, Int?>>>>()   // (ชื่อ, new, due)
 
     /** นับ due ทั้งหมด (วันนี้ + ค้าง) ของชุด g เบื้องหลัง แล้วเรียก done บน main thread */
     private fun countDueAsync(g: Int, done: (() -> Unit)? = null) {
@@ -442,8 +442,10 @@ class RoundsService : AccessibilityService() {
         Thread {
             val all = try { AnkiApi.decks(this) } catch (_: Exception) { emptyList() }
             val rows = decks.map { d ->
-                val full = AnkiApi.find(all, d.name)?.name ?: d.name
-                d.name.substringAfterLast("::") to AnkiApi.countDue(this, full)
+                val info = AnkiApi.find(all, d.name)
+                val full = info?.name ?: d.name
+                // new = เลขสีน้ำเงินแบบที่ AnkiDroid แสดง (การ์ดใหม่ที่ท่องได้วันนี้)
+                Triple(d.name.substringAfterLast("::"), info?.new ?: 0, AnkiApi.countDue(this, full))
             }
             main.post {
                 dueCache[g] = System.currentTimeMillis() to rows
@@ -455,15 +457,20 @@ class RoundsService : AccessibilityService() {
     private fun peekText(g: Int): CharSequence {
         val rows = dueCache[g]?.second ?: return "กำลังนับ…"
         val green = "#4ADE80"
-        val sb = StringBuilder("<font color='#9CA3AF'>due ทั้งหมด (วันนี้ + ค้าง)</font>")
-        var total = 0
+        val blue = "#60A5FA"
+        val grey = "#6B7280"
+        fun num(v: Int?, c: String) = if (v == null) "–" else "<font color='${if (v > 0) c else grey}'><b>$v</b></font>"
+        val sb = StringBuilder("<font color='#9CA3AF'>new · due (วันนี้ + ค้าง)</font>")
+        var tNew = 0
+        var tDue = 0
         var unknown = false
-        for ((name, n) in rows) {
+        for ((name, new, due) in rows) {
+            tNew += new
+            if (due == null) unknown = true else tDue += due
             sb.append("<br>").append(android.text.TextUtils.htmlEncode(name)).append("&nbsp;&nbsp;")
-            if (n == null) { unknown = true; sb.append("–") }
-            else { total += n; sb.append("<font color='${if (n > 0) green else "#6B7280"}'><b>$n</b></font>") }
+                .append(num(new, blue)).append("&nbsp;&nbsp;").append(num(due, green))
         }
-        if (rows.size > 1) sb.append("<br>รวม&nbsp;&nbsp;<font color='$green'><b>$total</b></font>")
+        if (rows.size > 1) sb.append("<br>รวม&nbsp;&nbsp;").append(num(tNew, blue)).append("&nbsp;&nbsp;").append(num(tDue, green))
         if (unknown) sb.append("<br><font color='#9CA3AF'>– = ค้นใน AnkiDroid ไม่ได้</font>")
         return android.text.Html.fromHtml(sb.toString(), android.text.Html.FROM_HTML_MODE_COMPACT)
     }
