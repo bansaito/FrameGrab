@@ -48,6 +48,42 @@ class HoldService : AccessibilityService() {
     private fun point() = Path().apply { moveTo(hx, hy) }
 
     /**
+     * ชื่อบัญชีของคนโพสต์บนจอตอนนี้ (ใช้ตั้งชื่อไฟล์) หรือ null
+     *  1) ข้อความ @ชื่อ (TikTok)  2) ข้อความแบบชื่อบัญชี (a-z0-9._) บนส่วนหัว 30% ของจอ (หัวสตอรี่ IG/TikTok)
+     *  3) ชื่อที่แสดงบนส่วนหัว (เช่นชื่อเล่น) ถ้าไม่เจอแบบแรก ๆ
+     */
+    fun findUsername(): String? {
+        if (android.os.Build.VERSION.SDK_INT >= 34) try { clearCache() } catch (e: Exception) { }
+        val roots = try {
+            windows.filter { it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION }.mapNotNull { it.root }
+        } catch (e: Exception) { emptyList() }
+        val list = if (roots.isEmpty()) listOfNotNull(rootInActiveWindow) else roots
+        val h = resources.displayMetrics.heightPixels
+        val at = ArrayList<String>(); val handle = ArrayList<String>(); val shown = ArrayList<String>()
+        val r = android.graphics.Rect()
+        val AT = Regex("""^@([A-Za-z0-9._]{2,30})$""")
+        val HANDLE = Regex("""^[A-Za-z0-9._]{3,30}$""")
+        val NOISE = Regex("""(ก่อน|นาที|ชม\.|ชั่วโมง|วัน|ติดตาม|ข้อความ|LIVE|ไลฟ์|\d+[:.]\d+|^\d+$)""", RegexOption.IGNORE_CASE)
+        fun walk(n: android.view.accessibility.AccessibilityNodeInfo?, depth: Int) {
+            if (n == null || depth > 60) return
+            if (n.packageName?.toString() == packageName) return
+            val t = (n.text ?: n.contentDescription)?.toString()?.trim()
+            if (!t.isNullOrEmpty() && t.length <= 40) {
+                n.getBoundsInScreen(r)
+                val top = r.top < h * 0.30f
+                AT.matchEntire(t)?.let { at.add(it.groupValues[1]) }
+                    ?: run {
+                        if (top && HANDLE.matches(t) && t.any { it.isLetter() } && !NOISE.containsMatchIn(t)) handle.add(t)
+                        else if (top && !NOISE.containsMatchIn(t) && t.any { it.isLetter() } && t.split(' ').size <= 4) shown.add(t)
+                    }
+            }
+            for (i in 0 until n.childCount) walk(n.getChild(i), depth + 1)
+        }
+        for (root in list) walk(root, 0)
+        return (at.firstOrNull() ?: handle.firstOrNull() ?: shown.firstOrNull())?.trimEnd('.')
+    }
+
+    /**
      * ข้อความทั้งหมดบนจอของแอปที่เปิดอยู่ (รวมส่วนที่แอปไม่ให้กดค้างคัดลอก เช่น แคปชัน คอมเมนต์ ชื่อ)
      * ไม่รวมตัวหนังสือที่อยู่ "ในภาพ/วิดีโอ" (อันนั้นเป็นพิกเซล ไม่ใช่ข้อความ)
      */

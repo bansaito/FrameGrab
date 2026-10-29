@@ -40,6 +40,39 @@ object FrameStore {
 
     fun count(c: Context): Int = list(c).size
 
+    // ---------- ชื่อบัญชีของภาพ (ไว้ตั้งชื่อไฟล์ตอนบันทึกลงแกลเลอรี) ----------
+    private fun ownerFile(c: Context) = File(dir(c), ".owners")
+    @Synchronized private fun owners(c: Context): MutableMap<String, String> =
+        ownerFile(c).takeIf { it.isFile }?.readLines()?.mapNotNull { l -> l.split('\t', limit = 2).takeIf { it.size == 2 }?.let { it[0] to it[1] } }
+            ?.toMap(LinkedHashMap()) ?: LinkedHashMap()
+    @Synchronized fun setOwner(c: Context, f: File, user: String?) {
+        if (user.isNullOrBlank()) return
+        val m = owners(c); m[f.name] = user
+        ownerFile(c).writeText(m.entries.joinToString("\n") { "${it.key}\t${it.value}" })
+    }
+    fun ownerOf(c: Context, f: File): String? = owners(c).let { m -> m[f.name] ?: if (f.name.contains("_c_")) m["*c"] else null }
+    /** ภาพอัดต่อเนื่องทั้งชุดเป็นของคนเดียวกัน: เก็บครั้งเดียว */
+    fun setRecordingOwner(c: Context, user: String?) { setOwner(c, File(dir(c), "*c"), user) }
+
+    /** ตัดอักขระที่ใช้ในชื่อไฟล์ไม่ได้ (รวมอีโมจิ) ยาวไม่เกิน 40 ตัว */
+    fun cleanName(s: String?): String? {
+        if (s == null) return null
+        val t = s.filter { it.isLetterOrDigit() || it == '.' || it == '_' || it == '-' || it == ' ' }
+            .trim().replace(Regex("\\s+"), "_").trim('.', '_', '-').take(40)
+        return t.ifEmpty { null }
+    }
+
+    /** ชื่อไฟล์แบบ  ชื่อบัญชี-วว-ดด-ปปปป-0001.jpg  (ไม่มีชื่อบัญชี = FrameGrab-...) เลขรันแยกตามชื่อ+วัน */
+    @Synchronized fun galleryName(c: Context, user: String?, whenMs: Long, ext: String): String {
+        val who = cleanName(user) ?: "FrameGrab"
+        val day = SimpleDateFormat("dd-MM-yyyy", Locale.US).format(Date(whenMs))
+        val sp = c.getSharedPreferences("framegrab_seq", Context.MODE_PRIVATE)
+        val key = "$who|$day"
+        val n = sp.getInt(key, 0) + 1
+        sp.edit().putInt(key, n).apply()
+        return String.format(Locale.US, "%s-%s-%04d.%s", who, day, n, ext)
+    }
+
     // ---------- จำว่าภาพไหนบันทึกลงแกลเลอรีแล้ว (ไฟล์ .saved ในโฟลเดอร์เดียวกัน ล้างภาพ = ล้างด้วย) ----------
     private fun markFile(c: Context) = File(dir(c), ".saved")
     @Synchronized fun savedNames(c: Context): MutableSet<String> =
@@ -101,15 +134,14 @@ object FrameStore {
     fun saveOneToGallery(c: Context, fr: Frame): Boolean = saveFileToGallery(c, fr.file, fr.index)
 
     fun saveFileToGallery(c: Context, f: File, index: Int): Boolean {
-        val name = "frame_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date()) +
-            String.format(Locale.US, "_%03d.jpg", index)
+        val name = galleryName(c, ownerOf(c, f), f.lastModified(), "jpg")
         return copyToGallery(c, f, name, "Pictures/FrameGrab").also { if (it) markSaved(c, listOf(f)) }
     }
 
     /** ย้ายวิดีโอไปไว้ใน Movies/FrameGrab ของแกลเลอรี */
-    fun saveVideoToGallery(c: Context, f: File): Boolean {
+    fun saveVideoToGallery(c: Context, f: File, user: String? = null): Boolean {
         val values = ContentValues().apply {
-            put(MediaStore.Video.Media.DISPLAY_NAME, f.name)
+            put(MediaStore.Video.Media.DISPLAY_NAME, galleryName(c, user, f.lastModified(), "mp4"))
             put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
             put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/FrameGrab")
             put(MediaStore.Video.Media.IS_PENDING, 1)
@@ -145,13 +177,12 @@ object FrameStore {
 
     /** บันทึกเฟรมทั้งหมดลง Pictures/FrameGrab/<วันเวลา> คืนจำนวนที่บันทึกได้ */
     fun saveAllToGallery(c: Context, frames: List<Frame>): Int {
-        val folder = "Pictures/FrameGrab/" +
-            SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+        val folder = "Pictures/FrameGrab"
         var ok = 0
         val done = ArrayList<File>()
         for ((i, fr) in frames.withIndex()) {
             val values = ContentValues().apply {
-                put(MediaStore.Images.Media.DISPLAY_NAME, String.format(Locale.US, "frame_%03d.jpg", i + 1))
+                put(MediaStore.Images.Media.DISPLAY_NAME, galleryName(c, ownerOf(c, fr.file), fr.file.lastModified(), "jpg"))
                 put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
                 put(MediaStore.Images.Media.RELATIVE_PATH, folder)
                 put(MediaStore.Images.Media.IS_PENDING, 1)

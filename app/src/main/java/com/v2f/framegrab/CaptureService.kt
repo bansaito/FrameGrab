@@ -419,6 +419,8 @@ class CaptureService : Service() {
         if (recording) return
         closeMenu()
         hideOverlay()
+        // อ่านชื่อบัญชีบนจอก่อน (ก่อนกดค้าง ซึ่งจะซ่อนชื่อใน IG) ไว้ตั้งชื่อไฟล์
+        val shotUser = try { HoldService.instance?.findUsername() } catch (e: Exception) { null }
         // โหมดกดค้าง (ซ่อนชื่อโปรไฟล์) ใช้เฉพาะ Instagram
         val inIg = (HoldService.currentPkg ?: AppWatch.foreground(this)) == "com.instagram.android"
         val held = startHold(Prefs.holdShot(this) && inIg)
@@ -438,6 +440,7 @@ class CaptureService : Service() {
                 val out = Cropper.apply(bmp, cropRectFor(bmp))
                 try {
                     val f = FrameStore.save(this, out, 's', msOfDay)
+                    FrameStore.setOwner(this, f, shotUser)
                     ok = true
                     // บันทึกลงแกลเลอรีอัตโนมัติ (ปิดได้ในแอป)
                     if (Prefs.autoSaveSingle(this)) saved = FrameStore.saveFileToGallery(this, f, FrameStore.count(this))
@@ -479,12 +482,14 @@ class CaptureService : Service() {
     @Volatile private var replayOn = false
     private var videoTicks = 0
     private var videoSaved = 0
+    @Volatile private var videoUser: String? = null
 
     private fun startVideo(replay: Boolean) {
         if (recording || videoEngine != null) { if (replayOn && !replay) toast("ปิด ⟲ บันทึกย้อนหลังก่อน"); return }
         val rd = reader ?: return
         val disp = display ?: return
         closeMenu()
+        videoUser = try { HoldService.instance?.findUsername() } catch (e: Exception) { null }
         if (!replay) hideOverlay()
         val hiddenAt = SystemClock.uptimeMillis()
         work.post {
@@ -528,7 +533,7 @@ class CaptureService : Service() {
 
     private val videoListener = object : VideoEngine.Listener {
         override fun onFile(f: File) {
-            val ok = FrameStore.saveVideoToGallery(this@CaptureService, f)
+            val ok = FrameStore.saveVideoToGallery(this@CaptureService, f, videoUser)
             if (ok) f.delete()
             main.post {
                 if (ok) videoSaved++
@@ -573,6 +578,7 @@ class CaptureService : Service() {
         if (!replayOn) return
         closeMenu()
         toast("💾 กำลังเก็บ ${Prefs.replaySec(this)} วิล่าสุด…")
+        videoUser = try { HoldService.instance?.findUsername() } catch (x: Exception) { null }
         e.saveReplay { f -> if (f != null) videoListener.onFile(f) else main.post { toast("ยังไม่มีภาพให้เก็บ") } }
     }
 
@@ -592,6 +598,7 @@ class CaptureService : Service() {
         if (recording || videoEngine != null && !replayOn) return
         closeMenu()
         FrameStore.clear(this) // อัดคลิปใหม่ ล้างภาพเก่าทันที
+        FrameStore.setRecordingOwner(this, try { HoldService.instance?.findUsername() } catch (e: Exception) { null })
         recording = true
         recCount = 0
         recRect = null
