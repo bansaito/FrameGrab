@@ -67,8 +67,11 @@ class HoldService : AccessibilityService() {
         val r = android.graphics.Rect()
         // คำที่ไม่ใช่ชื่อ: เวลา, ปุ่ม, ตัวเลข, แท็บ
         val NOISE = Regex("""(ก่อน|นาที|ชม\.|ชั่วโมง|วัน|สัปดาห์|ติดตาม|ข้อความ|ส่งข้อความ|แชร์|ถูกใจ|ความคิดเห็น|เพิ่มเติม|แปล|ไฮไลท์|สตอรี่|Stories|ค้นหา|สำหรับคุณ|เพื่อน|LIVE|ไลฟ์|Follow|Reply|Send|\d+[:.,]\d+|^\d+[KMk]?$)""", RegexOption.IGNORE_CASE)
-        fun nameLike(t: String) = t.length in 2..30 && !t.startsWith("#") && !t.contains('\n') && !t.contains('…') &&
-            t.split(' ').size <= 4 && t.any { it.isLetter() } && !NOISE.containsMatchIn(t)
+        // ชื่อที่เป็นอีโมจิล้วน (เช่น 🐼) ก็นับ — ไว้แปลงเป็นคำทีหลัง
+        fun emojiOnly(t: String) = t.isNotEmpty() && t.none { it.isLetterOrDigit() } && t.codePoints().anyMatch { Character.getType(it) == Character.OTHER_SYMBOL.toInt() }
+        fun nameLike(t: String) = t.length in 1..30 && !t.startsWith("#") && !t.contains('\n') && !t.contains('…') &&
+            t.split(' ').size <= 4 && (t.any { it.isLetter() } && t.length >= 2 || emojiOnly(t)) && !NOISE.containsMatchIn(t)
+        val descs = ArrayList<C>()   // คำอธิบายรูป (เช่นรูปโปรไฟล์) บางแอปใส่ชื่อบัญชีไว้
         fun walk(n: android.view.accessibility.AccessibilityNodeInfo?, depth: Int) {
             if (n == null || depth > 60) return
             if (n.packageName?.toString() == packageName) return
@@ -77,6 +80,8 @@ class HoldService : AccessibilityService() {
                 n.getBoundsInScreen(r)
                 if (r.width() > 0 && r.height() > 0 && nameLike(t)) cands.add(C(t, r.left, r.top))
             }
+            val d = n.contentDescription?.toString()?.trim()
+            if (!d.isNullOrEmpty() && n.isVisibleToUser && d.length <= 60) { n.getBoundsInScreen(r); descs.add(C(d, r.left, r.top)) }
             for (i in 0 until n.childCount) walk(n.getChild(i), depth + 1)
         }
         for (root in list) walk(root, 0)
@@ -87,7 +92,18 @@ class HoldService : AccessibilityService() {
         val foot = cands.filter { it.y in (h * 0.55f).toInt()..(h * 0.93f).toInt() && it.x < w * 0.45f }
             .minByOrNull { it.y }
         val pick = head ?: foot ?: return null
-        return pick.t.removePrefix("@").trimEnd('.')
+        val name = pick.t.removePrefix("@").trimEnd('.')
+        if (!emojiOnly(name)) return name
+        // ชื่อเป็นอีโมจิล้วน: ลองหาชื่อบัญชีจากคำอธิบายรูปโปรไฟล์ที่อยู่แถวเดียวกันก่อน
+        val HANDLE = Regex("@?([A-Za-z0-9._]{3,30})")
+        descs.filter { kotlin.math.abs(it.y - pick.y) < h / 12 }
+            .firstNotNullOfOrNull { c -> HANDLE.findAll(c.t).map { it.groupValues[1] }.firstOrNull { x -> x.any { it.isLetter() } } }
+            ?.let { return it }
+        // ไม่มี: แปลงอีโมจิเป็นคำภาษาอังกฤษตามชื่อมาตรฐาน เช่น 🐼 → panda_face
+        val words = name.codePoints().toArray()
+            .filter { Character.getType(it) == Character.OTHER_SYMBOL.toInt() }
+            .mapNotNull { cp -> Character.getName(cp)?.lowercase()?.replace(Regex("[^a-z0-9]+"), "_")?.trim('_') }
+        return words.joinToString("_").ifEmpty { null }
     }
 
     /**
