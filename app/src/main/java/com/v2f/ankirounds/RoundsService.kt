@@ -934,9 +934,8 @@ class RoundsService : AccessibilityService() {
         if (prefs.featUndo && prefs.round(g) > 1) {
             addChip(r, chip("↶ ย้อน", "#374151") { undo(g) })
         }
-        if (prefs.round(g) > 1) {
-            addChip(r, chip("↺ เริ่มใหม่", "#374151") { reset(g) })   // กดครั้งเดียว · มี ↶ ยกเลิก 5 วิ
-        }
+        // แสดงเสมอ (วันใหม่ค่าใน AnkiDroid อาจยังค้างจากเมื่อวาน แม้แอปนับเป็นรอบแรก)
+        addChip(r, chip("↺ เริ่มใหม่", "#374151") { reset(g) })   // กดครั้งเดียว · มี ↶ ยกเลิก 5 วิ
         countDueAsync(g)            // นับไว้ก่อน กดค้าง 👁 แล้วขึ้นทันที
         // 👁 กดค้าง = ดู due ทั้งหมด (วันนี้ + ค้าง) · ปล่อย = หาย (ปุ่มเล็กสุด ท้ายแถว)
         r.addView(TextView(this).apply {
