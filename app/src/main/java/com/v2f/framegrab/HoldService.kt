@@ -81,7 +81,12 @@ class HoldService : AccessibilityService() {
                 if (r.width() > 0 && r.height() > 0 && nameLike(t)) cands.add(C(t, r.left, r.top))
             }
             val d = n.contentDescription?.toString()?.trim()
-            if (!d.isNullOrEmpty() && n.isVisibleToUser && d.length <= 60) { n.getBoundsInScreen(r); descs.add(C(d, r.left, r.top)) }
+            if (!d.isNullOrEmpty() && n.isVisibleToUser && d.length <= 120) {
+                n.getBoundsInScreen(r)
+                descs.add(C(d, r.left, r.top))
+                // IG / FB: ชื่อที่แสดงอาจอยู่ในคำอธิบายของปุ่มชื่อ (ไม่มีตัวหนังสือ) — ให้เป็นตัวเลือกเหมือนข้อความ
+                if (t.isNullOrEmpty() && nameLike(d) && r.width() > 0) cands.add(C(d, r.left, r.top))
+            }
             for (i in 0 until n.childCount) walk(n.getChild(i), depth + 1)
         }
         for (root in list) walk(root, 0)
@@ -91,6 +96,14 @@ class HoldService : AccessibilityService() {
         // 2) ชื่อเหนือแคปชันมุมซ้ายล่าง
         val foot = cands.filter { it.y in (h * 0.55f).toInt()..(h * 0.93f).toInt() && it.x < w * 0.45f }
             .minByOrNull { it.y }
+        // IG / FB มักไม่ใส่ชื่อเป็นตัวหนังสือ แต่ใส่ในคำอธิบายรูปโปรไฟล์ เช่น "รูปโปรไฟล์ของ wa.veva", "wa.veva's profile picture"
+        val PIC = listOf(
+            Regex("""(?:รูปโปรไฟล์ของ|รูปประจำตัวของ|โปรไฟล์ของ|สตอรี่ของ|profile picture of|avatar of|story by|reel by)\s*@?(.{1,40}?)\s*(?:[,·]|$)""", RegexOption.IGNORE_CASE),
+            Regex("""^@?(.{1,40}?)['’]s (?:profile picture|profile photo|story|avatar|reel)""", RegexOption.IGNORE_CASE))
+        fun fromDesc(c: C) = PIC.firstNotNullOfOrNull { re -> re.find(c.t)?.groupValues?.get(1)?.trim() }?.takeIf { it.isNotEmpty() && !NOISE.containsMatchIn(it) }
+        val owner = descs.filter { it.y in (h * 0.03f).toInt()..(h * 0.30f).toInt() }.sortedBy { it.y }.firstNotNullOfOrNull { fromDesc(it) }
+            ?: descs.filter { it.y in (h * 0.55f).toInt()..(h * 0.93f).toInt() && it.x < w * 0.5f }.sortedBy { it.y }.firstNotNullOfOrNull { fromDesc(it) }
+        if (owner != null && !emojiOnly(owner)) return owner.removePrefix("@").trimEnd('.')
         val pick = head ?: foot ?: return null
         val name = pick.t.removePrefix("@").trimEnd('.')
         if (!emojiOnly(name)) return name
