@@ -749,7 +749,9 @@ class RoundsService : AccessibilityService() {
                         if (moved) {
                             if (prefs.featEdge) snapToEdge() else { prefs.bubbleX = lp.x; prefs.bubbleY = lp.y }
                         } else if (!longFired && e.action == MotionEvent.ACTION_UP) {
-                            if (menu != null) hideMenu() else { tuck(false); showMenu() }   // แตะ = เปิดเมนูให้เลือกก่อน
+                            // แตะ = เปิด/ปิดเมนู · ถ้าเมนูเพิ่งปิดเพราะนิ้วแตะปุ่มนี้ (นับเป็นแตะนอกเมนู) ไม่ต้องเปิดใหม่
+                            if (menu != null) hideMenu()
+                            else if (System.currentTimeMillis() - menuClosedAt > 500) { tuck(false); showMenu() }
                         }
                     }
                 }
@@ -1050,9 +1052,12 @@ class RoundsService : AccessibilityService() {
 
     private val autoClose = Runnable { hideMenu() }
 
+    private var menuClosedAt = 0L
+
     private fun hideMenu() {
         hidePeek()
         val m = menu ?: return
+        menuClosedAt = System.currentTimeMillis()
         main.removeCallbacks(autoClose)
         try { wm.removeView(m) } catch (_: Exception) {}
         menu = null
