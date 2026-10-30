@@ -923,27 +923,21 @@ class RoundsService : AccessibilityService() {
                 append(if (left > 0) "เหลือ $left ใบ" else "ครบแล้ว ✓")
             }
         }
-        box.addView(TextView(this).apply {
+        countDueAsync(g)            // นับไว้ก่อน กดค้าง 👁 แล้วขึ้นทันที
+        // บรรทัดชื่อชุด: [ชื่อชุด ……… 👁]  (👁 กดค้าง = ดู new/due · ปล่อย = หาย)
+        val headRow = row().apply { setPadding(0, 0, 0, px(4)) }
+        headRow.addView(TextView(this).apply {
             text = head
             textSize = 13f
             setTextColor(Color.parseColor(if (left == 0) "#86EFAC" else "#B0B6C0"))
-            setPadding(px(4), 0, px(4), px(6))
-        })
-        val r = row()
-        addChip(r, chip("➕ อีก 1 รอบ", "#2563EB") { bump(g) })
-        if (prefs.featUndo && prefs.round(g) > 1) {
-            addChip(r, chip("↶ ย้อน", "#374151") { undo(g) })
-        }
-        // แสดงเสมอ (วันใหม่ค่าใน AnkiDroid อาจยังค้างจากเมื่อวาน แม้แอปนับเป็นรอบแรก)
-        addChip(r, chip("↺ เริ่มใหม่", "#374151") { reset(g) })   // กดครั้งเดียว · มี ↶ ยกเลิก 5 วิ
-        countDueAsync(g)            // นับไว้ก่อน กดค้าง 👁 แล้วขึ้นทันที
-        // 👁 กดค้าง = ดู due ทั้งหมด (วันนี้ + ค้าง) · ปล่อย = หาย (ปุ่มเล็กสุด ท้ายแถว)
-        r.addView(TextView(this).apply {
+            setPadding(px(4), 0, px(4), 0)
+        }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        headRow.addView(TextView(this).apply {
             text = "👁"
             textSize = 12f
             gravity = Gravity.CENTER
-            setPadding(px(6), px(6), px(6), px(6))
-            contentDescription = "กดค้างเพื่อดู due ทั้งหมด"
+            setPadding(px(6), px(2), px(6), px(2))
+            contentDescription = "กดค้างเพื่อดู new และ due ทั้งหมด"
             setOnTouchListener { v, e ->
                 when (e.actionMasked) {
                     MotionEvent.ACTION_DOWN -> { v.alpha = 0.5f; showPeek(g, box); true }
@@ -952,7 +946,20 @@ class RoundsService : AccessibilityService() {
                 }
             }
         })
-        box.addView(r)
+        box.addView(headRow, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT))
+        val r = row()
+        addChip(r, chip("➕ อีก 1 รอบ", "#2563EB") { bump(g) })
+        if (prefs.featUndo && prefs.round(g) > 1) {
+            addChip(r, chip("↶ ย้อน", "#374151") { undo(g) })
+        }
+        // แสดงเสมอ (วันใหม่ค่าใน AnkiDroid อาจยังค้างจากเมื่อวาน แม้แอปนับเป็นรอบแรก)
+        addChip(r, chip("↺ เริ่มใหม่", "#374151") { reset(g) })   // กดครั้งเดียว · มี ↶ ยกเลิก 5 วิ
+        // จอแคบ: แถวปุ่มเลื่อนซ้ายขวาได้ ไม่มีปุ่มตกขอบ
+        box.addView(android.widget.HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            addView(r)
+        })
 
         // ชุดอื่น: ชิปชื่อเล็ก ๆ แถวเดียว (เลื่อนซ้ายขวาได้) · แตะ = สลับไปชุดนั้น
         if (multi) {
