@@ -178,6 +178,7 @@ class MainActivity : Activity() {
         featSwitch("ปุ่ม ↶ ย้อน 1 รอบ ในเมนู", prefs.featUndo) { prefs.featUndo = it }
         featSwitch("วงแหวนความคืบหน้ารอบปุ่มลอย", prefs.featRing) { prefs.featRing = it }
         featSwitch("ปุ่มลอยชัดเฉพาะตอนเพิ่งเปิด AnkiDroid (ท่องจบแล้วไม่เด้งขึ้นมา)", prefs.featCalm) { prefs.featCalm = it }
+        featSwitch("ปุ่ม 👁 ท้ายแถวปุ่ม (เลื่อนไปขวาสุด) · ปิด = อยู่บรรทัดชื่อชุด", prefs.featEyeRow) { prefs.featEyeRow = it }
         featSwitch("ลากปุ่มลงขอบล่างเพื่อเก็บไว้ในแจ้งเตือน", prefs.featTrash) { on ->
             prefs.featTrash = on
             if (on && android.os.Build.VERSION.SDK_INT >= 33 && !Parking.canNotify(this)) {

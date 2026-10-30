@@ -230,6 +230,11 @@ class Prefs(ctx: Context) {
         get() = p.getBoolean("feat_calm", true)
         set(v) = p.edit().putBoolean("feat_calm", v).apply()
 
+    /** ปุ่ม 👁 อยู่ท้ายแถวปุ่ม (เลื่อนไปขวาสุดเพื่อกด) · ปิด = อยู่บรรทัดชื่อชุด */
+    var featEyeRow: Boolean
+        get() = p.getBoolean("feat_eye_row", true)
+        set(v) = p.edit().putBoolean("feat_eye_row", v).apply()
+
     /** ปุ่ม ↶ ย้อน 1 รอบ */
     var featUndo: Boolean
         get() = p.getBoolean("feat_undo", true)

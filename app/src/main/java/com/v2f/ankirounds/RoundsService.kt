@@ -931,20 +931,23 @@ class RoundsService : AccessibilityService() {
             setTextColor(Color.parseColor(if (left == 0) "#86EFAC" else "#B0B6C0"))
             setPadding(px(4), 0, px(4), 0)
         }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-        headRow.addView(TextView(this).apply {
+        // ปุ่ม 👁: จางไว้ ชัดเฉพาะตอนนิ้วกดอยู่ · กดค้าง = ดู new/due · ปล่อย = หาย
+        fun eye() = TextView(this).apply {
             text = "👁"
             textSize = 12f
             gravity = Gravity.CENTER
-            setPadding(px(6), px(2), px(6), px(2))
+            alpha = 0.35f
+            setPadding(px(6), px(6), px(6), px(6))
             contentDescription = "กดค้างเพื่อดู new และ due ทั้งหมด"
             setOnTouchListener { v, e ->
                 when (e.actionMasked) {
-                    MotionEvent.ACTION_DOWN -> { v.alpha = 0.5f; showPeek(g, box); true }
-                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> { v.alpha = 1f; hidePeek(); true }
+                    MotionEvent.ACTION_DOWN -> { v.alpha = 1f; showPeek(g, box); true }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> { v.alpha = 0.35f; hidePeek(); true }
                     else -> true
                 }
             }
-        })
+        }
+        if (!prefs.featEyeRow) headRow.addView(eye())
         box.addView(headRow, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT))
         val r = row()
@@ -957,11 +960,20 @@ class RoundsService : AccessibilityService() {
         }
         // แสดงเสมอ (วันใหม่ค่าใน AnkiDroid อาจยังค้างจากเมื่อวาน แม้แอปนับเป็นรอบแรก)
         addChip(r, chip("↺ เริ่มใหม่", "#374151") { reset(g) })   // กดครั้งเดียว · ยกเลิกได้จากในเมนู
-        // จอแคบ: แถวปุ่มเลื่อนซ้ายขวาได้ ไม่มีปุ่มตกขอบ
+        // แถวปุ่มเลื่อนซ้ายขวาได้ · โหมด 👁 ท้ายแถว: เห็นลูกตาโผล่เฉียดขอบขวา เลื่อนไปขวาสุดเพื่อกด
+        var rowW = LinearLayout.LayoutParams.WRAP_CONTENT
+        if (prefs.featEyeRow) {
+            r.measure(android.view.View.MeasureSpec.UNSPECIFIED, android.view.View.MeasureSpec.UNSPECIFIED)
+            val chipsW = r.measuredWidth
+            r.addView(eye())
+            rowW = chipsW + px(14)          // ลูกตาโผล่ครึ่งตัว
+        }
+        val maxW = resources.displayMetrics.widthPixels - px(BUBBLE_DP.toInt()) - px(40)
+        if (rowW != LinearLayout.LayoutParams.WRAP_CONTENT) rowW = rowW.coerceAtMost(maxW)
         box.addView(android.widget.HorizontalScrollView(this).apply {
             isHorizontalScrollBarEnabled = false
             addView(r)
-        })
+        }, LinearLayout.LayoutParams(rowW, LinearLayout.LayoutParams.WRAP_CONTENT))
 
         // ชุดอื่น: ชิปชื่อเล็ก ๆ แถวเดียว (เลื่อนซ้ายขวาได้) · แตะ = สลับไปชุดนั้น
         if (multi) {
