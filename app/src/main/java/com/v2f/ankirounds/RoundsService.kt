@@ -409,9 +409,8 @@ class RoundsService : AccessibilityService() {
                 refreshBubble()
                 requestCount(0)
                 refreshTiles()
-                if (ok && kind == Kind.RESET) {
-                    showUndoReset(g)
-                } else if (ok) {
+                if (ok && (kind == Kind.BUMP || kind == Kind.UNDO) && beforeReset?.first == g) beforeReset = null
+                if (ok) {
                     val name = if (allGroups().size > 1) prefs.groupName(g) + " " else ""
                     Toast.makeText(this, name + when (kind) {
                         Kind.BUMP -> "✓ เพิ่มแล้ว"; Kind.UNDO -> "✓ ย้อนแล้ว"
@@ -950,11 +949,14 @@ class RoundsService : AccessibilityService() {
             LinearLayout.LayoutParams.WRAP_CONTENT))
         val r = row()
         addChip(r, chip("➕ อีก 1 รอบ", "#2563EB") { bump(g) })
-        if (prefs.featUndo && prefs.round(g) > 1) {
+        if (beforeReset?.first == g) {
+            // เพิ่งกด ↺ → ยกเลิกได้จากในเมนู (จนกว่าจะกด ➕/↶ ของชุดนี้)
+            addChip(r, chip("↶ ยกเลิกเริ่มใหม่", "#374151") { run(g, Kind.RESTORE) })
+        } else if (prefs.featUndo && prefs.round(g) > 1) {
             addChip(r, chip("↶ ย้อน", "#374151") { undo(g) })
         }
         // แสดงเสมอ (วันใหม่ค่าใน AnkiDroid อาจยังค้างจากเมื่อวาน แม้แอปนับเป็นรอบแรก)
-        addChip(r, chip("↺ เริ่มใหม่", "#374151") { reset(g) })   // กดครั้งเดียว · มี ↶ ยกเลิก 5 วิ
+        addChip(r, chip("↺ เริ่มใหม่", "#374151") { reset(g) })   // กดครั้งเดียว · ยกเลิกได้จากในเมนู
         // จอแคบ: แถวปุ่มเลื่อนซ้ายขวาได้ ไม่มีปุ่มตกขอบ
         box.addView(android.widget.HorizontalScrollView(this).apply {
             isHorizontalScrollBarEnabled = false
