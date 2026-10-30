@@ -954,7 +954,7 @@ class RoundsService : AccessibilityService() {
         addChip(r, chip("➕ อีก 1 รอบ", "#2563EB") { bump(g) })
         if (beforeReset?.first == g) {
             // เพิ่งกด ↺ → ยกเลิกได้จากในเมนู (จนกว่าจะกด ➕/↶ ของชุดนี้)
-            addChip(r, chip("↶ ยกเลิกเริ่มใหม่", "#374151") { run(g, Kind.RESTORE) })
+            addChip(r, chip("↶ ยกเลิก", "#374151") { run(g, Kind.RESTORE) })   // ยกเลิกการเริ่มใหม่
         } else if (prefs.featUndo && prefs.round(g) > 1) {
             addChip(r, chip("↶ ย้อน", "#374151") { undo(g) })
         }
@@ -968,8 +968,15 @@ class RoundsService : AccessibilityService() {
             r.addView(eye())
             rowW = chipsW + px(14)          // ลูกตาโผล่ครึ่งตัว
         }
-        val maxW = resources.displayMetrics.widthPixels - px(BUBBLE_DP.toInt()) - px(40)
-        if (rowW != LinearLayout.LayoutParams.WRAP_CONTENT) rowW = rowW.coerceAtMost(maxW)
+        // เมนูต้องไม่ทับปุ่มลอย: กว้างได้ไม่เกินที่ว่างด้านซ้ายหรือขวาของปุ่ม (ส่วนเกินเลื่อนดูได้)
+        val sw = resources.displayMetrics.widthPixels
+        val bs = px(BUBBLE_DP.toInt())
+        val side = maxOf(sw - (blp.x + bs + px(8)), blp.x - px(8))
+        val maxW = (side - px(20)).coerceAtLeast(px(160))       // หักขอบในของกล่องเมนู
+        if (rowW == LinearLayout.LayoutParams.WRAP_CONTENT) {
+            r.measure(android.view.View.MeasureSpec.UNSPECIFIED, android.view.View.MeasureSpec.UNSPECIFIED)
+            if (r.measuredWidth > maxW) rowW = maxW
+        } else rowW = rowW.coerceAtMost(maxW)
         box.addView(android.widget.HorizontalScrollView(this).apply {
             isHorizontalScrollBarEnabled = false
             addView(r)
@@ -999,7 +1006,7 @@ class RoundsService : AccessibilityService() {
                 isHorizontalScrollBarEnabled = false
                 addView(strip)
             }
-            box.addView(scroll, LinearLayout.LayoutParams(px(260), LinearLayout.LayoutParams.WRAP_CONTENT))
+            box.addView(scroll, LinearLayout.LayoutParams(minOf(px(260), maxW), LinearLayout.LayoutParams.WRAP_CONTENT))
         }
 
         val bottom = row().apply { setPadding(0, px(10), 0, 0) }
