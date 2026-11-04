@@ -240,9 +240,9 @@ class Prefs(ctx: Context) {
         get() = p.getBoolean("feat_undo", true)
         set(v) = p.edit().putBoolean("feat_undo", v).apply()
 
-    /** ผู้ช่วยมองเห็นเฉพาะ AnkiDroid (แอปธนาคารบางแอปจะไม่ฟ้อง ไม่ต้องปิดผู้ช่วย) — เปิดไว้ */
+    /** ผู้ช่วยมองเห็นเฉพาะ AnkiDroid (ทดลอง: แอปธนาคารบางแอปอาจไม่ฟ้อง) — ปิดไว้ (ลองแล้วไม่ช่วย) */
     var featAnkiOnly: Boolean
-        get() = p.getBoolean("feat_anki_only", true)
+        get() = p.getBoolean("feat_anki_only", false)
         set(v) = p.edit().putBoolean("feat_anki_only", v).apply()
 
     /** 🏦 ปิดผู้ช่วยเองเมื่อเปิดแอปธนาคารที่เลือกไว้ (ปิดไว้ · ตั้งแยกแต่ละเครื่อง) */

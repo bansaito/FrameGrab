@@ -17,14 +17,15 @@ class BankTile : TileService() {
         update()
     }
 
+    /** บอกสถานะผู้ช่วยตรง ๆ: สว่าง = ผู้ช่วยเปิดอยู่ · มืด = ปิดอยู่ (เข้าแอปธนาคารได้) */
     private fun update() {
         val t = qsTile ?: return
-        val bank = !Bank.isOn(this)
-        t.state = if (bank) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
-        t.label = "โหมดธนาคาร"
+        val on = Bank.isOn(this)
+        t.state = if (on) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
+        t.label = if (on) "ผู้ช่วย: เปิด" else "ผู้ช่วย: ปิด 🏦"
         t.icon = Icon.createWithResource(this, R.drawable.ic_tile_bank)
         if (Build.VERSION.SDK_INT >= 29) {
-            t.subtitle = if (bank) "เปิดอยู่ · แตะเพื่อปิด" else "ปิดอยู่"
+            t.subtitle = if (on) "แตะ = ปิด (เข้าแอปธนาคาร)" else "แตะ = เปิดกลับ"
         }
         t.updateTile()
     }

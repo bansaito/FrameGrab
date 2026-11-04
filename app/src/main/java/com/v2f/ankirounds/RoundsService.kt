@@ -72,6 +72,8 @@ class RoundsService : AccessibilityService() {
 
     override fun onDestroy() {
         main.removeCallbacksAndMessages(null)
+        if (instance === this) instance = null
+        refreshTiles()                       // ปุ่มในแผงควบคุมเปลี่ยนเป็น "ผู้ช่วย: ปิด" ทันที
         Parking.hide(this)
         hideTrash()
         hideMenu()
