@@ -3,6 +3,7 @@ name: Build AnkiRounds APK
 on:
   push:
     branches: [anki-rounds]
+    paths-ignore: ['cardkit-addon/**', 'HANDOFF.md']
   workflow_dispatch:
 
 permissions:

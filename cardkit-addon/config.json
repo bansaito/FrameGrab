@@ -1,0 +1,28 @@
+{
+    "extensions": [
+        ".csv",
+        ".tsv",
+        ".txt"
+    ],
+    "show_tooltip": true,
+    "preview_enabled": true,
+    "mqa_inline": true,
+    "mqa_inline_stealth": true,
+    "mqa_inline_hidebtn": true,
+    "mqa_inline_accordion": true,
+    "mqa_click_choice": true,
+    "mqa_choice_noframe": true,
+    "mqa_compact_answer": false,
+    "mqa_split_tool": false,
+    "mqa_question_regex": "",
+    "mqa_answer_regex": "",
+    "mqa_heading_regex": "",
+    "rounds_groups": [],
+    "rounds_show_remaining": false,
+    "rounds_use_today_only": false,
+    "menu_hover_open": true,
+    "rounds_current_first": true,
+    "rounds_browse_new": false,
+    "rounds_bubble": true,
+    "rounds_bubble_edge": true
+}
