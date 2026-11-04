@@ -204,6 +204,12 @@ class MainActivity : Activity() {
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         root.addView(bankRow)
         button("📋 คัดลอกคำสั่งให้เปิดกลับได้ในแตะเดียว (ทำครั้งเดียวผ่านคอม)") { showAdbHelp() }
+        featSwitch("ผู้ช่วยมองเห็นเฉพาะ AnkiDroid (ลองเข้าแอปธนาคารโดยไม่ต้องปิดผู้ช่วย)", prefs.featAnkiOnly) { on ->
+            prefs.featAnkiOnly = on
+            RoundsService.instance?.applyScope()
+            if (on && prefs.featAutoBank) Toast.makeText(this,
+                "โหมดนี้ใช้คู่กับ \"ปิดผู้ช่วยเองเมื่อเปิดแอปธนาคาร\" ไม่ได้ (ผู้ช่วยมองไม่เห็นแอปธนาคาร)", Toast.LENGTH_LONG).show()
+        }
         featSwitch("ปิดผู้ช่วยเองเมื่อเปิดแอปธนาคาร (ตั้งแยกแต่ละเครื่อง)", prefs.featAutoBank) { on ->
             prefs.featAutoBank = on
             if (on && prefs.bankApps.isEmpty()) pickBankApps()

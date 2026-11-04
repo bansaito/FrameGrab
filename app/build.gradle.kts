@@ -11,8 +11,8 @@ android {
         applicationId = "com.v2f.ankirounds"
         minSdk = 29
         targetSdk = 34
-        versionCode = 37
-        versionName = "1.36"
+        versionCode = 38
+        versionName = "1.37"
     }
 
     // ใช้กุญแจเซ็นชุดเดิมทุกครั้ง เพื่อให้ติดตั้งเวอร์ชันใหม่ทับของเดิมได้

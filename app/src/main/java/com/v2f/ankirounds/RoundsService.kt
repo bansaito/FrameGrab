@@ -49,11 +49,25 @@ class RoundsService : AccessibilityService() {
         super.onServiceConnected()
         instance = this
         prefs = Prefs(this)
+        applyScope()
         Parking.hideBankOff(this)
         refreshBubble()
         refreshTiles()
         main.post(countLoop)
         if (prefs.parked) Parking.show(this)
+    }
+
+    /**
+     * ขอบเขตที่ผู้ช่วยมองเห็น: ค่าเริ่มต้นใน XML = เฉพาะ AnkiDroid (แอปธนาคารบางแอปจะไม่ฟ้อง)
+     * ปิดสวิตช์ = มองเห็นทุกแอป (จำเป็นสำหรับโหมดธนาคารอัตโนมัติ)
+     */
+    fun applyScope() {
+        try {
+            val info = serviceInfo ?: return
+            info.packageNames = if (prefs.featAnkiOnly) arrayOf(Prefs.ANKI_PKG) else null
+            serviceInfo = info
+        } catch (_: Exception) {
+        }
     }
 
     override fun onDestroy() {
@@ -79,10 +93,14 @@ class RoundsService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null || !::prefs.isInitialized) return
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED) {
+            main.removeCallbacks(recheckFront); main.postDelayed(recheckFront, 300)
+            return
+        }
         val pkg = event.packageName?.toString() ?: return
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             if (pkg == packageName || pkg == "com.android.systemui" || pkg == currentIme()) return
-            if (prefs.featAutoBank && !busy && pkg in prefs.bankApps) {
+            if (prefs.featAutoBank && !prefs.featAnkiOnly && !busy && pkg in prefs.bankApps) {
                 Parking.showBankOff(this, appLabel(pkg))
                 Bank.enterBankMode(this)
                 return
@@ -130,8 +148,10 @@ class RoundsService : AccessibilityService() {
 
     /** แอปที่อยู่บนสุดจริง (ดูเฉพาะหน้าต่างแอป ไม่นับแผงควบคุม/ป๊อปอัประบบ) */
     private fun topAppPkg(): String? = try {
-        windows.filter { it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION }
-            .maxByOrNull { it.layer }?.root?.packageName?.toString()
+        val top = windows.filter { it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION }
+            .maxByOrNull { it.layer }
+        // โหมดเห็นเฉพาะ AnkiDroid: หน้าต่างแอปอื่นอ่านไม่ได้ (root = null) → ถือว่าไม่ใช่ AnkiDroid
+        if (top == null) null else top.root?.packageName?.toString() ?: "?"
     } catch (_: Exception) { null }
 
     private val recheckFront = Runnable {
@@ -227,12 +247,13 @@ class RoundsService : AccessibilityService() {
 
     private val countLoop = object : Runnable {
         override fun run() {
-            if (ankiInFront && bubble != null) requestCount(0)
+            if (ankiInFront && bubble != null && System.currentTimeMillis() - lastCountAt > 4500) requestCount(0)
             if (!busy) {                           // ซ่อมตัวเอง: ถ้าพลาดไป ปุ่มกลับมาภายใน 5 วิ
                 recheckFront.run()
                 if (ankiInFront && bubble == null && menu == null) scheduleCheck(null)
             }
-            main.postDelayed(this, 5000)
+            // โหมดเห็นเฉพาะ AnkiDroid: ไม่รู้ตอนสลับไปแอปอื่นจากเหตุการณ์ → เช็กถี่ขึ้นตอนปุ่มแสดงอยู่
+            main.postDelayed(this, if (prefs.featAnkiOnly && bubble != null) 1500 else 5000)
         }
     }
 
