@@ -1033,7 +1033,12 @@ def _set_due_html(g):
 
     folded = set(_cfg().get(FOLD_KEY, []))
 
+    idx = [0]
+
     def deck_row(d, name, learn, due, indent, parent_key):
+        idx[0] += 1
+        k = idx[0]
+        badge = f"<span class='kn'>{k}</span>" if k <= 9 else ""
         node = mw.col.decks.find_deck_in_tree(tree, d["did"])
         n_new = node.new_count if node else 0
         n_learn = node.learn_count if node else 0
@@ -1044,8 +1049,8 @@ def _set_due_html(g):
         hide = " style='display:none'" if parent_key and parent_key in folded else ""
         pk = f" data-p='{_h.escape(parent_key, quote=True)}'" if parent_key else ""
         return (f"<tr class='{'here' if here else ''}'{pk}{hide}><td class='ckd' style='padding-left:{10 + indent}px'>"
-                f"<a href='#' onclick=\"pycmd('cardkit_go:{d['did']}');return false;\" title='ไปท่อง deck นี้'>"
-                f"{_h.escape(name)}</a></td>"
+                f"<a href='#' data-go='{d['did']}' onclick=\"pycmd('cardkit_go:{d['did']}');return false;\" "
+                f"title='ไปท่อง deck นี้ (กด {k})'>{_h.escape(name)}</a>{badge}</td>"
                 + num(n_new, cn) + num(n_learn, cl) + num(n_due, cr) +
                 f"<td class='cke'><span class='eye'>{_EYE_SVG}<span class='tip'>เหลือ "
                 f"<b style='color:{cr if left else '#888'}'>{left}</b></span></span></td></tr>")
@@ -1093,10 +1098,12 @@ def _set_due_html(g):
            "#ck-due .eye:hover .tip{display:inline}"
            "#ck-due tr.par td{color:#ccc}"
            "#ck-due .tg{display:inline-block;width:18px;cursor:pointer;color:#aaa;user-select:none}"
-           "#ck-due .tg:hover{color:#fff}")
+           "#ck-due .tg:hover{color:#fff}"
+           "#ck-due .kn{display:inline-block;margin-left:8px;padding:0 5px;border-radius:4px;font-size:11px;"
+           "line-height:16px;color:#999;border:1px solid #555;vertical-align:1px}")
     head = ("<tr><th>ชุด " + _h.escape(g["name"]) + "</th><th>New</th><th>Learn</th><th>Due</th>"
             f"<th title='ชี้ลูกตา = due ที่เหลือทั้งหมด (วันนี้ + ค้าง)'>{_EYE_SVG}</th></tr>")
-    return (f"<style>{css}</style><div class='cap'>คลิกชื่อ deck เพื่อท่องต่อ · "
+    return (f"<style>{css}</style><div class='cap'>คลิกชื่อ deck หรือกดเลข 1–9 เพื่อท่องต่อ · "
             f"ชี้ลูกตา = due ที่เหลือทั้งหมด (วันนี้ + ค้าง)</div>"
             "<table><colgroup><col><col style='width:72px'><col style='width:72px'><col style='width:72px'>"
             f"<col style='width:96px'></colgroup>{head}{''.join(trs)}</table>")
@@ -1111,6 +1118,20 @@ window.ckFold = function (el) {   // – / + พับ deck ย่อย (จำ
   });
   pycmd('cardkit_fold:' + (c ? 1 : 0) + ':' + k);
 };
+if (!window.ckKeys) {               // หน้าท่องเสร็จ: กด 1–9 = ไป deck ย่อยแถวนั้น
+  window.ckKeys = true;
+  document.addEventListener('keydown', function (e) {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    var t = e.target && e.target.tagName;
+    if (t === 'INPUT' || t === 'TEXTAREA') return;
+    if (!/^[1-9]$/.test(e.key)) return;
+    var links = document.querySelectorAll('#ck-due a[data-go]');
+    var a = links[parseInt(e.key, 10) - 1];
+    if (!a) return;
+    e.preventDefault();
+    pycmd('cardkit_go:' + a.getAttribute('data-go'));
+  });
+}
 (function (html) {
   function put() {
     if (document.getElementById('ck-due')) return true;
