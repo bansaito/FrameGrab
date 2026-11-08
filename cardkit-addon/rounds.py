@@ -1133,22 +1133,29 @@ if (!window.ckKeys) {               // หน้าท่องเสร็จ: 
   });
 }
 (function (html) {
+  // ใช้ตารางล่าสุดเสมอ: หน้าเดิมอาจค้างตารางเก่า (หน้า Congratulations เป็นหน้าเว็บที่ไม่โหลดใหม่ทุกครั้ง)
+  window.ckDue = { html: html, ver: String(Date.now()) + Math.random() };
   function put() {
-    if (document.getElementById('ck-due')) return true;
+    var cur = window.ckDue;
+    var old = document.getElementById('ck-due');
+    if (old && old.getAttribute('data-v') === cur.ver) return true;
     var host = document.querySelector('main') || document.body;
     if (!host || !(host.innerText || '').trim()) return false;
+    if (old) old.remove();
     var d = document.createElement('div');
     d.id = 'ck-due';
-    d.innerHTML = html;
+    d.setAttribute('data-v', cur.ver);
+    d.innerHTML = cur.html;
     host.appendChild(d);
     return true;
   }
+  window.ckDuePut = put;
   if (!put()) {
     var t = setInterval(function () { if (put()) clearInterval(t); }, 150);
     setTimeout(function () { clearInterval(t); }, 6000);
   }
   if (!window.ckDueObs) {
-    window.ckDueObs = new MutationObserver(function () { put(); });
+    window.ckDueObs = new MutationObserver(function () { window.ckDuePut(); });
     window.ckDueObs.observe(document.body, { childList: true, subtree: true });
   }
 })(%s);
