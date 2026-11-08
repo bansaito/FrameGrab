@@ -12,6 +12,8 @@
   • ปุ่มในหน้าท่องครบบอกเมื่อทั้งชุดไม่มีการ์ดเหลือ / แสดงจำนวนที่เหลือ (เปิดปิดได้)
 """
 
+import time
+
 from aqt import gui_hooks, mw
 from aqt.qt import (
     QAbstractItemView, QDialog, QDialogButtonBox, QFormLayout, QGroupBox, QHBoxLayout,
@@ -1134,9 +1136,10 @@ if (!window.ckKeys) {               // หน้าท่องเสร็จ: 
     pycmd('cardkit_go:' + a.getAttribute('data-go'));
   });
 }
-(function (html) {
+(function (html, ver) {
   // ใช้ตารางล่าสุดเสมอ: หน้าเดิมอาจค้างตารางเก่า (หน้า Congratulations เป็นหน้าเว็บที่ไม่โหลดใหม่ทุกครั้ง)
-  window.ckDue = { html: html, ver: String(Date.now()) + Math.random() };
+  if (window.ckDue && window.ckDue.ver === ver && document.getElementById('ck-due')) return;
+  window.ckDue = { html: html, ver: ver };
   function put() {
     var cur = window.ckDue;
     var old = document.getElementById('ck-due');
@@ -1160,7 +1163,7 @@ if (!window.ckKeys) {               // หน้าท่องเสร็จ: 
     window.ckDueObs = new MutationObserver(function () { window.ckDuePut(); });
     window.ckDueObs.observe(document.body, { childList: true, subtree: true });
   }
-})(%s);
+})(%s, %s);
 """
 
 
@@ -1173,7 +1176,18 @@ def on_overview_refresh(overview):
         g = group_for_current()
         if g is None:
             return
-        overview.web.eval(_INJECT_JS % json.dumps(_set_due_html(g)))
+        js = _INJECT_JS % (json.dumps(_set_due_html(g)), json.dumps(str(time.time())))
+
+        # ส่งตรงเข้าหน้าเว็บ ไม่ผ่านคิวของ Anki: หลังกด ➕ หน้า congrats โหลด URL เดิม (มี #night)
+        # ซึ่งไม่ได้โหลดใหม่จริง → คิวรอ "domDone" ไม่มาเลย ตารางจึงค้างเลขเก่า
+        # ส่งซ้ำ 3 ครั้ง เผื่อหน้าโหลดใหม่จริงหลังจากนี้ (ver เดียวกัน = ไม่วาดซ้ำ)
+        def run():
+            try:
+                overview.web.page().runJavaScript(js)
+            except Exception:
+                pass
+        for ms in (0, 400, 1200, 3000):
+            QTimer.singleShot(ms, run)
     except Exception as e:
         print("[rounds due list]", e)
 
