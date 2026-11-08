@@ -313,7 +313,8 @@ class Menu(QFrame):
         eye.setGraphicsEffect(_fx)
         eye.pressed.connect(lambda: _fx.setOpacity(1.0))
         eye.released.connect(lambda: _fx.setOpacity(0.4))
-        eye.setToolTip("กดค้าง = ดู new · due ทั้งหมด (วันนี้ + ค้าง)")
+        eye.setToolTip("กดค้าง = ดู new · due ทั้งหมด (วันนี้ + ค้าง) · คีย์ลัด: กดค้าง E")
+        self._eye, self._eye_fx = eye, _fx
         eye.pressed.connect(lambda: self._peek(eye, True))
         eye.released.connect(lambda: self._peek(eye, False))
         head.addWidget(eye)
@@ -323,18 +324,22 @@ class Menu(QFrame):
         # ปุ่มหลัก
         row = QHBoxLayout()
         row.setSpacing(6)
-        plus = _chip("➕ อีก 1 รอบ", "#2563EB", "#3B82F6")
+        plus = _chip("➕ อีก 1 รอบ", "#2563EB", "#3B82F6", "อีก 1 รอบ (Enter)")
+        self._plus, self._undo_btn = plus, None
         plus.clicked.connect(lambda: self._do(lambda: R.bump(g)))
         row.addWidget(plus)
         if g["name"] in _before_reset:
-            b = _chip("↶ ยกเลิก", tip="ยกเลิกการเริ่มใหม่ (กลับเป็นค่าก่อนกด ↺)")
+            b = _chip("↶ ยกเลิก", tip="ยกเลิกการเริ่มใหม่ (กลับเป็นค่าก่อนกด ↺) · Z")
             b.clicked.connect(lambda: self._do(self._restore))
             row.addWidget(b)
+            self._undo_btn = b
         elif R.round_of(g) > 1:
-            b = _chip("↶ ย้อน", tip="ย้อน 1 รอบ")
+            b = _chip("↶ ย้อน", tip="ย้อน 1 รอบ (Z)")
             b.clicked.connect(lambda: self._do(lambda: undo(g)))
             row.addWidget(b)
-        rst = _chip("↺ เริ่มใหม่", tip="กลับเป็นค่าเริ่มต้น " + "/".join(str(d["base"]) for d in g["decks"]))
+            self._undo_btn = b
+        rst = _chip("↺ เริ่มใหม่", tip="กลับเป็นค่าเริ่มต้น " + "/".join(str(d["base"]) for d in g["decks"]) + " (R)")
+        self._rst = rst
         rst.clicked.connect(lambda: self._do(self._reset))
         row.addWidget(rst)
         row.addStretch(1)
@@ -351,12 +356,26 @@ class Menu(QFrame):
             strip = QHBoxLayout(strip_w)
             strip.setContentsMargins(0, 0, 0, 0)
             strip.setSpacing(6)
-            for o in others:
-                c = QPushButton(o["name"])
+            self._others = [o["name"] for o in others]
+            for k, o in enumerate(others, 1):
+                c = QPushButton()
                 c.setCursor(Qt.CursorShape.PointingHandCursor)
-                c.setStyleSheet("QPushButton{color:#D1D5DB;background:#2A2F38;border:none;"
-                                "border-radius:8px;padding:3px 10px;font-size:12px;}"
+                c.setToolTip(f"สลับไปชุด {o['name']} ({k})" if k <= 9 else f"สลับไปชุด {o['name']}")
+                c.setStyleSheet("QPushButton{background:#2A2F38;border:none;border-radius:8px;}"
                                 "QPushButton:hover{background:#374151;}")
+                hl = QHBoxLayout(c)
+                hl.setContentsMargins(10, 3, 10, 3)
+                hl.setSpacing(6)
+                nm = QLabel(o["name"])
+                nm.setStyleSheet("color:#D1D5DB;font-size:12px;background:transparent;")
+                hl.addWidget(nm)
+                if k <= 9:
+                    kn = QLabel(str(k))                      # เลขคีย์ลัดจาง ๆ
+                    kn.setStyleSheet("color:#6B7280;font-size:10px;background:transparent;")
+                    hl.addWidget(kn)
+                for w in c.findChildren(QLabel):
+                    w.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+                c.setMinimumSize(hl.sizeHint())
                 c.clicked.connect(lambda _=False, n=o["name"]: self._switch(n))
                 strip.addWidget(c)
             strip.addStretch(1)
@@ -373,19 +392,57 @@ class Menu(QFrame):
         bottom = QHBoxLayout()
         gear = _chip("⚙️", "#2A2F38", "#374151", "ตั้งค่าชุดท่อง")
         gear.clicked.connect(lambda: (self.close(), R.open_settings()))
-        close = _chip("✕", "#2A2F38", "#374151")
+        close = _chip("✕", "#2A2F38", "#374151", "ปิด (Esc)")
         close.clicked.connect(self.close)
         bottom.addStretch(1)
         if R.can_undo_all():
-            allb = _chip("↶ ทุกชุด", "#2A2F38", "#374151", "ยกเลิกการเริ่มใหม่ทุกชุด (กลับเป็นค่าก่อนกด)")
+            allb = _chip("↶ ทุกชุด", "#2A2F38", "#374151", "ยกเลิกการเริ่มใหม่ทุกชุด (กลับเป็นค่าก่อนกด) · Shift+R")
             allb.clicked.connect(lambda: self._do_all(R.undo_reset_all))
         else:
-            allb = _chip("↺", "#2A2F38", "#374151", "เริ่มใหม่ทุกชุด: ทุกชุดกลับเป็นค่าเริ่มต้น เช่น 2/1/1")
+            allb = _chip("↺", "#2A2F38", "#374151", "เริ่มใหม่ทุกชุด: ทุกชุดกลับเป็นค่าเริ่มต้น เช่น 2/1/1 (Shift+R)")
             allb.clicked.connect(lambda: self._do_all(R.reset_all))
         bottom.addWidget(allb)
         bottom.addWidget(gear)
         bottom.addWidget(close)
         lay.addLayout(bottom)
+        self._allb = allb
+        # คีย์ลัดทำงานที่ตัวเมนู: ปุ่มไม่รับโฟกัส (กัน Enter ไปกดปุ่มที่โฟกัสอยู่)
+        for w in self.findChildren(QPushButton):
+            w.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+
+    # ---- คีย์ลัดตอนเมนูเปิด
+    def keyPressEvent(self, ev):
+        k, mod = ev.key(), ev.modifiers()
+        K = Qt.Key
+        shift = bool(mod & Qt.KeyboardModifier.ShiftModifier)
+        if k in (K.Key_Return, K.Key_Enter, K.Key_Plus, K.Key_Equal):
+            self._plus.click()
+        elif k == K.Key_Z and self._undo_btn is not None:
+            self._undo_btn.click()
+        elif k == K.Key_R and shift:
+            self._allb.click()
+        elif k == K.Key_R:
+            self._rst.click()
+        elif K.Key_1 <= k <= K.Key_9 and getattr(self, "_others", None):
+            i = k - K.Key_1
+            if i < len(self._others):
+                self._switch(self._others[i])
+        elif k == K.Key_E:
+            if not ev.isAutoRepeat():
+                self._eye_fx.setOpacity(1.0)
+                self._peek(self._eye, True)
+        elif k == K.Key_Escape:
+            self.close()
+        else:
+            super().keyPressEvent(ev)
+
+    def keyReleaseEvent(self, ev):
+        if ev.key() == Qt.Key.Key_E and not ev.isAutoRepeat():
+            self._eye_fx.setOpacity(0.4)
+            self._peek(self._eye, False)
+        else:
+            super().keyReleaseEvent(ev)
 
     # ---- actions (ทำทันที ไม่มีการกดแทนเหมือนในมือถือ)
     def _do(self, fn):
@@ -445,6 +502,8 @@ class Menu(QFrame):
         y = min(bp.y(), scr.bottom() - self.height())
         self.move(max(scr.left(), x), max(scr.top(), y))
         self.show()
+        self.activateWindow()
+        self.setFocus()
 
     def closeEvent(self, ev):
         self._peek(None, False)
@@ -519,6 +578,30 @@ def refresh_soon(*_args):
     _timer.start(300)
 
 
+# ---------------------------------------------------------------- คีย์ลัด G = เปิด/ปิดเมนูปุ่มลอย
+
+_g_shortcut = None
+
+
+def _on_g():
+    if not _should_show() or _bubble is None:
+        return
+    _bubble._fade.stop()
+    _bubble._set_opacity(1.0)
+    _bubble.tuck(False, animate=False)
+    _bubble.toggle_menu()
+
+
+def _setup_g_shortcut():
+    """G ใช้ได้เฉพาะหน้ารายการ deck / หน้าก่อนท่อง (หน้าอื่นปล่อยให้ Anki ใช้ตามปกติ)"""
+    global _g_shortcut
+    from aqt.qt import QShortcut, QKeySequence
+    if _g_shortcut is None:
+        _g_shortcut = QShortcut(QKeySequence("G"), mw)
+        _g_shortcut.activated.connect(_on_g)
+    _g_shortcut.setEnabled(_should_show())
+
+
 def set_edge(on):
     _set_cfg(EDGE_KEY, bool(on))
     if _bubble is not None:
@@ -528,10 +611,18 @@ def set_edge(on):
 def set_enabled(on):
     _set_cfg(ON_KEY, bool(on))
     refresh()
+    try:
+        _setup_g_shortcut()
+    except Exception:
+        pass
 
 
 def _on_state(new_state, _old_state):
     refresh_soon()
+    try:
+        _setup_g_shortcut()
+    except Exception as e:
+        print("[rounds bubble] G", e)
 
 
 gui_hooks.state_did_change.append(_on_state)
