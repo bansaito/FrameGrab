@@ -8,6 +8,8 @@
 import time
 
 from aqt import gui_hooks, mw
+
+from . import keymap
 from aqt.addcards import AddCards
 from aqt.qt import (
     QAction, QApplication, QCheckBox, QCursor, QDialog, QDialogButtonBox, QEvent, QHBoxLayout,
@@ -347,6 +349,7 @@ def on_shortcuts(state, shortcuts):
         pos = next((i for i, s in enumerate(shortcuts) if s[0] == key), None)
         orig = shortcuts[pos][1] if pos is not None else None
         entry = (key, _wrap_key(idx, orig))
+        keymap.register(["review"], key, entry[1])      # แป้นไทย: ปุ่มตัวเลขตำแหน่งเดิมก็ใช้ได้
         if pos is None:
             shortcuts.append(entry)
         else:

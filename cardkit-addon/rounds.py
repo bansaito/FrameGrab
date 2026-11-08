@@ -1124,9 +1124,11 @@ if (!window.ckKeys) {               // หน้าท่องเสร็จ: 
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     var t = e.target && e.target.tagName;
     if (t === 'INPUT' || t === 'TEXTAREA') return;
-    if (!/^[1-9]$/.test(e.key)) return;
+    // e.code = ตำแหน่งปุ่ม (Digit1…) ใช้ได้ทั้งแป้นไทย/อังกฤษ
+    var m = /^Digit([1-9])$/.exec(e.code || '') || /^([1-9])$/.exec(e.key || '');
+    if (!m) return;
     var links = document.querySelectorAll('#ck-due a[data-go]');
-    var a = links[parseInt(e.key, 10) - 1];
+    var a = links[parseInt(m[1], 10) - 1];
     if (!a) return;
     e.preventDefault();
     pycmd('cardkit_go:' + a.getAttribute('data-go'));

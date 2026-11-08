@@ -414,27 +414,31 @@ class Menu(QFrame):
 
     # ---- คีย์ลัดตอนเมนูเปิด
     def keyPressEvent(self, ev):
+        from . import keymap
         k, mod = ev.key(), ev.modifiers()
         K = Qt.Key
         shift = bool(mod & Qt.KeyboardModifier.ShiftModifier)
-        if k in (K.Key_Return, K.Key_Enter, K.Key_Plus, K.Key_Equal):
+        L = keymap.latin(ev)                     # ตำแหน่งปุ่ม → ใช้ได้ทั้งแป้นไทย/อังกฤษ
+        if k in (K.Key_Return, K.Key_Enter) or ev.text() in ("+", "="):
             self._plus.click()
-        elif k == K.Key_Z and self._undo_btn is not None:
+        elif L == "Z" and self._undo_btn is not None:
             self._undo_btn.click()
-        elif k == K.Key_R and shift:
+        elif L == "R" and shift:
             self._allb.click()
-        elif k == K.Key_R:
+        elif L == "R":
             self._rst.click()
-        elif K.Key_1 <= k <= K.Key_9 and getattr(self, "_others", None):
-            i = k - K.Key_1
+        elif L and L.isdigit() and L != "0" and getattr(self, "_others", None):
+            i = int(L) - 1
             if i < len(self._others):
                 if mw.state == "deckBrowser":          # หน้าแรก: กดเลข = เข้าไปท่องชุดนั้นเลย
                     self._study(self._others[i])
                 else:                                   # หน้าอื่น: สลับดูชุด
                     self._switch(self._others[i])
-        elif k == K.Key_S and mw.state == "deckBrowser":
+        elif L == "S" and mw.state == "deckBrowser":
             self._study(self.g["name"])                 # S = ท่องชุดหลัก (ชุดที่แสดงอยู่)
-        elif k == K.Key_E:
+        elif L == "G":
+            self.close()                                # G อีกครั้ง = ปิด
+        elif L == "E":
             if not ev.isAutoRepeat():
                 self._eye_fx.setOpacity(1.0)
                 self._peek(self._eye, True)
@@ -444,7 +448,8 @@ class Menu(QFrame):
             super().keyPressEvent(ev)
 
     def keyReleaseEvent(self, ev):
-        if ev.key() == Qt.Key.Key_E and not ev.isAutoRepeat():
+        from . import keymap
+        if keymap.latin(ev) == "E" and not ev.isAutoRepeat():
             self._eye_fx.setOpacity(0.4)
             self._peek(self._eye, False)
         else:
@@ -610,8 +615,10 @@ def _setup_g_shortcut():
     global _g_shortcut
     from aqt.qt import QShortcut, QKeySequence
     if _g_shortcut is None:
+        from . import keymap
         _g_shortcut = QShortcut(QKeySequence("G"), mw)
         _g_shortcut.activated.connect(_on_g)
+        keymap.register(["deckBrowser", "overview"], "G", _on_g)   # แป้นไทย: ปุ่ม เ ก็ได้
     _g_shortcut.setEnabled(_should_show())
 
 

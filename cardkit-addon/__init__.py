@@ -9,6 +9,8 @@ Drop CSV Anywhere + Live Preview
 
 from aqt import mw
 
+from . import keymap  # noqa: F401  (คีย์ลัดใช้ได้ทั้งแป้นไทย/อังกฤษ)
+
 from . import drop, mqa, preview  # noqa: F401
 from . import rounds  # noqa: F401  (โหลดหลัง mqa เพื่อวางเมนูถัดจาก CardKit)
 from . import bubble  # noqa: F401  (ปุ่มลอย Rounds แบบมือถือ)
