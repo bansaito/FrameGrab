@@ -324,7 +324,7 @@ class Menu(QFrame):
         # ปุ่มหลัก
         row = QHBoxLayout()
         row.setSpacing(6)
-        plus = _chip("➕ อีก 1 รอบ", "#2563EB", "#3B82F6", "อีก 1 รอบ (Enter)")
+        plus = _chip("➕ อีก 1 รอบ", "#2563EB", "#3B82F6", "อีก 1 รอบ (Enter) · หน้าแรกกด S = ท่องชุดนี้")
         self._plus, self._undo_btn = plus, None
         plus.clicked.connect(lambda: self._do(lambda: R.bump(g)))
         row.addWidget(plus)
@@ -360,7 +360,8 @@ class Menu(QFrame):
             for k, o in enumerate(others, 1):
                 c = QPushButton()
                 c.setCursor(Qt.CursorShape.PointingHandCursor)
-                c.setToolTip(f"สลับไปชุด {o['name']} ({k})" if k <= 9 else f"สลับไปชุด {o['name']}")
+                c.setToolTip((f"สลับไปชุด {o['name']} · กด {k} ที่หน้าแรก = เข้าไปท่องชุดนี้เลย")
+                             if k <= 9 else f"สลับไปชุด {o['name']}")
                 c.setStyleSheet("QPushButton{background:#2A2F38;border:none;border-radius:8px;}"
                                 "QPushButton:hover{background:#374151;}")
                 hl = QHBoxLayout(c)
@@ -427,7 +428,12 @@ class Menu(QFrame):
         elif K.Key_1 <= k <= K.Key_9 and getattr(self, "_others", None):
             i = k - K.Key_1
             if i < len(self._others):
-                self._switch(self._others[i])
+                if mw.state == "deckBrowser":          # หน้าแรก: กดเลข = เข้าไปท่องชุดนั้นเลย
+                    self._study(self._others[i])
+                else:                                   # หน้าอื่น: สลับดูชุด
+                    self._switch(self._others[i])
+        elif k == K.Key_S and mw.state == "deckBrowser":
+            self._study(self.g["name"])                 # S = ท่องชุดหลัก (ชุดที่แสดงอยู่)
         elif k == K.Key_E:
             if not ev.isAutoRepeat():
                 self._eye_fx.setOpacity(1.0)
@@ -472,6 +478,13 @@ class Menu(QFrame):
         R._apply(list(prev.items()))
         R._after_change()
         R.tooltip(f"ยกเลิกการเริ่มใหม่แล้ว · {R.summary(self.g)}")
+
+    def _study(self, name):
+        g = next((x for x in R.groups() if x["name"] == name), None)
+        self.close()
+        if g is not None:
+            _set_cfg(LAST_KEY, name)
+            QTimer.singleShot(0, lambda: R.study_set(g))
 
     def _switch(self, name):
         b = self.bubble

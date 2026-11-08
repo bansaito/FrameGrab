@@ -1176,6 +1176,22 @@ def on_overview_refresh(overview):
         print("[rounds due list]", e)
 
 
+def study_set(g):
+    """เข้าท่อง deck แรกของชุดที่ยังมีการ์ดในรอบนี้ (ข้าม deck ที่เป็น 0)"""
+    tree = mw.col.sched.deck_due_tree()
+    for d in g["decks"]:
+        if not _deck_name(d["did"]):
+            continue
+        node = mw.col.decks.find_deck_in_tree(tree, d["did"])
+        if node is not None and (node.review_count + node.learn_count + node.new_count) > 0:
+            mw.col.decks.select(d["did"])
+            mw.col.startTimebox()
+            mw.moveToState("review")
+            return True
+    tooltip(f"ชุด {g['name']} ไม่มีการ์ดในรอบนี้ · กด ➕ อีก 1 รอบ ก่อน")
+    return False
+
+
 def on_js_message(handled, message, context):
     if isinstance(message, str) and message.startswith("cardkit_fold:"):
         _, on, key = message.split(":", 2)
