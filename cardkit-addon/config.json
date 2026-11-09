@@ -28,5 +28,6 @@
     "keep_scroll_after_edit": true,
     "edit_open_at_reading": true,
     "mouse_back_button": true,
-    "mouse_middle_quote": true
+    "mouse_middle_quote": true,
+    "mouse_quote_extra": []
 }

@@ -9,11 +9,30 @@
 
 from aqt import gui_hooks, mw
 from aqt.qt import (
-    QApplication, QDialog, QEvent, QKeyEvent, QLineEdit, QObject, QPlainTextEdit,
-    QTextEdit, Qt, QTimer,
+    QApplication, QDialog, QEvent, QHBoxLayout, QKeyEvent, QKeySequence, QLabel, QLineEdit,
+    QObject, QPlainTextEdit, QPushButton, QTextEdit, Qt, QTimer, QVBoxLayout,
 )
 
-from .mqa import on
+from .mqa import ADDON, cfg, on
+
+_EXTRA_KEY = "mouse_quote_extra"     # ปุ่มที่สอนไว้ให้พิมพ์ " ด้วย เช่น ["m:16", "k:16777264:112"]
+
+
+def _extras():
+    v = cfg().get(_EXTRA_KEY) or []
+    return set(v) if isinstance(v, list) else set()
+
+
+def _sig_mouse(ev):
+    return "m:%d" % ev.button().value
+
+
+def _sig_key(ev):
+    try:
+        nv = int(ev.nativeVirtualKey())
+    except Exception:
+        nv = 0
+    return "k:%d:%d" % (int(ev.key()), nv)
 
 _BACK = Qt.MouseButton.BackButton      # = XButton1
 _MID = Qt.MouseButton.MiddleButton
@@ -81,11 +100,29 @@ def _type_quote(obj):
 class _Filter(QObject):
     def eventFilter(self, obj, ev):
         t = ev.type()
+        if t in (QEvent.Type.KeyPress, QEvent.Type.ShortcutOverride) and _teach is None:
+            try:
+                ex = _extras()
+                if ex and on("mouse_mid_quote") and _sig_key(ev) in ex:
+                    if t == QEvent.Type.KeyPress and not ev.isAutoRepeat():
+                        _type_quote(obj)
+                    return True
+            except Exception:
+                pass
+            return False
         if t not in (QEvent.Type.MouseButtonPress, QEvent.Type.MouseButtonRelease,
                      QEvent.Type.MouseButtonDblClick):
             return False
+        if _teach is not None:
+            return False
         try:
             b = ev.button()
+            ex = _extras()
+            if ex and _sig_mouse(ev) in ex and b not in (Qt.MouseButton.LeftButton, Qt.MouseButton.RightButton) \
+                    and on("mouse_mid_quote"):
+                if t == QEvent.Type.MouseButtonPress:
+                    _type_quote(obj)
+                return True
             if b == _BACK and on("mouse_back"):
                 if t == QEvent.Type.MouseButtonPress:
                     QTimer.singleShot(0, lambda o=obj: _go_back(o))
@@ -103,6 +140,104 @@ class _Filter(QObject):
         except Exception:
             pass
         return False
+
+
+# ---------------------------------------------------------------- สอนปุ่มเพิ่ม (เช่นปุ่ม DPI)
+
+_teach = None
+
+
+class _TeachDialog(QDialog):
+    def __init__(self):
+        super().__init__(mw)
+        self.setWindowTitle("สอนปุ่มพิมพ์ \"")
+        self.setMinimumWidth(380)
+        lay = QVBoxLayout(self)
+        self.lab = QLabel("กดปุ่มที่อยากให้พิมพ์ \" ได้เลย\n(เช่นปุ่ม DPI บนเมาส์ · ห้ามใช้คลิกซ้าย/ขวา)")
+        self.lab.setWordWrap(True)
+        lay.addWidget(self.lab)
+        self.got = QLabel("")
+        self.got.setWordWrap(True)
+        lay.addWidget(self.got)
+        row = QHBoxLayout()
+        clear = QPushButton("ล้างปุ่มที่สอนไว้")
+        clear.clicked.connect(self._clear)
+        close = QPushButton("เสร็จ")
+        close.clicked.connect(self.accept)
+        row.addWidget(clear)
+        row.addStretch(1)
+        row.addWidget(close)
+        lay.addLayout(row)
+        n = len(_extras())
+        if n:
+            self.got.setText(f"ตอนนี้สอนไว้แล้ว {n} ปุ่ม")
+        self._hint = QTimer(self)
+        self._hint.setSingleShot(True)
+        self._hint.timeout.connect(lambda: self.got.text() or self.got.setText(
+            "ยังไม่เห็นสัญญาณจากปุ่ม — ถ้ากดแล้วไม่ขึ้นอะไร แปลว่าปุ่มนี้เมาส์ใช้เอง (ไม่ส่งมาที่คอม)\n"
+            "ทางแก้: ในโปรแกรมของเมาส์ (เช่น Logi Options+, Razer Synapse) ตั้งปุ่มนั้นเป็น \"Middle click\""))
+        self._hint.start(8000)
+
+    def _save(self, sig, label):
+        c = cfg()
+        cur = list(c.get(_EXTRA_KEY) or [])
+        if sig not in cur:
+            cur.append(sig)
+        c[_EXTRA_KEY] = cur
+        mw.addonManager.writeConfig(ADDON, c)
+        self.got.setText(f"✓ จำแล้ว: {label}\nกดปุ่มอื่นเพิ่มได้ หรือกด เสร็จ")
+
+    def _clear(self):
+        c = cfg()
+        c[_EXTRA_KEY] = []
+        mw.addonManager.writeConfig(ADDON, c)
+        self.got.setText("ล้างแล้ว")
+
+    def catch(self, ev):
+        t = ev.type()
+        if t == QEvent.Type.MouseButtonPress:
+            b = ev.button()
+            if b in (Qt.MouseButton.LeftButton, Qt.MouseButton.RightButton):
+                return False
+            self._save(_sig_mouse(ev), f"ปุ่มเมาส์ #{b.value}")
+            return True
+        if t == QEvent.Type.KeyPress:
+            if ev.key() in (Qt.Key.Key_Escape, Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space,
+                            Qt.Key.Key_Tab):
+                return False
+            if ev.text() and ev.text().isprintable():
+                self.got.setText("ปุ่มนี้เป็นตัวอักษรธรรมดา ไม่จำ (กันพิมพ์ปกติไม่ได้)")
+                return True
+            self._save(_sig_key(ev), "ปุ่ม " + (QKeySequence(ev.key()).toString() or str(ev.key())))
+            return True
+        return False
+
+
+class _TeachFilter(QObject):
+    def eventFilter(self, obj, ev):
+        d = _teach
+        if d is None:
+            return False
+        try:
+            return d.catch(ev)
+        except Exception:
+            return False
+
+
+def teach():
+    global _teach
+    d = _TeachDialog()
+    f = _TeachFilter(d)
+    _teach = d
+    QApplication.instance().installEventFilter(f)
+
+    def done(*_a):
+        global _teach
+        _teach = None
+        QApplication.instance().removeEventFilter(f)
+
+    d.finished.connect(done)
+    d.show()
 
 
 _filter = None

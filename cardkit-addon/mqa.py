@@ -1005,6 +1005,11 @@ def setup_hover():
         _hover.watch(m)
 
 
+def _teach_quote():
+    from . import mouse
+    mouse.teach()
+
+
 def setup_menubar():
     """เมนู "🃏 CardKit" ถัดจาก Help กดแล้วเปิด/ปิดแต่ละฟีเจอร์ได้ทันที"""
     global _menu
@@ -1018,6 +1023,7 @@ def setup_menubar():
         act.triggered.connect(lambda checked, k=key: _toggle(k, checked))
     _menu.addSeparator()
     _menu.addAction("ตั้งค่าเพิ่มเติม…", open_settings)
+    _menu.addAction("สอนปุ่มพิมพ์ \" (เช่นปุ่ม DPI เมาส์)…", _teach_quote)
     global _move_act
     _move_act = QAction("↪ ย้ายข้อจากการ์ดนี้…", mw)
     _move_act.setShortcut(QKeySequence(MOVE_KEY))
