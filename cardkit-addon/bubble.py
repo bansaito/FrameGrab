@@ -520,11 +520,12 @@ class Menu(QFrame):
         y = min(bp.y(), scr.bottom() - self.height())
         self.move(max(scr.left(), x), max(scr.top(), y))
         self.show()
-        self.activateWindow()
-        self.setFocus()
+        self.setFocus()          # ไม่ activateWindow: บน Mac จะทำให้แถบเมนูบนสุดหายเหลือแค่ Anki/Edit
 
     def closeEvent(self, ev):
         self._peek(None, False)
+        # คืนโฟกัสให้หน้าต่างหลัก (Mac: แถบเมนู File/Tools/CardKit/Rounds กลับมา)
+        QTimer.singleShot(0, lambda: (mw.activateWindow(), mw.raise_()))
         self.bubble.wake()
         super().closeEvent(ev)
 
