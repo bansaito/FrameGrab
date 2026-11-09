@@ -74,9 +74,48 @@ def unregister_state(state, keys):
         _handlers.pop((state, k), None)
 
 
+def _is_shift_quote(ev):
+    """Shift + ปุ่ม ' (ตำแหน่งปุ่ม ไม่สนภาษาแป้น) · แป้นไทยปุ่มนี้ให้ "." """
+    m = ev.modifiers()
+    if not (m & Qt.KeyboardModifier.ShiftModifier) or m & (
+            Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.AltModifier
+            | Qt.KeyboardModifier.MetaModifier):
+        return False
+    tx = ev.text() or ""
+    if tx == '"':
+        return False                             # แป้นอังกฤษได้ " อยู่แล้ว
+    try:
+        vk = int(ev.nativeVirtualKey())
+    except Exception:
+        vk = 0
+    if sys.platform == "darwin" and vk == 0x27:  # kVK_ANSI_Quote
+        return True
+    if sys.platform.startswith("win") and vk == 0xDE:   # VK_OEM_7
+        return True
+    return tx == "."                             # สำรอง: เกษมณี Shift+' = "."
+
+
+def _shift_quote_on():
+    try:
+        from .mqa import on
+        return on("shift_quote")
+    except Exception:
+        return True
+
+
 class _Filter(QObject):
     def eventFilter(self, obj, ev):
         t = ev.type()
+        if t == QEvent.Type.KeyPress:
+            try:
+                if _is_shift_quote(ev) and _shift_quote_on():
+                    from aqt.qt import QApplication, QKeyEvent
+                    for kt in (QEvent.Type.KeyPress, QEvent.Type.KeyRelease):
+                        QApplication.postEvent(obj, QKeyEvent(
+                            kt, Qt.Key.Key_QuoteDbl, Qt.KeyboardModifier.NoModifier, '"'))
+                    return True                  # Shift+' = " เสมอ ทุกภาษาแป้น
+            except Exception:
+                pass
         if t not in (QEvent.Type.ShortcutOverride, QEvent.Type.KeyPress):
             return False
         try:

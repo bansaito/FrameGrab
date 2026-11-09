@@ -29,5 +29,6 @@
     "edit_open_at_reading": true,
     "mouse_back_button": true,
     "mouse_middle_quote": true,
+    "shift_quote_any_layout": true,
     "mouse_quote_extra": []
 }

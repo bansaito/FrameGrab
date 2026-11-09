@@ -32,7 +32,8 @@ KEYS = {"inline": "mqa_inline", "inline_stealth": "mqa_inline_stealth",
         "hover_open": "menu_hover_open",
         "keep_scroll": "keep_scroll_after_edit",
         "edit_here": "edit_open_at_reading",
-        "mouse_back": "mouse_back_button", "mouse_mid_quote": "mouse_middle_quote"}
+        "mouse_back": "mouse_back_button", "mouse_mid_quote": "mouse_middle_quote",
+        "shift_quote": "shift_quote_any_layout"}
 
 TAG_NEW = "แยกข้อ::ใหม่"
 TAG_ORIG = "แยกข้อ::ต้นฉบับ"
@@ -50,7 +51,7 @@ def cfg():
 # ค่าเริ่มต้นที่เปิดไว้ (เครื่องที่ติดตั้งใหม่ / ยังไม่เคยตั้งเอง)
 DEFAULT_ON = {"inline", "inline_stealth", "inline_hidebtn", "inline_accordion",
               "click_choice", "choice_noframe", "hover_open", "keep_scroll", "edit_here",
-              "mouse_back", "mouse_mid_quote"}
+              "mouse_back", "mouse_mid_quote", "shift_quote"}
 
 
 def on(feature):
@@ -808,6 +809,8 @@ OPTIONS = [
      "ปิดเมนู/หน้าต่างที่เปิดอยู่ (เช่น Edit กลับไปการ์ดเดิม) · ถ้าอยู่หน้าหลัก = กลับหน้า Decks เหมือนกด D", None),
     ("mouse_mid_quote", "คลิกปุ่มเมาส์กลาง = พิมพ์ \"",
      "ตอนกำลังพิมพ์ (เช่นช่องแก้การ์ด) คลิกปุ่มกลาง 1 ครั้ง ใส่ \" ตรงเคอร์เซอร์", None),
+    ("shift_quote", "Shift+' = \" ทุกภาษาแป้น",
+     "แป้นไทยก็ได้ \" (ปกติปุ่มนี้ให้ \".\")", None),
 ]
 
 
