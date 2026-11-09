@@ -25,5 +25,6 @@
     "rounds_browse_new": false,
     "rounds_bubble": true,
     "rounds_bubble_edge": true,
-    "keep_scroll_after_edit": true
+    "keep_scroll_after_edit": true,
+    "edit_open_at_reading": true
 }

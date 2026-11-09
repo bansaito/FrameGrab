@@ -30,7 +30,8 @@ KEYS = {"inline": "mqa_inline", "inline_stealth": "mqa_inline_stealth",
         "compact_answer": "mqa_compact_answer",
         "split_tool": "mqa_split_tool",
         "hover_open": "menu_hover_open",
-        "keep_scroll": "keep_scroll_after_edit"}
+        "keep_scroll": "keep_scroll_after_edit",
+        "edit_here": "edit_open_at_reading"}
 
 TAG_NEW = "แยกข้อ::ใหม่"
 TAG_ORIG = "แยกข้อ::ต้นฉบับ"
@@ -47,7 +48,7 @@ def cfg():
 
 # ค่าเริ่มต้นที่เปิดไว้ (เครื่องที่ติดตั้งใหม่ / ยังไม่เคยตั้งเอง)
 DEFAULT_ON = {"inline", "inline_stealth", "inline_hidebtn", "inline_accordion",
-              "click_choice", "choice_noframe", "hover_open", "keep_scroll"}
+              "click_choice", "choice_noframe", "hover_open", "keep_scroll", "edit_here"}
 
 
 def on(feature):
@@ -798,6 +799,8 @@ OPTIONS = [
      "เมนู 🃏 CardKit และ 📚 Rounds บนแถบเมนู เปิดเองเมื่อชี้เมาส์ค้างไว้ครู่หนึ่ง ไม่ต้องคลิก", None),
     ("keep_scroll", "แก้การ์ด (Edit) เสร็จแล้วอยู่ตำแหน่งเดิม",
      "ระหว่างท่อง กด Edit แก้การ์ดแล้วปิด หน้าการ์ดจะเลื่อนกลับไปตำแหน่งเดิม ไม่เด้งขึ้นบนสุด", None),
+    ("edit_here", "เปิด Edit แล้วไปตรงที่อ่านอยู่",
+     "ระหว่างท่อง กด Edit หน้าต่างแก้ไขจะเลื่อนไปตรงข้อความที่อ่านค้างอยู่ ไม่เริ่มบนสุด", None),
 ]
 
 
@@ -1052,12 +1055,14 @@ _scroll = {"cid": None, "y": 0, "until": 0.0}
 
 def _on_editor_init(editor):
     """เปิดหน้าต่าง Edit ระหว่างท่อง → จำตำแหน่งเลื่อนของการ์ดไว้"""
-    if not on("keep_scroll") or mw.state != "review":
-        return
-    if type(editor.parentWindow).__name__ != "EditCurrent":
+    if mw.state != "review" or type(editor.parentWindow).__name__ != "EditCurrent":
         return
     card = mw.reviewer.card
     if card is None:
+        return
+    if on("edit_here"):
+        _edit_jump_setup(editor)
+    if not on("keep_scroll"):
         return
     cid = card.id
 
@@ -1090,6 +1095,123 @@ def _restore_scroll(card):
     # เลื่อนซ้ำหลายจังหวะ เผื่อรูป/MathJax โหลดช้าแล้วความสูงหน้าเปลี่ยน
     mw.reviewer.web.eval(
         f"[0,80,300,800].forEach(function(t){{setTimeout(function(){{window.scrollTo(0,{y});}},t);}});")
+
+
+# ---------------------------------------------------------------- เปิด Edit แล้วไปตรงที่อ่านอยู่
+
+# ในหน้าทบทวน: เก็บข้อความที่อยู่บนสุดของจอ (หลายจุด เผื่อบางอันหาไม่เจอ) + สัดส่วนที่เลื่อนไป
+_ANCHOR_JS = r"""
+(function(){
+  var out = [], seen = {};
+  var x = Math.round(window.innerWidth / 2);
+  [12, 40, 80, 140, 220, 320].forEach(function(y){
+    [x, 60, Math.round(window.innerWidth / 4)].forEach(function(px){
+      var r = document.caretRangeFromPoint && document.caretRangeFromPoint(px, y);
+      var n = r && r.startContainer;
+      if (!n || n.nodeType !== 3) return;
+      var t = (n.data || '').replace(/\s+/g, ' ').trim();
+      if (t.length < 6) return;
+      t = t.slice(0, 40);
+      if (!seen[t]) { seen[t] = 1; out.push(t); }
+    });
+  });
+  var h = document.documentElement.scrollHeight - window.innerHeight;
+  return JSON.stringify({a: out, r: h > 0 ? window.scrollY / h : 0, y: window.scrollY});
+})()
+"""
+
+# ในหน้าต่าง Edit: หาข้อความเดียวกัน (ทะลุ shadow DOM ของช่อง) แล้วเลื่อนไปไว้บนสุด
+_JUMP_JS = r"""
+(function(d){
+  if (!d || d.y < 30) return;
+  var userMoved = false;
+  ['wheel','keydown','mousedown','touchstart'].forEach(function(ev){
+    window.addEventListener(ev, function(){ userMoved = true; }, {capture:true, once:true});
+  });
+  function norm(t){ return (t || '').replace(/\s+/g, ' '); }
+  function texts(root, acc){
+    var w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    var n; while ((n = w.nextNode())) acc.push(n);
+    root.querySelectorAll('*').forEach(function(el){ if (el.shadowRoot) texts(el.shadowRoot, acc); });
+    return acc;
+  }
+  function visible(el){ return el && el.getClientRects().length > 0 && !el.closest('.CodeMirror'); }
+  function find(){
+    var nodes = texts(document, []);
+    for (var i = 0; i < d.a.length; i++){
+      var want = d.a[i], hit = [];
+      for (var k = 0; k < nodes.length; k++){
+        var t = norm(nodes[k].data), at = t.indexOf(want);
+        if (at >= 0 && visible(nodes[k].parentElement)) hit.push([nodes[k], at]);
+      }
+      if (hit.length === 1) return hit[0];          // ข้อความซ้ำหลายที่ = ไม่แน่ใจ ข้ามไปอันถัดไป
+    }
+    return null;
+  }
+  function scroller(){
+    var best = null, bh = 0;
+    document.querySelectorAll('*').forEach(function(el){
+      var e = el.scrollHeight - el.clientHeight;
+      if (e > bh && /(auto|scroll)/.test(getComputedStyle(el).overflowY)) { bh = e; best = el; }
+    });
+    return best;
+  }
+  function go(){
+    if (userMoved) return;
+    var sc = scroller(), f = find();
+    if (f) {
+      var r = document.createRange();
+      r.setStart(f[0], 0); r.setEnd(f[0], Math.min(f[0].data.length, 1));
+      var top = r.getBoundingClientRect().top;
+      if (sc) sc.scrollTop += top - sc.getBoundingClientRect().top - 8;
+      else window.scrollBy(0, top - 8);
+      return;
+    }
+    if (sc) sc.scrollTop = d.r * (sc.scrollHeight - sc.clientHeight);
+  }
+  [0, 150, 450, 1000, 1800].forEach(function(t){ setTimeout(go, t); });
+})(%s)
+"""
+
+
+def _edit_jump_setup(editor):
+    st = {"data": None, "loaded": False, "done": False}
+
+    def try_jump():
+        if st["done"] or st["data"] is None or not st["loaded"]:
+            return
+        st["done"] = True
+        try:
+            editor.web.eval(_JUMP_JS % st["data"])
+        except Exception:
+            pass
+
+    def got(res):
+        st["data"] = res if isinstance(res, str) and res.startswith("{") else None
+        try_jump()
+
+    def loaded(ed):
+        if ed is editor:
+            st["loaded"] = True
+            try_jump()
+
+    gui_hooks.editor_did_load_note.append(loaded)
+
+    def cleanup(*_a):
+        try:
+            gui_hooks.editor_did_load_note.remove(loaded)
+        except Exception:
+            pass
+
+    try:
+        editor.parentWindow.destroyed.connect(cleanup)
+        editor.parentWindow.finished.connect(cleanup)
+    except Exception:
+        pass
+    # ถ้าโน้ตโหลดไปแล้วก่อนเรามาถึง
+    if getattr(editor, "note", None) is not None:
+        QTimer.singleShot(300, lambda: (st.update(loaded=True), try_jump()))
+    mw.reviewer.web.evalWithCallback(_ANCHOR_JS, got)
 
 
 gui_hooks.editor_did_init.append(_on_editor_init)
