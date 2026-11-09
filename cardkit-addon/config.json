@@ -26,5 +26,7 @@
     "rounds_bubble": true,
     "rounds_bubble_edge": true,
     "keep_scroll_after_edit": true,
-    "edit_open_at_reading": true
+    "edit_open_at_reading": true,
+    "mouse_back_button": true,
+    "mouse_middle_quote": true
 }

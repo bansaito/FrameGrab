@@ -31,7 +31,8 @@ KEYS = {"inline": "mqa_inline", "inline_stealth": "mqa_inline_stealth",
         "split_tool": "mqa_split_tool",
         "hover_open": "menu_hover_open",
         "keep_scroll": "keep_scroll_after_edit",
-        "edit_here": "edit_open_at_reading"}
+        "edit_here": "edit_open_at_reading",
+        "mouse_back": "mouse_back_button", "mouse_mid_quote": "mouse_middle_quote"}
 
 TAG_NEW = "แยกข้อ::ใหม่"
 TAG_ORIG = "แยกข้อ::ต้นฉบับ"
@@ -48,7 +49,8 @@ def cfg():
 
 # ค่าเริ่มต้นที่เปิดไว้ (เครื่องที่ติดตั้งใหม่ / ยังไม่เคยตั้งเอง)
 DEFAULT_ON = {"inline", "inline_stealth", "inline_hidebtn", "inline_accordion",
-              "click_choice", "choice_noframe", "hover_open", "keep_scroll", "edit_here"}
+              "click_choice", "choice_noframe", "hover_open", "keep_scroll", "edit_here",
+              "mouse_back", "mouse_mid_quote"}
 
 
 def on(feature):
@@ -801,6 +803,10 @@ OPTIONS = [
      "ระหว่างท่อง กด Edit แก้การ์ดแล้วปิด หน้าการ์ดจะเลื่อนกลับไปตำแหน่งเดิม ไม่เด้งขึ้นบนสุด", None),
     ("edit_here", "เปิด Edit แล้วไปตรงที่อ่านอยู่",
      "ระหว่างท่อง กด Edit หน้าต่างแก้ไขจะเลื่อนไปตรงข้อความที่อ่านค้างอยู่ ไม่เริ่มบนสุด", None),
+    ("mouse_back", "ปุ่มเมาส์ข้าง (Back) = ย้อนกลับ",
+     "ปิดเมนู/หน้าต่างที่เปิดอยู่ (เช่น Edit กลับไปการ์ดเดิม) · ถ้าอยู่หน้าหลัก = กลับหน้า Decks เหมือนกด D", None),
+    ("mouse_mid_quote", "คลิกปุ่มเมาส์กลาง = พิมพ์ \"",
+     "ตอนกำลังพิมพ์ (เช่นช่องแก้การ์ด) คลิกปุ่มกลาง 1 ครั้ง ใส่ \" ตรงเคอร์เซอร์", None),
 ]
 
 
