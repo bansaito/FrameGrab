@@ -24,5 +24,6 @@
     "rounds_current_first": true,
     "rounds_browse_new": false,
     "rounds_bubble": true,
-    "rounds_bubble_edge": true
+    "rounds_bubble_edge": true,
+    "keep_scroll_after_edit": true
 }

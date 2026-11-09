@@ -29,7 +29,8 @@ KEYS = {"inline": "mqa_inline", "inline_stealth": "mqa_inline_stealth",
         "click_choice": "mqa_click_choice", "choice_noframe": "mqa_choice_noframe",
         "compact_answer": "mqa_compact_answer",
         "split_tool": "mqa_split_tool",
-        "hover_open": "menu_hover_open"}
+        "hover_open": "menu_hover_open",
+        "keep_scroll": "keep_scroll_after_edit"}
 
 TAG_NEW = "แยกข้อ::ใหม่"
 TAG_ORIG = "แยกข้อ::ต้นฉบับ"
@@ -46,7 +47,7 @@ def cfg():
 
 # ค่าเริ่มต้นที่เปิดไว้ (เครื่องที่ติดตั้งใหม่ / ยังไม่เคยตั้งเอง)
 DEFAULT_ON = {"inline", "inline_stealth", "inline_hidebtn", "inline_accordion",
-              "click_choice", "choice_noframe", "hover_open"}
+              "click_choice", "choice_noframe", "hover_open", "keep_scroll"}
 
 
 def on(feature):
@@ -795,6 +796,8 @@ OPTIONS = [
      "(มีผลเมื่อเปิดหน้าต่างนั้นใหม่)", None),
     ("hover_open", "ชี้เมาส์ที่เมนูแล้วเปิดเลย",
      "เมนู 🃏 CardKit และ 📚 Rounds บนแถบเมนู เปิดเองเมื่อชี้เมาส์ค้างไว้ครู่หนึ่ง ไม่ต้องคลิก", None),
+    ("keep_scroll", "แก้การ์ด (Edit) เสร็จแล้วอยู่ตำแหน่งเดิม",
+     "ระหว่างท่อง กด Edit แก้การ์ดแล้วปิด หน้าการ์ดจะเลื่อนกลับไปตำแหน่งเดิม ไม่เด้งขึ้นบนสุด", None),
 ]
 
 
@@ -1040,3 +1043,55 @@ gui_hooks.editor_did_init_buttons.append(on_editor_buttons)
 gui_hooks.main_window_did_init.append(setup_menubar)
 gui_hooks.webview_did_receive_js_message.append(on_js_message)
 gui_hooks.reviewer_did_show_question.append(on_show_question)
+
+
+# ---------------------------------------------------------------- Edit เสร็จแล้วอยู่ตำแหน่งเดิม
+
+_scroll = {"cid": None, "y": 0, "until": 0.0}
+
+
+def _on_editor_init(editor):
+    """เปิดหน้าต่าง Edit ระหว่างท่อง → จำตำแหน่งเลื่อนของการ์ดไว้"""
+    if not on("keep_scroll") or mw.state != "review":
+        return
+    if type(editor.parentWindow).__name__ != "EditCurrent":
+        return
+    card = mw.reviewer.card
+    if card is None:
+        return
+    cid = card.id
+
+    def got(y):
+        try:
+            _scroll.update(cid=cid, y=int(y or 0), until=float("inf"))   # ระหว่างเปิด Edit: คืนตำแหน่งทุกครั้งที่วาดใหม่
+        except Exception:
+            pass
+
+    mw.reviewer.web.evalWithCallback("window.scrollY", got)
+
+    def closed(*_a):
+        _scroll["until"] = time.time() + 2.5         # ปิด Edit แล้ว: การ์ดถูกวาดใหม่ภายในช่วงนี้
+
+    win = editor.parentWindow
+    for sig in ("finished", "destroyed"):
+        try:
+            getattr(win, sig).connect(closed)
+        except Exception:
+            pass
+
+
+def _restore_scroll(card):
+    if not on("keep_scroll") or _scroll["cid"] is None or card is None or card.id != _scroll["cid"]:
+        return
+    if time.time() > _scroll["until"]:
+        _scroll["cid"] = None
+        return
+    y = _scroll["y"]
+    # เลื่อนซ้ำหลายจังหวะ เผื่อรูป/MathJax โหลดช้าแล้วความสูงหน้าเปลี่ยน
+    mw.reviewer.web.eval(
+        f"[0,80,300,800].forEach(function(t){{setTimeout(function(){{window.scrollTo(0,{y});}},t);}});")
+
+
+gui_hooks.editor_did_init.append(_on_editor_init)
+gui_hooks.reviewer_did_show_question.append(_restore_scroll)
+gui_hooks.reviewer_did_show_answer.append(_restore_scroll)
