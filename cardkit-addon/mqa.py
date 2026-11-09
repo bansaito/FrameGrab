@@ -799,8 +799,9 @@ OPTIONS = [
      "(มีผลเมื่อเปิดหน้าต่างนั้นใหม่)", None),
     ("hover_open", "ชี้เมาส์ที่เมนูแล้วเปิดเลย",
      "เมนู 🃏 CardKit และ 📚 Rounds บนแถบเมนู เปิดเองเมื่อชี้เมาส์ค้างไว้ครู่หนึ่ง ไม่ต้องคลิก", None),
-    ("keep_scroll", "แก้การ์ด (Edit) เสร็จแล้วอยู่ตำแหน่งเดิม",
-     "ระหว่างท่อง กด Edit แก้การ์ดแล้วปิด หน้าการ์ดจะเลื่อนกลับไปตำแหน่งเดิม ไม่เด้งขึ้นบนสุด", None),
+    ("keep_scroll", "แก้/ย้ายการ์ดเสร็จแล้วอยู่ตำแหน่งเดิม",
+     "ระหว่างท่อง แก้การ์ด (Edit) ย้ายข้อ ย้าย deck หรือ undo แล้วการ์ดเดิมถูกวาดใหม่ "
+     "หน้าการ์ดจะอยู่ตำแหน่งเดิม ไม่เด้งขึ้นบนสุด", None),
     ("edit_here", "เปิด Edit แล้วไปตรงที่อ่านอยู่",
      "ระหว่างท่อง กด Edit หน้าต่างแก้ไขจะเลื่อนไปตรงข้อความที่อ่านค้างอยู่ ไม่เริ่มบนสุด", None),
     ("mouse_back", "ปุ่มเมาส์ข้าง (Back) = ย้อนกลับ",
@@ -1056,51 +1057,89 @@ gui_hooks.reviewer_did_show_question.append(on_show_question)
 
 # ---------------------------------------------------------------- Edit เสร็จแล้วอยู่ตำแหน่งเดิม
 
-_scroll = {"cid": None, "y": 0, "until": 0.0}
-
-
 def _on_editor_init(editor):
-    """เปิดหน้าต่าง Edit ระหว่างท่อง → จำตำแหน่งเลื่อนของการ์ดไว้"""
+    """เปิดหน้าต่าง Edit ระหว่างท่อง → ไปตรงที่อ่านอยู่"""
     if mw.state != "review" or type(editor.parentWindow).__name__ != "EditCurrent":
         return
-    card = mw.reviewer.card
-    if card is None:
+    if getattr(mw.reviewer, "card", None) is None:
         return
     if on("edit_here"):
         _edit_jump_setup(editor)
+
+
+# การ์ดเดิมถูกวาดใหม่ (Edit / ย้ายข้อ / ย้าย deck / undo …) → เลื่อนกลับตำแหน่งเดิม
+# หน้าทบทวนรายงานตำแหน่งมาเรื่อย ๆ ตอนเลื่อน · วาดใบเดิมซ้ำ = คืนตำแหน่งล่าสุด
+_ks = {"cid": None, "d": None, "pending": None, "freeze": 0.0}
+
+_TRACK_JS = r"""
+(function(){
+  if (window.__ckSy) return;
+  window.__ckSy = 1;
+  var tm = null;
+  window.addEventListener('scroll', function(){
+    clearTimeout(tm);
+    tm = setTimeout(function(){ pycmd('ck_sy:' + %s); }, 250);
+  }, {passive: true});
+})();
+"""
+
+
+def _ks_restore(d):
+    _ks["freeze"] = time.time() + 1.5          # ระหว่างเลื่อนคืน ไม่รับค่าตำแหน่งใหม่
+    try:
+        import json
+        data = json.loads(d)
+        data["win"] = True
+        mw.reviewer.web.eval(_JUMP_JS % json.dumps(data))
+    except Exception:
+        pass
+
+
+def _ks_flush():
+    d, _ks["pending"] = _ks["pending"], None
+    if d:
+        _ks_restore(d)
+
+
+def _ks_show(card, side):
+    if card is None:
+        return
+    try:
+        mw.reviewer.web.eval(_TRACK_JS % _ANCHOR_JS.strip())
+    except Exception:
+        pass
     if not on("keep_scroll"):
+        _ks.update(cid=card.id, d=None, pending=None)
         return
-    cid = card.id
-
-    def got(y):
-        try:
-            _scroll.update(cid=cid, y=int(y or 0), until=float("inf"))   # ระหว่างเปิด Edit: คืนตำแหน่งทุกครั้งที่วาดใหม่
-        except Exception:
-            pass
-
-    mw.reviewer.web.evalWithCallback("window.scrollY", got)
-
-    def closed(*_a):
-        _scroll["until"] = time.time() + 2.5         # ปิด Edit แล้ว: การ์ดถูกวาดใหม่ภายในช่วงนี้
-
-    win = editor.parentWindow
-    for sig in ("finished", "destroyed"):
-        try:
-            getattr(win, sig).connect(closed)
-        except Exception:
-            pass
-
-
-def _restore_scroll(card):
-    if not on("keep_scroll") or _scroll["cid"] is None or card is None or card.id != _scroll["cid"]:
+    if _ks["cid"] != card.id:                  # ใบใหม่
+        _ks.update(cid=card.id, d=None, pending=None)
         return
-    if time.time() > _scroll["until"]:
-        _scroll["cid"] = None
-        return
-    y = _scroll["y"]
-    # เลื่อนซ้ำหลายจังหวะ เผื่อรูป/MathJax โหลดช้าแล้วความสูงหน้าเปลี่ยน
-    mw.reviewer.web.eval(
-        f"[0,80,300,800].forEach(function(t){{setTimeout(function(){{window.scrollTo(0,{y});}},t);}});")
+    if side == "q":
+        # ใบเดิมถูกวาดใหม่ (ถ้าอยู่ด้านเฉลย Anki จะวาดคำถามแล้วตามด้วยเฉลยทันที)
+        if _ks["d"]:
+            _ks["pending"] = _ks["d"]
+            QTimer.singleShot(0, _ks_flush)
+    elif _ks["pending"]:
+        _ks_flush()                            # วาดใหม่ด้านเฉลย
+    # side "a" ไม่มี pending = ผู้ใช้เปิดเฉลยเอง → ปล่อยให้ Anki เลื่อนตามปกติ
+
+
+def _ks_answered(*_a):
+    _ks.update(cid=None, d=None, pending=None)  # ตอบแล้ว ใบเดิมกลับมาอีก = รอบใหม่ ไม่ต้องคืนตำแหน่ง
+
+
+def _ks_msg(handled, message, context):
+    if not isinstance(message, str) or not message.startswith("ck_sy:"):
+        return handled
+    if time.time() >= _ks["freeze"] and _ks["pending"] is None:
+        _ks["d"] = message[6:]
+    return (True, None)
+
+
+gui_hooks.reviewer_did_show_question.append(lambda c: _ks_show(c, "q"))
+gui_hooks.reviewer_did_show_answer.append(lambda c: _ks_show(c, "a"))
+gui_hooks.reviewer_did_answer_card.append(_ks_answered)
+gui_hooks.webview_did_receive_js_message.append(_ks_msg)
 
 
 # ---------------------------------------------------------------- เปิด Edit แล้วไปตรงที่อ่านอยู่
@@ -1108,7 +1147,7 @@ def _restore_scroll(card):
 # ในหน้าทบทวน: เก็บข้อความที่อยู่บนสุดของจอ (หลายจุด เผื่อบางอันหาไม่เจอ) + สัดส่วนที่เลื่อนไป
 _ANCHOR_JS = r"""
 (function(){
-  var out = [], seen = {};
+  var out = [], tops = [], seen = {};
   var x = Math.round(window.innerWidth / 2);
   [12, 40, 80, 140, 220, 320].forEach(function(y){
     [x, 60, Math.round(window.innerWidth / 4)].forEach(function(px){
@@ -1118,18 +1157,21 @@ _ANCHOR_JS = r"""
       var t = (n.data || '').replace(/\s+/g, ' ').trim();
       if (t.length < 6) return;
       t = t.slice(0, 40);
-      if (!seen[t]) { seen[t] = 1; out.push(t); }
+      if (seen[t]) return;
+      seen[t] = 1; out.push(t);
+      var rr = document.createRange(); rr.setStart(n, 0); rr.setEnd(n, Math.min(1, n.data.length));
+      tops.push(Math.round(rr.getBoundingClientRect().top));
     });
   });
   var h = document.documentElement.scrollHeight - window.innerHeight;
-  return JSON.stringify({a: out, r: h > 0 ? window.scrollY / h : 0, y: window.scrollY});
+  return JSON.stringify({a: out, t: tops, r: h > 0 ? window.scrollY / h : 0, y: window.scrollY});
 })()
 """
 
 # ในหน้าต่าง Edit: หาข้อความเดียวกัน (ทะลุ shadow DOM ของช่อง) แล้วเลื่อนไปไว้บนสุด
 _JUMP_JS = r"""
 (function(d){
-  if (!d || d.y < 30) return;
+  if (!d || (!d.win && d.y < 30)) return;
   var userMoved = false;
   ['wheel','keydown','mousedown','touchstart'].forEach(function(ev){
     window.addEventListener(ev, function(){ userMoved = true; }, {capture:true, once:true});
@@ -1150,7 +1192,7 @@ _JUMP_JS = r"""
         var t = norm(nodes[k].data), at = t.indexOf(want);
         if (at >= 0 && visible(nodes[k].parentElement)) hit.push([nodes[k], at]);
       }
-      if (hit.length === 1) return hit[0];          // ข้อความซ้ำหลายที่ = ไม่แน่ใจ ข้ามไปอันถัดไป
+      if (hit.length === 1) return [hit[0][0], hit[0][1], i];          // ข้อความซ้ำหลายที่ = ไม่แน่ใจ ข้ามไปอันถัดไป
     }
     return null;
   }
@@ -1164,16 +1206,18 @@ _JUMP_JS = r"""
   }
   function go(){
     if (userMoved) return;
-    var sc = scroller(), f = find();
+    var sc = d.win ? null : scroller(), f = find();
     if (f) {
       var r = document.createRange();
       r.setStart(f[0], 0); r.setEnd(f[0], Math.min(f[0].data.length, 1));
       var top = r.getBoundingClientRect().top;
-      if (sc) sc.scrollTop += top - sc.getBoundingClientRect().top - 8;
-      else window.scrollBy(0, top - 8);
+      var want = d.win && d.t ? d.t[f[2]] : 8;      // หน้าทบทวน: ให้อยู่ระยะเดิมจากขอบบน
+      if (sc) sc.scrollTop += top - sc.getBoundingClientRect().top - want;
+      else window.scrollBy(0, top - want);
       return;
     }
-    if (sc) sc.scrollTop = d.r * (sc.scrollHeight - sc.clientHeight);
+    if (d.win) window.scrollTo(0, d.y);
+    else if (sc) sc.scrollTop = d.r * (sc.scrollHeight - sc.clientHeight);
   }
   [0, 150, 450, 1000, 1800].forEach(function(t){ setTimeout(go, t); });
 })(%s)
@@ -1221,5 +1265,3 @@ def _edit_jump_setup(editor):
 
 
 gui_hooks.editor_did_init.append(_on_editor_init)
-gui_hooks.reviewer_did_show_question.append(_restore_scroll)
-gui_hooks.reviewer_did_show_answer.append(_restore_scroll)
