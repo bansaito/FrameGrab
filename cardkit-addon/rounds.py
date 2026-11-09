@@ -1112,6 +1112,7 @@ def _set_due_html(g):
 
 
 _INJECT_JS = """
+if (/congrats/.test(location.pathname)) {
 window.ckFold = function (el) {   // – / + พับ deck ย่อย (จำไว้ใน config)
   var tr = el.closest('tr'), k = tr.getAttribute('data-k'), c = el.textContent === '–';
   el.textContent = c ? '+' : '–';
@@ -1123,6 +1124,7 @@ window.ckFold = function (el) {   // – / + พับ deck ย่อย (จำ
 if (!window.ckKeys) {               // หน้าท่องเสร็จ: กด 1–9 = ไป deck ย่อยแถวนั้น
   window.ckKeys = true;
   document.addEventListener('keydown', function (e) {
+    if (!/congrats/.test(location.pathname) || !document.getElementById('ck-due')) return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     var t = e.target && e.target.tagName;
     if (t === 'INPUT' || t === 'TEXTAREA') return;
@@ -1136,7 +1138,9 @@ if (!window.ckKeys) {               // หน้าท่องเสร็จ: 
     pycmd('cardkit_go:' + a.getAttribute('data-go'));
   });
 }
+}
 (function (html, ver) {
+  if (!/congrats/.test(location.pathname)) return;   // วาดเฉพาะหน้า Congratulations
   // ใช้ตารางล่าสุดเสมอ: หน้าเดิมอาจค้างตารางเก่า (หน้า Congratulations เป็นหน้าเว็บที่ไม่โหลดใหม่ทุกครั้ง)
   if (window.ckDue && window.ckDue.ver === ver && document.getElementById('ck-due')) return;
   window.ckDue = { html: html, ver: ver };
@@ -1182,7 +1186,10 @@ def on_overview_refresh(overview):
         # ซึ่งไม่ได้โหลดใหม่จริง → คิวรอ "domDone" ไม่มาเลย ตารางจึงค้างเลขเก่า
         # ส่งซ้ำ 3 ครั้ง เผื่อหน้าโหลดใหม่จริงหลังจากนี้ (ver เดียวกัน = ไม่วาดซ้ำ)
         def run():
+            # ส่งเฉพาะตอนยังอยู่หน้า Congratulations (หน้าทบทวนใช้หน้าต่างเดียวกัน)
             try:
+                if mw.state != "overview" or not mw.col.sched._is_finished():
+                    return
                 overview.web.page().runJavaScript(js)
             except Exception:
                 pass
