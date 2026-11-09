@@ -75,7 +75,7 @@ def unregister_state(state, keys):
 
 
 def _is_shift_quote(ev):
-    """Shift + ปุ่ม ' (ตำแหน่งปุ่ม ไม่สนภาษาแป้น) · แป้นไทยปุ่มนี้ให้ "." """
+    """Shift + ปุ่ม ' หรือ W (ตำแหน่งปุ่ม ไม่สนภาษาแป้น) · แป้นไทย Shift+' ให้ "." """
     m = ev.modifiers()
     if not (m & Qt.KeyboardModifier.ShiftModifier) or m & (
             Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.AltModifier
@@ -88,11 +88,11 @@ def _is_shift_quote(ev):
         vk = int(ev.nativeVirtualKey())
     except Exception:
         vk = 0
-    if sys.platform == "darwin" and vk == 0x27:  # kVK_ANSI_Quote
+    if sys.platform == "darwin" and vk in (0x27, 0x0D):         # kVK_ANSI_Quote, kVK_ANSI_W
         return True
-    if sys.platform.startswith("win") and vk == 0xDE:   # VK_OEM_7
+    if sys.platform.startswith("win") and vk in (0xDE, 0x57):   # VK_OEM_7, 'W'
         return True
-    return tx == "."                             # สำรอง: เกษมณี Shift+' = "."
+    return tx in (".", "W", "w")                 # สำรอง: เกษมณี Shift+' = "." · อังกฤษ Shift+W = W
 
 
 def _shift_quote_on():

@@ -55,6 +55,7 @@
 
 **mouse_middle_quote** – คลิกปุ่มเมาส์กลางตอนพิมพ์ = ใส่ " ตรงเคอร์เซอร์ (true/false)
 
-**shift_quote_any_layout** – กด Shift+' ได้ " เสมอ ไม่ว่าแป้นเป็นภาษาอะไร (true/false)
+
+**shift_quote_any_layout** – กด Shift+' หรือ Shift+W ได้ " เสมอ ไม่ว่าแป้นเป็นภาษาอะไร (Shift+W จะไม่ได้ W ใหญ่) (true/false)
 
 **mouse_quote_extra** – ปุ่มอื่นที่สอนไว้ให้พิมพ์ " ด้วย (เช่นปุ่ม DPI) ตั้งผ่านเมนู CardKit → สอนปุ่มพิมพ์ " (ล้างได้ด้วย [])
