@@ -89,12 +89,28 @@ def _type_quote(obj):
         w.insertPlainText('"') if not isinstance(w, QLineEdit) else w.insert('"')
         return True
     # หน้าเว็บ (ช่องแก้การ์ด / ช่องพิมพ์คำตอบ): ส่งปุ่ม " ให้เหมือนพิมพ์เอง
-    if type(w).__name__.startswith("RenderWidgetHostView") or "WebEngine" in type(w).__name__ \
-            or "WebView" in type(w).__name__:
-        for t in (QEvent.Type.KeyPress, QEvent.Type.KeyRelease):
-            QApplication.postEvent(w, QKeyEvent(t, Qt.Key.Key_QuoteDbl, Qt.KeyboardModifier.NoModifier, '"'))
-        return True
-    return False
+    view = _web_of(w) or _web_of(obj)
+    if view is None:
+        return False
+    target = view.focusProxy() or w
+    for t in (QEvent.Type.KeyPress, QEvent.Type.KeyRelease):
+        QApplication.postEvent(target, QKeyEvent(t, Qt.Key.Key_QuoteDbl, Qt.KeyboardModifier.NoModifier, '"'))
+    return True
+
+
+def _web_of(w):
+    """หา QWebEngineView ที่ widget นี้อยู่ข้างใน (ตัวรับปุ่มจริงเป็น widget ลูกที่ PyQt ไม่รู้จักชื่อ)"""
+    try:
+        from aqt.qt import QWebEngineView
+    except Exception:
+        return None
+    n = 0
+    while w is not None and n < 8:
+        if isinstance(w, QWebEngineView):
+            return w
+        w = w.parentWidget() if hasattr(w, "parentWidget") else None
+        n += 1
+    return None
 
 
 class _Filter(QObject):
