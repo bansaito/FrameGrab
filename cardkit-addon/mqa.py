@@ -33,7 +33,8 @@ KEYS = {"inline": "mqa_inline", "inline_stealth": "mqa_inline_stealth",
         "keep_scroll": "keep_scroll_after_edit",
         "edit_here": "edit_open_at_reading",
         "mouse_back": "mouse_back_button", "mouse_mid_quote": "mouse_middle_quote",
-        "shift_quote": "shift_quote_any_layout"}
+        "shift_quote": "shift_quote_any_layout",
+        "deck_tree": "deck_picker_tree"}
 
 TAG_NEW = "แยกข้อ::ใหม่"
 TAG_ORIG = "แยกข้อ::ต้นฉบับ"
@@ -51,7 +52,8 @@ def cfg():
 # ค่าเริ่มต้นที่เปิดไว้ (เครื่องที่ติดตั้งใหม่ / ยังไม่เคยตั้งเอง)
 DEFAULT_ON = {"inline", "inline_stealth", "inline_hidebtn", "inline_accordion",
               "click_choice", "choice_noframe", "hover_open", "keep_scroll", "edit_here",
-              "mouse_back", "mouse_mid_quote", "shift_quote"}
+              "mouse_back", "mouse_mid_quote", "shift_quote",
+              "deck_tree"}
 
 
 def on(feature):
@@ -811,6 +813,9 @@ OPTIONS = [
      "ตอนกำลังพิมพ์ (เช่นช่องแก้การ์ด) คลิกปุ่มกลาง 1 ครั้ง ใส่ \" ตรงเคอร์เซอร์", None),
     ("shift_quote", "Shift+' และ Shift+W = \" ทุกภาษาแป้น",
      "พิมพ์ \" ได้เสมอไม่ต้องสลับภาษา (Shift+W จะไม่ได้ตัว W ใหญ่)", None),
+    ("deck_tree", "หน้าต่างเลือก deck พับ/กาง deck ย่อยได้",
+     "Choose Deck (ย้าย deck, เลือก deck ตอน Add ฯลฯ) แสดงเป็นต้นไม้ คลิก ▸ หรือกด → ← เพื่อกาง/พับ "
+     "· พิมพ์ค้นหาแล้วแสดงชื่อเต็มแบบเดิม", None),
 ]
 
 

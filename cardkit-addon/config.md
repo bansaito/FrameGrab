@@ -59,3 +59,7 @@
 **shift_quote_any_layout** – กด Shift+' หรือ Shift+W ได้ " เสมอ ไม่ว่าแป้นเป็นภาษาอะไร (Shift+W จะไม่ได้ W ใหญ่) (true/false)
 
 **mouse_quote_extra** – ปุ่มอื่นที่สอนไว้ให้พิมพ์ " ด้วย (เช่นปุ่ม DPI) ตั้งผ่านเมนู CardKit → สอนปุ่มพิมพ์ " (ล้างได้ด้วย [])
+
+**deck_picker_tree** – หน้าต่าง Choose Deck แสดงเป็นต้นไม้ พับ/กาง deck ย่อยได้ (คลิก ▸ หรือกด → ←) · พิมพ์ค้นหา = ชื่อเต็มแบบเดิม (true/false)
+
+**deck_picker_open** – (จำเอง) deck ที่กางไว้ในหน้าต่าง Choose Deck
