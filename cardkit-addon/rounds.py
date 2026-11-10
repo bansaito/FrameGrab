@@ -308,22 +308,35 @@ def _apply(targets):
         _clear_today(did)
 
 
-def _free_ancestors(live):
-    """deck แม่ (ที่ไม่ได้อยู่ในชุด) เพดานเต็ม → การ์ดในลูกไม่ขึ้น
-    เปิดเพดาน Today only ของ deck แม่ให้พอกับที่เพิ่ม (กลับเป็นปกติเองตี 4)"""
-    in_set = {d["did"] for d in live}
-    need = {}
-    for d in live:
-        name = _deck_name(d["did"]) or ""
-        parts = name.split("::")
-        for i in range(1, len(parts)):
-            anc = mw.col.decks.by_name("::".join(parts[:i]))
-            if anc and anc["id"] not in in_set and not anc.get("dyn"):
-                need[anc["id"]] = need.get(anc["id"], 0) + int(d["step"])
-    for aid, add in need.items():
-        cap = _limit(aid) - done_today(aid)
-        if cap < add:
-            _set_today(aid, done_today(aid) + add)
+def _undo_ancestor_lift(*_a):
+    """ล้างเพดาน Today only ที่เวอร์ชันก่อนไปเปิดให้ deck แม่ (นอกชุด) โดยไม่ตั้งใจ · ทำครั้งเดียว"""
+    try:
+        c = _cfg()
+        if c.get("rounds_fix_parent_lift") or mw.col is None:
+            return
+        in_set, anc = set(), set()
+        for g in groups():
+            for d in g["decks"]:
+                in_set.add(d["did"])
+                name = _deck_name(d["did"]) or ""
+                p = name.split("::")
+                for i in range(1, len(p)):
+                    a = mw.col.decks.by_name("::".join(p[:i]))
+                    if a:
+                        anc.add(a["id"])
+        today = mw.col.sched.today
+        for aid in anc - in_set:
+            dk = _deck(aid)
+            t = dk.get("reviewLimitToday") if dk else None
+            if t and t.get("today") == today:
+                _clear_today(aid)
+        c["rounds_fix_parent_lift"] = True
+        mw.addonManager.writeConfig(ADDON, c)
+    except Exception:
+        pass
+
+
+gui_hooks.profile_did_open.append(_undo_ancestor_lift)
 
 
 def bump(g):
@@ -338,10 +351,6 @@ def bump(g):
     global _before_all
     _before_all = None                       # กด ➕ แล้ว ยกเลิกเริ่มใหม่ทุกชุดไม่ได้อีก
     _apply([(d["did"], _next_limit(d)) for d in live])
-    try:
-        _free_ancestors(live)
-    except Exception:
-        pass
     _after_change()
     empty = [_short(d["did"]) for d in live if remaining(d["did"]) == 0]
     tooltip(f"เพดานใหม่ {summary(g)}" + (f" ({', '.join(empty)} หมดแล้ว)" if empty else ""))
