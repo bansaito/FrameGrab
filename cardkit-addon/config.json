@@ -31,5 +31,6 @@
     "mouse_middle_quote": true,
     "shift_quote_any_layout": true,
     "deck_picker_tree": true,
+    "mac_keep_menubar": true,
     "mouse_quote_extra": []
 }

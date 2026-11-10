@@ -63,3 +63,5 @@
 **deck_picker_tree** – หน้าต่าง Choose Deck แสดงเป็นต้นไม้ พับ/กาง deck ย่อยได้ (คลิก ▸ หรือกด → ←) · พิมพ์ค้นหา = ชื่อเต็มแบบเดิม (true/false)
 
 **deck_picker_open** – (จำเอง) deck ที่กางไว้ในหน้าต่าง Choose Deck
+
+**mac_keep_menubar** – (Mac) ถ้าแถบเมนูบนสุดหายเหลือแค่ Anki / Edit จะคืนโฟกัสให้หน้าต่างหลักเอง (true/false)
