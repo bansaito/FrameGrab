@@ -159,34 +159,12 @@ def _ignore_new(did):
 
 
 def due_counts(g):
-    """[(ชื่อสั้น, new ที่ท่องได้วันนี้, learn, due ทั้งหมด = ถึงวันนี้ + ค้าง)] ของแต่ละ deck (รวม deck ย่อย)
-    ไม่สนเพดาน reviews/day · ไม่นับการ์ดที่ suspend/bury"""
-    from anki.collection import SearchNode
-    today = mw.col.sched.today
+    """[(ชื่อสั้น, new ที่ท่องได้วันนี้, learn, due ทั้งหมด = ถึงวันนี้ + ค้าง)] ของแต่ละ deck (รวม deck ย่อย)"""
     out = []
     for d in g["decks"]:
-        did = d["did"]
-        deck = _deck(did)
-        if not deck:
+        if not _deck(d["did"]):
             continue
-        dq = mw.col.build_search_string(SearchNode(deck=deck["name"])) + " -is:suspended -is:buried"
-
-        def n(q):
-            return len(mw.col.find_cards(f"{dq} {q}"))
-
-        learn = n("is:learn is:due")
-        due = n("is:review -is:learn prop:due<=0")      # ถึงวันนี้ + ค้างจากวันก่อน
-        t = deck.get("newLimitToday")
-        if t and t.get("today") == today:
-            cap = int(t.get("limit", 0))
-        elif deck.get("newLimit") is not None:
-            cap = int(deck["newLimit"])
-        else:
-            cap = int(_conf(did)["new"]["perDay"])
-        nt = deck.get("newToday", [0, 0])
-        done = nt[1] if nt and nt[0] == today else 0
-        new = max(0, min(n("is:new"), cap - done))
-        out.append((_short(did), int(new), learn, due))
+        out.append((_short(d["did"]),) + _counts(d["did"]))
     return out
 
 
@@ -232,27 +210,40 @@ def due_text(g):
     return f"<table cellspacing=0>{'<tr>' + head + '</tr>'}{body}</table>"
 
 
-def remaining(did):
-    """การ์ดที่ยังถึงเวลาท่องวันนี้ ไม่นับเพดาน reviews/day
-    (การ์ดใหม่นับไม่เกินที่เหลือของ New cards/day)"""
-    d = _deck(did)
-    if not d:
-        return 0
-    node = mw.col.decks.find_deck_in_tree(mw.col.sched.deck_due_tree(), did)
-    if node is None:
-        return 0
+def _counts(did):
+    """(new ที่ท่องได้วันนี้, learn ถึงเวลา, due ทั้งหมด = ถึงวันนี้ + ค้าง) ของ deck (รวม deck ย่อย)
+    ไม่สนเพดาน reviews/day · ไม่นับการ์ดที่ suspend/bury — ใช้นับเหมือนลูกตา"""
+    from anki.collection import SearchNode
+    deck = _deck(did)
+    if not deck:
+        return 0, 0, 0
     today = mw.col.sched.today
-    t = d.get("newLimitToday")
+    dq = mw.col.build_search_string(SearchNode(deck=deck["name"])) + " -is:suspended -is:buried"
+
+    def n(q):
+        return len(mw.col.find_cards(f"{dq} {q}"))
+
+    learn = n("is:learn is:due")
+    due = n("is:review -is:learn prop:due<=0")          # ถึงวันนี้ + ค้างจากวันก่อน
+    t = deck.get("newLimitToday")
     if t and t.get("today") == today:
-        new_cap = int(t.get("limit", 0))
-    elif d.get("newLimit") is not None:
-        new_cap = int(d["newLimit"])
+        cap = int(t.get("limit", 0))
+    elif deck.get("newLimit") is not None:
+        cap = int(deck["newLimit"])
     else:
-        new_cap = int(_conf(did)["new"]["perDay"])
-    nt = d.get("newToday", [0, 0])
-    new_done = nt[1] if nt and nt[0] == today else 0
-    new_left = max(0, min(node.new_uncapped, new_cap - new_done))
-    return int(node.review_uncapped + node.interday_learning_uncapped + new_left)
+        cap = int(_conf(did)["new"]["perDay"])
+    nt = deck.get("newToday", [0, 0])
+    done = nt[1] if nt and nt[0] == today else 0
+    new = max(0, min(n("is:new"), cap - done))
+    return int(new), int(learn), int(due)
+
+
+def remaining(did):
+    """การ์ดที่ยังท่องได้วันนี้ ไม่นับเพดาน reviews/day (นับแบบเดียวกับลูกตา)"""
+    try:
+        return sum(_counts(did))
+    except Exception:
+        return 0
 
 
 def round_of(g):
@@ -317,6 +308,24 @@ def _apply(targets):
         _clear_today(did)
 
 
+def _free_ancestors(live):
+    """deck แม่ (ที่ไม่ได้อยู่ในชุด) เพดานเต็ม → การ์ดในลูกไม่ขึ้น
+    เปิดเพดาน Today only ของ deck แม่ให้พอกับที่เพิ่ม (กลับเป็นปกติเองตี 4)"""
+    in_set = {d["did"] for d in live}
+    need = {}
+    for d in live:
+        name = _deck_name(d["did"]) or ""
+        parts = name.split("::")
+        for i in range(1, len(parts)):
+            anc = mw.col.decks.by_name("::".join(parts[:i]))
+            if anc and anc["id"] not in in_set and not anc.get("dyn"):
+                need[anc["id"]] = need.get(anc["id"], 0) + int(d["step"])
+    for aid, add in need.items():
+        cap = _limit(aid) - done_today(aid)
+        if cap < add:
+            _set_today(aid, done_today(aid) + add)
+
+
 def bump(g):
     """เพดานใหม่ = max(เพดานที่ใช้อยู่, ที่ท่องไปแล้ววันนี้) + step
     กดหนึ่งครั้งได้การ์ดเพิ่มอีก step ใบจริงเสมอ ไม่ว่าจะท่องในโทรศัพท์มาก่อนแค่ไหน"""
@@ -329,6 +338,10 @@ def bump(g):
     global _before_all
     _before_all = None                       # กด ➕ แล้ว ยกเลิกเริ่มใหม่ทุกชุดไม่ได้อีก
     _apply([(d["did"], _next_limit(d)) for d in live])
+    try:
+        _free_ancestors(live)
+    except Exception:
+        pass
     _after_change()
     empty = [_short(d["did"]) for d in live if remaining(d["did"]) == 0]
     tooltip(f"เพดานใหม่ {summary(g)}" + (f" ({', '.join(empty)} หมดแล้ว)" if empty else ""))
