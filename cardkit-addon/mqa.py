@@ -35,7 +35,8 @@ KEYS = {"inline": "mqa_inline", "inline_stealth": "mqa_inline_stealth",
         "mouse_back": "mouse_back_button", "mouse_mid_quote": "mouse_middle_quote",
         "shift_quote": "shift_quote_any_layout",
         "deck_tree": "deck_picker_tree",
-        "mac_menubar_fix": "mac_keep_menubar"}
+        "mac_menubar_fix": "mac_keep_menubar",
+        "mac_emoji_fix": "mac_emoji_picker_fix"}
 
 TAG_NEW = "แยกข้อ::ใหม่"
 TAG_ORIG = "แยกข้อ::ต้นฉบับ"
@@ -54,7 +55,7 @@ def cfg():
 DEFAULT_ON = {"inline", "inline_stealth", "inline_hidebtn", "inline_accordion",
               "click_choice", "choice_noframe", "hover_open", "keep_scroll", "edit_here",
               "mouse_back", "mouse_mid_quote", "shift_quote",
-              "deck_tree", "mac_menubar_fix"}
+              "deck_tree", "mac_menubar_fix", "mac_emoji_fix"}
 
 
 def on(feature):
@@ -818,7 +819,9 @@ OPTIONS = [
      "Choose Deck (ย้าย deck, เลือก deck ตอน Add ฯลฯ) แสดงเป็นต้นไม้ คลิก ▸ หรือกด → ← เพื่อกาง/พับ "
      "· พิมพ์ค้นหาแล้วแสดงชื่อเต็มแบบเดิม", None),
     ("mac_menubar_fix", "Mac: กันแถบเมนูบนสุดหาย",
-     "ถ้าแถบเมนูเหลือแค่ Anki / Edit จะคืนโฟกัสให้หน้าต่างหลักเอง (เฉพาะ Mac)", None),
+     "ถ้าแถบเมนูเหลือแค่ Anki / Edit จะคืนโฟกัสให้หน้าต่างที่ใช้อยู่เอง (เฉพาะ Mac)", None),
+    ("mac_emoji_fix", "Mac: ใส่อีโมจิจากแผงอีโมจิได้",
+     "กด Ctrl+Cmd+Space เลือกอีโมจิ แล้วลงช่องแก้การ์ดได้ (เฉพาะ Mac)", None),
 ]
 
 

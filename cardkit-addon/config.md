@@ -65,3 +65,5 @@
 **deck_picker_open** – (จำเอง) deck ที่กางไว้ในหน้าต่าง Choose Deck
 
 **mac_keep_menubar** – (Mac) ถ้าแถบเมนูบนสุดหายเหลือแค่ Anki / Edit จะคืนโฟกัสให้หน้าต่างหลักเอง (true/false)
+
+**mac_emoji_picker_fix** – (Mac) อีโมจิจากแผง Ctrl+Cmd+Space ลงช่องแก้การ์ดได้ (true/false)

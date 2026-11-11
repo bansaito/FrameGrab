@@ -7,11 +7,12 @@ Mac: แถบเมนูบนสุดหายเหลือแค่ "Anki
 import sys
 
 from aqt import gui_hooks, mw
-from aqt.qt import QApplication, QDialog, Qt, QTimer
+from aqt.qt import QApplication, QDialog, QEvent, QKeyEvent, QObject, Qt, QTimer
 
 from .mqa import on
 
 _timer = None
+_last_real = None          # หน้าต่างจริงล่าสุดที่ใช้อยู่ (หน้าหลัก / Add / Edit / Browse …)
 
 
 def _floating(w):
@@ -33,14 +34,70 @@ def _check():
         if QApplication.activePopupWidget() is not None or QApplication.activeModalWidget() is not None:
             return
         aw = QApplication.activeWindow()
-        if aw is None or _floating(aw):
-            mw.activateWindow()
+        if aw is not None and _floating(aw):
+            # คืนโฟกัสให้หน้าต่างที่ใช้อยู่ก่อนหน้า (ไม่ใช่หน้าหลักเสมอ — เช่นกำลังพิมพ์ใน Add)
+            w = _last_real if (_last_real is not None and _last_real.isVisible()) else mw
+            w.activateWindow()
+        # aw เป็น None = อาจกำลังใช้แผงอีโมจิ/แป้นพิมพ์ของ Mac → ไม่ยุ่ง
     except Exception:
         pass
 
 
 def _soon(*_a):
+    global _last_real
+    try:
+        aw = QApplication.activeWindow()
+        if aw is not None and not _floating(aw):
+            _last_real = aw
+    except Exception:
+        pass
     _timer.start(200)
+
+
+# ---------------------------------------------------------------- อีโมจิจากแผง Mac (Ctrl+Cmd+Space)
+# แผงอีโมจิส่งตัวอักษรมาแบบ "input method" บางทีไปตกที่ตัวหน้าต่าง/ตัว view แทนช่องที่พิมพ์อยู่
+# → ช่องแก้การ์ด (หน้าเว็บ) ไม่ได้รับ · ตัวนี้ส่งต่อให้ช่องที่มีเคอร์เซอร์อยู่จริง
+
+def _web_of(w):
+    try:
+        from aqt.qt import QWebEngineView
+    except Exception:
+        return None
+    n = 0
+    while w is not None and n < 10:
+        if isinstance(w, QWebEngineView):
+            return w
+        w = w.parentWidget() if hasattr(w, "parentWidget") else None
+        n += 1
+    return None
+
+
+class _EmojiFilter(QObject):
+    def eventFilter(self, obj, ev):
+        if ev.type() != QEvent.Type.InputMethod:
+            return False
+        try:
+            if not on("mac_emoji_fix"):
+                return False
+            text = ev.commitString()
+            if not text or ev.preeditString():
+                return False                     # กำลังพิมพ์ไทย/ญี่ปุ่นแบบผสมคำ → ไม่ยุ่ง
+            fw = QApplication.focusWidget()
+            view = _web_of(fw)
+            if view is None:
+                return False
+            target = view.focusProxy() or fw
+            if obj is target:
+                return False                     # ส่งถูกที่อยู่แล้ว
+            for t in (QEvent.Type.KeyPress, QEvent.Type.KeyRelease):
+                QApplication.postEvent(target, QKeyEvent(t, Qt.Key.Key_unknown,
+                                                         Qt.KeyboardModifier.NoModifier, text))
+            return True
+        except Exception:
+            return False
+
+
+_emoji = None
 
 
 def _install():
@@ -51,6 +108,9 @@ def _install():
     _timer.setSingleShot(True)
     _timer.timeout.connect(_check)
     app = QApplication.instance()
+    global _emoji
+    _emoji = _EmojiFilter(mw)
+    app.installEventFilter(_emoji)
     app.focusWindowChanged.connect(_soon)
     app.applicationStateChanged.connect(_soon)
     gui_hooks.state_did_change.append(lambda *_a: _soon())
