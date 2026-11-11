@@ -100,6 +100,116 @@ class _EmojiFilter(QObject):
 _emoji = None
 
 
+# ---- ทางหลัก: ดักที่ระดับ macOS ก่อน Qt ทิ้ง
+# แผงอีโมจิเรียก insertText:replacementRange: ของ QNSView ตอนที่หน้าต่าง Anki ไม่ได้ถือคีย์บอร์ด
+# (แผงแย่งโฟกัสไป) → ช่องแก้การ์ดถูก blur → Qt ไม่ส่งตัวอักษรต่อ (QTBUG-70319)
+# ตัวนี้: ถ้า insertText ไม่ได้มาจากการกดปุ่มจริง และช่องที่ใช้อยู่เป็นหน้าเว็บ → คืนโฟกัส แล้วพิมพ์ให้เอง
+
+_objc = {}
+
+
+def _deliver(text):
+    try:
+        win = QApplication.activeWindow() or _last_real or mw
+        fw = win.focusWidget() if win is not None else None
+        view = _web_of(fw)
+        if view is None:
+            return False
+        win.activateWindow()
+        win.raise_()
+        view.setFocus()
+
+        def send():
+            tgt = view.focusProxy() or view
+            for t in (QEvent.Type.KeyPress, QEvent.Type.KeyRelease):
+                QApplication.postEvent(tgt, QKeyEvent(t, Qt.Key.Key_unknown,
+                                                      Qt.KeyboardModifier.NoModifier, text))
+        QTimer.singleShot(120, send)
+        return True
+    except Exception:
+        return False
+
+
+def _swizzle():
+    if _objc or sys.platform != "darwin":
+        return
+    import ctypes
+    from ctypes import CFUNCTYPE, Structure, c_bool, c_char_p, c_double, c_ulong, c_void_p
+
+    objc = ctypes.cdll.LoadLibrary("/usr/lib/libobjc.A.dylib")
+    objc.objc_getClass.restype = c_void_p
+    objc.objc_getClass.argtypes = [c_char_p]
+    objc.sel_registerName.restype = c_void_p
+    objc.sel_registerName.argtypes = [c_char_p]
+    objc.class_getInstanceMethod.restype = c_void_p
+    objc.class_getInstanceMethod.argtypes = [c_void_p, c_void_p]
+    objc.method_getImplementation.restype = c_void_p
+    objc.method_getImplementation.argtypes = [c_void_p]
+    objc.method_setImplementation.restype = c_void_p
+    objc.method_setImplementation.argtypes = [c_void_p, c_void_p]
+    send = objc.objc_msgSend
+
+    def sel(n):
+        return objc.sel_registerName(n.encode())
+
+    def msg(obj, name, restype=c_void_p, argtypes=(), *args):
+        send.restype = restype
+        send.argtypes = [c_void_p, c_void_p] + list(argtypes)
+        return send(obj, sel(name), *args)
+
+    class NSRange(Structure):
+        _fields_ = [("location", c_ulong), ("length", c_ulong)]
+
+    cls = objc.objc_getClass(b"QNSView")
+    if not cls:
+        return
+    m = objc.class_getInstanceMethod(cls, sel("insertText:replacementRange:"))
+    if not m:
+        return
+    IMP = CFUNCTYPE(None, c_void_p, c_void_p, c_void_p, NSRange)
+    orig = IMP(objc.method_getImplementation(m))
+    app_cls = objc.objc_getClass(b"NSApplication")
+    pi_cls = objc.objc_getClass(b"NSProcessInfo")
+
+    def from_key_press():
+        """กำลังกดปุ่มจริงอยู่ไหม (พิมพ์ปกติ = ใช่ · คลิกในแผงอีโมจิ = ไม่ใช่)"""
+        app = msg(app_cls, "sharedApplication")
+        ev = msg(app, "currentEvent")
+        if not ev:
+            return False
+        if msg(ev, "type", c_ulong) != 10:          # NSEventTypeKeyDown
+            return False
+        now = msg(msg(pi_cls, "processInfo"), "systemUptime", c_double)
+        return (now - msg(ev, "timestamp", c_double)) < 0.4
+
+    def to_str(obj):
+        if msg(obj, "respondsToSelector:", c_bool, [c_void_p], sel("string")):
+            obj = msg(obj, "string")
+        p = msg(obj, "UTF8String", c_char_p)
+        return p.decode("utf-8") if p else ""
+
+    def insert_text(self_, cmd, astr, rng):
+        try:
+            if on("mac_emoji_fix") and astr and not from_key_press():
+                text = to_str(astr)
+                if text and _deliver(text):
+                    return
+        except Exception:
+            pass
+        orig(self_, cmd, astr, rng)
+
+    new = IMP(insert_text)
+    _objc.update(orig=orig, new=new, keep=(NSRange, IMP))   # กันถูกเก็บกวาด
+    objc.method_setImplementation(m, ctypes.cast(new, c_void_p))
+
+
+def _swizzle_safe():
+    try:
+        _swizzle()
+    except Exception:
+        pass
+
+
 def _install():
     global _timer
     if not sys.platform == "darwin" or _timer is not None:
@@ -113,6 +223,8 @@ def _install():
     app.installEventFilter(_emoji)
     app.focusWindowChanged.connect(_soon)
     app.applicationStateChanged.connect(_soon)
+    if on("mac_emoji_fix"):
+        _swizzle_safe()
     gui_hooks.state_did_change.append(lambda *_a: _soon())
     gui_hooks.reviewer_did_show_question.append(lambda *_a: _soon())
 
