@@ -170,3 +170,116 @@ def _hook_clicks(self):
 
 _sd.StudyDeck.redraw = _redraw
 _sd.StudyDeck.eventFilter = _event_filter
+
+
+# ---------------------------------------------------------------- หน้า Import (เมนู Deck เป็นหน้าเว็บ)
+# ทำต้นไม้ในรายการ dropdown ของหน้า Import: คลิก ▸/▾ = กาง/พับ · คลิกชื่อ = เลือก
+
+_IMPORT_JS = r"""
+(function(opened){
+  if (window.__ckDeckTree) return;
+  window.__ckDeckTree = 1;
+  var open = {}; opened.forEach(function(n){ open[n] = 1; });
+  function send(){ var f = window.pycmd || window.bridgeCommand; if (f) f('ck_dtopen:' + JSON.stringify(Object.keys(open))); }
+  function anc(n){ var p = n.split('::'), out = []; for (var i = 1; i < p.length; i++) out.push(p.slice(0, i).join('::')); return out; }
+  function apply(list){
+    var btns = list.__ckBtns, parents = list.__ckParents;
+    btns.forEach(function(b){
+      var n = b.__ckName, hide = anc(n).some(function(a){ return list.__ckHas[a] && !open[a]; });
+      b.style.display = hide ? 'none' : '';
+      var ar = b.querySelector('.ck-ar');
+      if (ar) ar.textContent = parents[n] ? (open[n] ? '▾' : '▸') : '';
+    });
+  }
+  function treeify(list){
+    var btns = Array.prototype.slice.call(list.querySelectorAll('button[role=option]'));
+    if (btns.length < 3 || list.__ckDone) return;
+    var names = btns.map(function(b){ return (b.textContent || '').trim(); });
+    if (!names.some(function(n){ return n.indexOf('::') > 0; })) return;
+    list.__ckDone = 1;
+    var has = {}, parents = {};
+    names.forEach(function(n){ has[n] = 1; anc(n).forEach(function(a){ parents[a] = 1; }); });
+    btns.forEach(function(b, i){
+      var n = names[i], d = n.split('::').length - 1;
+      b.__ckName = n; b.title = n;
+      b.textContent = '';
+      var pad = document.createElement('span'); pad.style.cssText = 'display:inline-block;width:' + (d * 1.4) + 'em;flex:none';
+      var ar = document.createElement('span'); ar.className = 'ck-ar';
+      ar.style.cssText = 'display:inline-block;width:1.3em;flex:none;text-align:center;opacity:.75;cursor:pointer';
+      var lb = document.createElement('span'); lb.textContent = n.split('::').pop();
+      b.appendChild(pad); b.appendChild(ar); b.appendChild(lb);
+    });
+    list.__ckBtns = btns; list.__ckParents = parents; list.__ckHas = has;
+    var act = btns.filter(function(b){ return b.classList.contains('active'); })[0];
+    if (act) anc(act.__ckName).forEach(function(a){ open[a] = 1; });
+    apply(list);
+    if (act) setTimeout(function(){ act.scrollIntoView({block: 'center'}); }, 30);
+  }
+  // คลิกที่ลูกศร: กาง/พับ และกันไม่ให้เมนูปิด/เลือก
+  ['pointerdown','mousedown','mouseup','click'].forEach(function(t){
+    window.addEventListener(t, function(e){
+      var ar = e.target && e.target.closest && e.target.closest('.ck-ar');
+      if (!ar || !ar.textContent) return;
+      e.preventDefault(); e.stopImmediatePropagation(); e.stopPropagation();
+      if (t !== 'click') return;
+      var b = ar.closest('button'), list = b.parentElement;
+      while (list && !list.__ckBtns) list = list.parentElement;
+      if (!list) return;
+      var n = b.__ckName;
+      if (open[n]) delete open[n]; else open[n] = 1;
+      apply(list); send();
+    }, true);
+  });
+  new MutationObserver(function(){
+    document.querySelectorAll('button[role=option]').forEach(function(b){
+      var list = b.parentElement;
+      if (list && !list.__ckDone) treeify(list);
+    });
+  }).observe(document.body, {childList: true, subtree: true});
+})(%s);
+"""
+
+
+def _import_inject(web):
+    try:
+        if not on("deck_tree") or web is None:
+            return
+        import json
+        web.page().runJavaScript(_IMPORT_JS % json.dumps(sorted(_opened())))
+    except Exception:
+        pass
+
+
+def _patch_import():
+    try:
+        from aqt.import_export import import_dialog as _id
+    except Exception:
+        return
+    orig = _id.ImportDialog.__init__
+
+    def init(self, *a, **k):
+        orig(self, *a, **k)
+        try:
+            w = self.web
+            w.loadFinished.connect(lambda ok, w=w: (_import_inject(w),
+                                                    __import__("aqt").qt.QTimer.singleShot(800, lambda: _import_inject(w))))
+        except Exception:
+            pass
+
+    _id.ImportDialog.__init__ = init
+
+
+def _on_js(handled, message, context):
+    if isinstance(message, str) and message.startswith("ck_dtopen:"):
+        try:
+            import json
+            _save_opened(set(json.loads(message[10:])))
+        except Exception:
+            pass
+        return (True, None)
+    return handled
+
+
+_patch_import()
+from aqt import gui_hooks as _gh  # noqa: E402
+_gh.webview_did_receive_js_message.append(_on_js)
