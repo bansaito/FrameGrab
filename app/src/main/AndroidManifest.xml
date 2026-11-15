@@ -34,6 +34,19 @@
             android:taskAffinity="com.v2f.framegrab.viewer"
             android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen" />
 
+        <!-- แตกเฟรมจากวิดีโอ: แชร์วิดีโอจากแกลเลอรี → FrameGrab -->
+        <activity
+            android:name=".VideoFramesActivity"
+            android:exported="true"
+            android:label="แตกเฟรม (FrameGrab)"
+            android:theme="@android:style/Theme.Black.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="video/*" />
+            </intent-filter>
+        </activity>
+
         <activity
             android:name=".CropActivity"
             android:exported="false"

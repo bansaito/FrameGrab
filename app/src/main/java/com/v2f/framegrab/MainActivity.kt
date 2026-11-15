@@ -108,6 +108,8 @@ class MainActivity : Activity() {
         col.addView(reshareBtn, gap(10f))
         viewBtn = button("", 0xFF2A2D3A.toInt()) { startActivity(Intent(this, ViewerActivity::class.java)) }
         col.addView(viewBtn, gap(10f))
+        // แตกเฟรมจากไฟล์วิดีโอในเครื่อง (หรือแชร์วิดีโอจากแกลเลอรีมาที่ FrameGrab)
+        col.addView(button("แตกเฟรมจากวิดีโอในเครื่อง", 0xFF2A2D3A.toInt()) { startActivity(Intent(this, VideoFramesActivity::class.java)) }, gap(10f))
         clearBtn = button("", 0xFF3A2026.toInt()) { FrameStore.confirmClear(this) { refresh() } }
         col.addView(clearBtn, gap(10f))
 

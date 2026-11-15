@@ -28,6 +28,9 @@ object Prefs {
     fun nameOcr(c: Context): Boolean = sp(c).getBoolean("nameOcr", false)
     fun setNameOcr(c: Context, v: Boolean) = sp(c).edit().putBoolean("nameOcr", v).apply()
     // ผลอ่านชื่อจากภาพครั้งล่าสุด (แสดงในหน้าตั้งค่า ไว้ดูว่าทำไมได้/ไม่ได้ชื่อ)
+    // แตกเฟรมจากวิดีโอ: ทุกกี่วินาที
+    fun extractEvery(c: Context): Double = sp(c).getFloat("extractEvery", 0.2f).toDouble().let { Math.round(it * 10) / 10.0 }
+    fun setExtractEvery(c: Context, v: Double) = sp(c).edit().putFloat("extractEvery", v.toFloat()).apply()
     fun lastOcr(c: Context): String? = sp(c).getString("lastOcr", null)
     fun setLastOcr(c: Context, v: String) = sp(c).edit().putString("lastOcr", v).apply()
     fun setNameFromScreen(c: Context, v: Boolean) = sp(c).edit().putBoolean("nameFromScreen", v).apply()
