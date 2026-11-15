@@ -42,6 +42,7 @@ class MainActivity : Activity() {
     private lateinit var intervalBtn: TextView
     private lateinit var maxBtn: TextView
     private lateinit var crashBox: TextView
+    private lateinit var nameNote: TextView
     private lateinit var cropBtn: TextView
     private lateinit var clearBtn: TextView
     private lateinit var appsPermBtn: TextView
@@ -201,7 +202,18 @@ class MainActivity : Activity() {
             Prefs.setReplaySec(this, arr[(arr.indexOf(cur) + 1).let { if (it <= 0 || it >= arr.size) 0 else it }]); refresh()
         }
         col.addView(replayBtn, gap(8f))
-        col.addView(box("ใส่ชื่อบัญชีจากหน้าจอในชื่อไฟล์ (ปิด = FrameGrab-วันที่-เลขรัน)", Prefs.nameFromScreen(this)) { Prefs.setNameFromScreen(this, it) }, gap(8f))
+        col.addView(box("ใส่ชื่อบัญชีจากหน้าจอในชื่อไฟล์ (ปิด = FrameGrab-วันที่-เลขรัน)", Prefs.nameFromScreen(this)) {
+            Prefs.setNameFromScreen(this, it)
+            if (it && HoldService.instance == null) askHoldPermission()
+            refresh()
+        }, gap(8f))
+        // อ่านชื่อบัญชีต้องใช้สิทธิ์การช่วยเหลือพิเศษ — ไม่ได้เปิด/ระบบปิดไป = ชื่อไฟล์จะเป็น FrameGrab-...
+        nameNote = TextView(this).apply {
+            setTextColor(0xFFFFB74D.toInt()); textSize = 13f
+            setPadding(dp(32f), 0, 0, dp(4f))
+            setOnClickListener { askHoldPermission() }
+        }
+        col.addView(nameNote)
         col.addView(box("📋 เมนูคัดลอกข้อความบนจอ (แคปชัน/คอมเมนต์ที่กดคัดลอกไม่ได้)", Prefs.copyText(this)) {
             Prefs.setCopyText(this, it)
             if (it && !HoldService.isEnabled(this)) askHoldPermission()
@@ -281,6 +293,11 @@ class MainActivity : Activity() {
             usageOk -> "✅ ปุ่มลอยจะซ่อนเองเมื่อออกจาก TikTok / IG / Facebook"
             else -> "ต้องอนุญาตก่อน แอปถึงจะรู้ว่าตอนนี้เปิดแอปไหนอยู่ (ระหว่างนี้ปุ่มลอยจะแสดงทุกแอป)"
         }
+        val holdOn = HoldService.isEnabled(this)
+        val holdRunning = HoldService.instance != null
+        nameNote.visibility = if (Prefs.nameFromScreen(this) && !holdRunning) android.view.View.VISIBLE else android.view.View.GONE
+        nameNote.text = if (holdOn) "⚠️ การช่วยเหลือพิเศษของ FrameGrab ถูกระบบหยุดไว้ ชื่อไฟล์จะเป็น FrameGrab-… — แตะเพื่อปิดแล้วเปิดใหม่"
+            else "⚠️ ต้องเปิดการช่วยเหลือพิเศษให้ FrameGrab ก่อน ถึงจะอ่านชื่อบัญชีได้ (ตอนนี้ชื่อไฟล์จะเป็น FrameGrab-…) — แตะเพื่อเปิด"
         val overlayOk = Settings.canDrawOverlays(this)
         status.text = when {
             CaptureService.running && CaptureService.parked -> "💤 ปุ่มลอยซ่อนอยู่ — กด ▶ เพื่อเลือกแอปที่จะแชร์แล้วเปิดปุ่มลอย"
@@ -349,7 +366,7 @@ class MainActivity : Activity() {
     private fun askHoldPermission() {
         android.app.AlertDialog.Builder(this)
             .setTitle("ต้องเปิดสิทธิ์ครั้งเดียว")
-            .setMessage("ให้ FrameGrab กดค้างหน้าจอแทนคุณ / อ่านข้อความบนจอให้คัดลอกได้:\n\n" +
+            .setMessage("ให้ FrameGrab อ่านชื่อบัญชีบนจอมาตั้งชื่อไฟล์ / กดค้างหน้าจอแทนคุณ / อ่านข้อความบนจอให้คัดลอกได้:\n\n" +
                 "1) แตะ \"เปิดการช่วยเหลือพิเศษ\" → หา FrameGrab → เปิด\n\n" +
                 "ถ้าเปิดไม่ได้ (ขึ้นว่าการตั้งค่าถูกจำกัด):\n" +
                 "2) แตะ \"ข้อมูลแอป\" → ⋮ มุมขวาบน → \"อนุญาตการตั้งค่าที่จำกัด\" แล้วทำข้อ 1 ใหม่")

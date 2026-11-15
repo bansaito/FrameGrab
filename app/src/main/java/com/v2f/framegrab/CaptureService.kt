@@ -407,6 +407,14 @@ class CaptureService : Service() {
     }
 
     /** เริ่มกดค้างหน้าจอ (ถ้าเปิดโหมดไว้และเปิดสิทธิ์แล้ว) คืน true ถ้ากดอยู่ */
+    // ตั้งให้ใส่ชื่อบัญชีในชื่อไฟล์ แต่การช่วยเหลือพิเศษไม่ทำงาน → บอกครั้งเดียวต่อการเปิดปุ่มลอย
+    private var warnedNoName = false
+    private fun warnNoNameService() {
+        if (warnedNoName || !Prefs.nameFromScreen(this) || HoldService.instance != null) return
+        warnedNoName = true
+        android.widget.Toast.makeText(this, "อ่านชื่อบัญชีไม่ได้: ยังไม่ได้เปิดการช่วยเหลือพิเศษให้ FrameGrab (ชื่อไฟล์จะเป็น FrameGrab-…)", android.widget.Toast.LENGTH_LONG).show()
+    }
+
     private fun startHold(enabled: Boolean): Boolean {
         val hs = HoldService.instance ?: return false
         if (!enabled) return false
@@ -421,6 +429,7 @@ class CaptureService : Service() {
         hideOverlay()
         // อ่านชื่อบัญชีบนจอก่อน (ก่อนกดค้าง ซึ่งจะซ่อนชื่อใน IG) ไว้ตั้งชื่อไฟล์
         val shotUser = try { HoldService.instance?.findUsername() } catch (e: Exception) { null }
+        warnNoNameService()
         // โหมดกดค้าง (ซ่อนชื่อโปรไฟล์) ใช้เฉพาะ Instagram
         val inIg = (HoldService.currentPkg ?: AppWatch.foreground(this)) == "com.instagram.android"
         val held = startHold(Prefs.holdShot(this) && inIg)
