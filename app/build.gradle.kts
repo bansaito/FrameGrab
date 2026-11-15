@@ -11,8 +11,8 @@ android {
         applicationId = "com.v2f.framegrab"
         minSdk = 29
         targetSdk = 34
-        versionCode = 78
-        versionName = "8.8.2"
+        versionCode = 79
+        versionName = "8.9"
         // ใส่เฉพาะไลบรารีของ ARM 64 บิต (S23 Ultra / Xiaomi 14T และมือถือรุ่นใหม่เกือบทั้งหมด) แอปจะเล็กลงมาก
         ndk { abiFilters += "arm64-v8a" }
     }
@@ -41,4 +41,6 @@ android {
 dependencies {
     // อ่านชื่อบัญชีจากภาพ (OCR ตัวอังกฤษ) — โมเดลอยู่ในแอป ใช้ได้แม้ไม่มี Google Play services / ไม่มีเน็ต
     implementation("com.google.mlkit:text-recognition:16.0.1")
+    // อ่านชื่อภาษาไทย (Tesseract) — ไฟล์ภาษา tha/eng ดาวน์โหลดตอน build (ดู .github/workflows/build.yml)
+    implementation("cz.adaptech.tesseract4android:tesseract4android:4.9.0")
 }

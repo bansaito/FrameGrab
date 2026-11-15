@@ -10,6 +10,7 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        maven("https://jitpack.io")   // Tesseract4Android (อ่านตัวหนังสือภาษาไทย)
     }
 }
 rootProject.name = "FrameGrab"

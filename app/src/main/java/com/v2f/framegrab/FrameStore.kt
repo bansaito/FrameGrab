@@ -57,7 +57,9 @@ object FrameStore {
     /** ตัดอักขระที่ใช้ในชื่อไฟล์ไม่ได้ (รวมอีโมจิ) ยาวไม่เกิน 40 ตัว */
     fun cleanName(s: String?): String? {
         if (s == null) return null
-        val t = s.filter { it.isLetterOrDigit() || it == '.' || it == '_' || it == '-' || it == ' ' }
+        // สระ/วรรณยุกต์ไทย (ั ิ ่ ้ ฯลฯ) เป็น "เครื่องหมายกำกับ" ไม่ใช่ตัวอักษร — ต้องเก็บไว้ ไม่งั้นชื่อไทยเพี้ยน
+        val t = s.filter { it.isLetterOrDigit() || it == '.' || it == '_' || it == '-' || it == ' ' ||
+                Character.getType(it) == Character.NON_SPACING_MARK.toInt() || Character.getType(it) == Character.COMBINING_SPACING_MARK.toInt() }
             .trim().replace(Regex("\\s+"), "_").trim('.', '_', '-').take(40)
         return t.ifEmpty { null }
     }

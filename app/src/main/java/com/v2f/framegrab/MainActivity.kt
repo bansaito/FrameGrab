@@ -43,6 +43,7 @@ class MainActivity : Activity() {
     private lateinit var maxBtn: TextView
     private lateinit var crashBox: TextView
     private lateinit var nameNote: TextView
+    private lateinit var ocrNote: TextView
     private lateinit var cropBtn: TextView
     private lateinit var clearBtn: TextView
     private lateinit var appsPermBtn: TextView
@@ -214,9 +215,11 @@ class MainActivity : Activity() {
             setOnClickListener { askHoldPermission() }
         }
         col.addView(nameNote)
-        col.addView(box("อ่านชื่อจากภาพแทน เมื่อการช่วยเหลือพิเศษไม่ทำงาน (เฉพาะชื่ออังกฤษ/ตัวเลข)", Prefs.nameOcr(this)) {
+        col.addView(box("อ่านชื่อจากภาพแทน เมื่อการช่วยเหลือพิเศษไม่ทำงาน (ไทย/อังกฤษ)", Prefs.nameOcr(this)) {
             Prefs.setNameOcr(this, it); refresh()
         }, gap(4f))
+        ocrNote = TextView(this).apply { setTextColor(0xFF9AA0A6.toInt()); textSize = 12f; setPadding(dp(32f), 0, 0, dp(4f)) }
+        col.addView(ocrNote)
         col.addView(box("📋 เมนูคัดลอกข้อความบนจอ (แคปชัน/คอมเมนต์ที่กดคัดลอกไม่ได้)", Prefs.copyText(this)) {
             Prefs.setCopyText(this, it)
             if (it && !HoldService.isEnabled(this)) askHoldPermission()
@@ -301,6 +304,9 @@ class MainActivity : Activity() {
         nameNote.visibility = if (Prefs.nameFromScreen(this) && !holdRunning && !Prefs.nameOcr(this)) android.view.View.VISIBLE else android.view.View.GONE
         nameNote.text = if (holdOn) "⚠️ การช่วยเหลือพิเศษของ FrameGrab ถูกระบบหยุดไว้ ชื่อไฟล์จะเป็น FrameGrab-… — แตะเพื่อปิดแล้วเปิดใหม่"
             else "⚠️ ต้องเปิดการช่วยเหลือพิเศษให้ FrameGrab ก่อน ถึงจะอ่านชื่อบัญชีได้ (ตอนนี้ชื่อไฟล์จะเป็น FrameGrab-…) — แตะเพื่อเปิด"
+        val lastOcr = Prefs.lastOcr(this)
+        ocrNote.visibility = if (Prefs.nameOcr(this) && lastOcr != null) android.view.View.VISIBLE else android.view.View.GONE
+        ocrNote.text = "ครั้งล่าสุด: ${lastOcr ?: ""}"
         val overlayOk = Settings.canDrawOverlays(this)
         status.text = when {
             CaptureService.running && CaptureService.parked -> "💤 ปุ่มลอยซ่อนอยู่ — กด ▶ เพื่อเลือกแอปที่จะแชร์แล้วเปิดปุ่มลอย"

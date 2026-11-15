@@ -27,6 +27,9 @@ object Prefs {
     // อ่านชื่อจากภาพ (OCR) เมื่อการช่วยเหลือพิเศษไม่ทำงาน — ปิดเป็นค่าเริ่มต้น
     fun nameOcr(c: Context): Boolean = sp(c).getBoolean("nameOcr", false)
     fun setNameOcr(c: Context, v: Boolean) = sp(c).edit().putBoolean("nameOcr", v).apply()
+    // ผลอ่านชื่อจากภาพครั้งล่าสุด (แสดงในหน้าตั้งค่า ไว้ดูว่าทำไมได้/ไม่ได้ชื่อ)
+    fun lastOcr(c: Context): String? = sp(c).getString("lastOcr", null)
+    fun setLastOcr(c: Context, v: String) = sp(c).edit().putString("lastOcr", v).apply()
     fun setNameFromScreen(c: Context, v: Boolean) = sp(c).edit().putBoolean("nameFromScreen", v).apply()
     /** ⟲ บันทึกย้อนหลังกี่วินาที */
     val REPLAY_SECS = intArrayOf(15, 30, 60, 120)
