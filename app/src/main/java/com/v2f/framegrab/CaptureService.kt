@@ -410,7 +410,7 @@ class CaptureService : Service() {
     // ตั้งให้ใส่ชื่อบัญชีในชื่อไฟล์ แต่การช่วยเหลือพิเศษไม่ทำงาน → บอกครั้งเดียวต่อการเปิดปุ่มลอย
     private var warnedNoName = false
     private fun warnNoNameService() {
-        if (warnedNoName || !Prefs.nameFromScreen(this) || HoldService.instance != null) return
+        if (warnedNoName || !Prefs.nameFromScreen(this) || HoldService.instance != null || Prefs.nameOcr(this)) return
         warnedNoName = true
         android.widget.Toast.makeText(this, "อ่านชื่อบัญชีไม่ได้: ยังไม่ได้เปิดการช่วยเหลือพิเศษให้ FrameGrab (ชื่อไฟล์จะเป็น FrameGrab-…)", android.widget.Toast.LENGTH_LONG).show()
     }
@@ -449,7 +449,8 @@ class CaptureService : Service() {
                 val out = Cropper.apply(bmp, cropRectFor(bmp))
                 try {
                     val f = FrameStore.save(this, out, 's', msOfDay)
-                    FrameStore.setOwner(this, f, shotUser)
+                    // ไม่ได้ชื่อจากการช่วยเหลือพิเศษ: อ่านจากภาพเต็มจอแทน (โหมดกดค้างซ่อนชื่อไปแล้ว อ่านไม่ได้)
+                    FrameStore.setOwner(this, f, shotUser ?: if (!held) NameOcr.find(this, bmp) else null)
                     ok = true
                     // บันทึกลงแกลเลอรีอัตโนมัติ (ปิดได้ในแอป)
                     if (Prefs.autoSaveSingle(this)) saved = FrameStore.saveFileToGallery(this, f, FrameStore.count(this))
@@ -506,6 +507,11 @@ class CaptureService : Service() {
             if (!replay) { val end = hiddenAt + 500; while (latestAt <= hiddenAt + 60 && SystemClock.uptimeMillis() < end) SystemClock.sleep(10) }
             val b = grabBitmap()
             val rect = if (b != null) cropRectFor(b) else android.graphics.Rect(0, 0, rd.width, rd.height)
+            // ไม่ได้ชื่อจากการช่วยเหลือพิเศษ: อ่านจากภาพเต็มจอแทน (แยกเธรด ไม่ให้การเริ่มอัดช้า)
+            if (!replay && videoUser == null && b != null && NameOcr.enabled(this)) {
+                val ob = b.copy(b.config ?: Bitmap.Config.ARGB_8888, false)
+                Thread { if (videoUser == null) videoUser = NameOcr.find(this, ob); ob.recycle() }.start()
+            }
             b?.recycle()
             recRect = rect; recBmpW = rd.width; recBmpH = rd.height
             // ปลดภาพจอออกจาก ImageReader ก่อน (ตัวอัดจะวาดภาพเต็มจอส่งต่อให้เอง)
@@ -588,6 +594,7 @@ class CaptureService : Service() {
         closeMenu()
         toast("💾 กำลังเก็บ ${Prefs.replaySec(this)} วิล่าสุด…")
         videoUser = try { HoldService.instance?.findUsername() } catch (x: Exception) { null }
+        if (videoUser == null && NameOcr.enabled(this)) work.post { grabBitmap()?.let { b -> videoUser = NameOcr.find(this, b); b.recycle() } }
         e.saveReplay { f -> if (f != null) videoListener.onFile(f) else main.post { toast("ยังไม่มีภาพให้เก็บ") } }
     }
 
@@ -632,6 +639,7 @@ class CaptureService : Service() {
             // วัดกรอบจากภาพแรก (ใช้ทั้งคลิป) แล้ววางปุ่ม ■ ไว้นอกกรอบถ้าทำได้
             grabBitmap()?.let { b ->
                 recRect = cropRectFor(b); recBmpW = b.width; recBmpH = b.height
+                if (FrameStore.ownerOf(this, java.io.File("x_c_")) == null) NameOcr.find(this, b)?.let { FrameStore.setRecordingOwner(this, it) }
                 b.recycle()
             }
             if (showStop) {

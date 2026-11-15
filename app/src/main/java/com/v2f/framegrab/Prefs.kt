@@ -24,6 +24,9 @@ object Prefs {
     fun setAutoStop(c: Context, v: Boolean) = sp(c).edit().putBoolean("autoStop", v).apply()
     /** ใส่ชื่อบัญชีจากหน้าจอในชื่อไฟล์ (ปิดได้ถ้าได้ชื่อผิด) */
     fun nameFromScreen(c: Context): Boolean = sp(c).getBoolean("nameFromScreen", true)
+    // อ่านชื่อจากภาพ (OCR) เมื่อการช่วยเหลือพิเศษไม่ทำงาน — ปิดเป็นค่าเริ่มต้น
+    fun nameOcr(c: Context): Boolean = sp(c).getBoolean("nameOcr", false)
+    fun setNameOcr(c: Context, v: Boolean) = sp(c).edit().putBoolean("nameOcr", v).apply()
     fun setNameFromScreen(c: Context, v: Boolean) = sp(c).edit().putBoolean("nameFromScreen", v).apply()
     /** ⟲ บันทึกย้อนหลังกี่วินาที */
     val REPLAY_SECS = intArrayOf(15, 30, 60, 120)

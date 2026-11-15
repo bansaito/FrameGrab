@@ -214,6 +214,9 @@ class MainActivity : Activity() {
             setOnClickListener { askHoldPermission() }
         }
         col.addView(nameNote)
+        col.addView(box("อ่านชื่อจากภาพแทน เมื่อการช่วยเหลือพิเศษไม่ทำงาน (เฉพาะชื่ออังกฤษ/ตัวเลข)", Prefs.nameOcr(this)) {
+            Prefs.setNameOcr(this, it); refresh()
+        }, gap(4f))
         col.addView(box("📋 เมนูคัดลอกข้อความบนจอ (แคปชัน/คอมเมนต์ที่กดคัดลอกไม่ได้)", Prefs.copyText(this)) {
             Prefs.setCopyText(this, it)
             if (it && !HoldService.isEnabled(this)) askHoldPermission()
@@ -295,7 +298,7 @@ class MainActivity : Activity() {
         }
         val holdOn = HoldService.isEnabled(this)
         val holdRunning = HoldService.instance != null
-        nameNote.visibility = if (Prefs.nameFromScreen(this) && !holdRunning) android.view.View.VISIBLE else android.view.View.GONE
+        nameNote.visibility = if (Prefs.nameFromScreen(this) && !holdRunning && !Prefs.nameOcr(this)) android.view.View.VISIBLE else android.view.View.GONE
         nameNote.text = if (holdOn) "⚠️ การช่วยเหลือพิเศษของ FrameGrab ถูกระบบหยุดไว้ ชื่อไฟล์จะเป็น FrameGrab-… — แตะเพื่อปิดแล้วเปิดใหม่"
             else "⚠️ ต้องเปิดการช่วยเหลือพิเศษให้ FrameGrab ก่อน ถึงจะอ่านชื่อบัญชีได้ (ตอนนี้ชื่อไฟล์จะเป็น FrameGrab-…) — แตะเพื่อเปิด"
         val overlayOk = Settings.canDrawOverlays(this)
