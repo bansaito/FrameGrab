@@ -555,7 +555,7 @@ class MainActivity : Activity() {
         }
     }
 
-    /** คลิปล่าสุดในเครื่อง: ตาราง 4 ช่อง × 2 แถว (ภาพตัวอย่าง + ความยาว + เวลาที่ได้มา) แตะ = แตกเลย */
+    /** คลิปล่าสุดในเครื่อง: ตาราง 4 ช่อง × 2 แถว (ภาพตัวอย่าง + ความยาว) แตะ = แตกเลย */
     private fun fillVideos() {
         val grid = videoGrid
         thumbPool.execute {
@@ -573,7 +573,6 @@ class MainActivity : Activity() {
             ui.post {
                 grid.removeAllViews()
                 grid.visibility = if (list.isEmpty()) android.view.View.GONE else android.view.View.VISIBLE
-                val today = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US).format(java.util.Date())
                 var row: LinearLayout? = null
                 for ((i, v) in list.withIndex()) {
                     if (i % 4 == 0) {
@@ -592,13 +591,6 @@ class MainActivity : Activity() {
                     cell.addView(label(String.format(java.util.Locale.US, "%d:%02d", sec / 60, sec % 60), 11f, Color.WHITE).apply {
                         setShadowLayer(4f, 0f, 1f, Color.BLACK); setPadding(0, 0, dp(6f), dp(4f))
                     }, android.widget.FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.END))
-                    // วันนี้ = เวลา, วันอื่น = วันที่
-                    val d = java.util.Date(v.addedSec * 1000)
-                    val whenTxt = if (java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US).format(d) == today)
-                        java.text.SimpleDateFormat("HH:mm", java.util.Locale.US).format(d) else java.text.SimpleDateFormat("d/M", java.util.Locale.US).format(d)
-                    cell.addView(label(whenTxt, 10.5f, Color.WHITE).apply {
-                        setShadowLayer(4f, 0f, 1f, Color.BLACK); setPadding(dp(6f), 0, 0, dp(4f))
-                    }, android.widget.FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.START))
                     row!!.addView(cell, LinearLayout.LayoutParams(0, -2, 1f).apply { if (i % 4 > 0) marginStart = dp(6f) })
                     thumbPool.execute {
                         val b = try { contentResolver.loadThumbnail(v.uri, android.util.Size(dp(120f), dp(160f)), null) } catch (e: Exception) { null }
