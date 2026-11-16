@@ -152,6 +152,8 @@ class VideoFramesActivity : Activity() {
                 if (frameCount > 0) fps = frameCount * 1000.0 / durMs
                 mmr = r
                 crop = findCrop(r)
+                // ไม่ได้ชื่อจากชื่อไฟล์: อ่านจากภาพในคลิป 3 จุด (ลายน้ำ @ชื่อ ของ TikTok / ชื่อบนจอในคลิปที่อัดหน้าจอ) เอาชื่อที่เจอบ่อยสุด
+                if (owner == null) owner = nameFromFrames(r)
                 main.post {
                     seek.max = maxOf(0, lastIndex())
                     setEnabledUi(true)
@@ -175,6 +177,18 @@ class VideoFramesActivity : Activity() {
 
     private fun lastIndex() = if (frameCount > 0) frameCount - 1 else (durMs / 33).toInt()
     private fun timeOf(i: Int): Long = if (frameCount > 0) (i * 1000.0 / fps).toLong() else i * 33L
+
+    private fun nameFromFrames(r: MediaMetadataRetriever): String? {
+        if (!Prefs.nameFromScreen(this)) return null
+        main.post { info.text = "กำลังอ่านชื่อบัญชีจากคลิป…" }
+        val found = ArrayList<String>()
+        for (f in doubleArrayOf(0.15, 0.5, 0.85)) {
+            val b = r.getFrameAtTime((durMs * f * 1000).toLong(), MediaMetadataRetriever.OPTION_CLOSEST_SYNC) ?: continue
+            NameOcr.fromVideoFrame(this, b)?.let { found.add(it) }
+            b.recycle()
+        }
+        return found.groupingBy { it }.eachCount().maxByOrNull { it.value }?.key
+    }
 
     /** ขอบดำของวิดีโอ (เช่น วิดีโอแนวนอนที่ใส่ขอบดำบน-ล่าง) — รวมพื้นที่ภาพจาก 3 จุดของคลิป กันฉากมืดถูกตัดผิด */
     private fun findCrop(r: MediaMetadataRetriever): Rect? {

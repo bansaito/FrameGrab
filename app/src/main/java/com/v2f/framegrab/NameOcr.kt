@@ -49,6 +49,26 @@ object NameOcr {
         return res
     }
 
+    private val AT = Regex("""@([A-Za-z0-9._]{2,30})""")
+
+    /**
+     * ชื่อบัญชีจาก "ภาพในคลิป" (ใช้ตอนแตกเฟรมจากไฟล์วิดีโอ) — ไม่ต้องเปิดตัวเลือกอ่านจากภาพ แค่เปิดใส่ชื่อบัญชีในชื่อไฟล์
+     *  1) ลายน้ำ TikTok "@ชื่อ" ที่อยู่ตรงไหนของภาพก็ได้ (คลิปที่ดาวน์โหลดจาก TikTok)
+     *  2) ชื่อตามตำแหน่งปกติ (คลิปที่อัดหน้าจอ TikTok / IG) รวมชื่อภาษาไทย
+     */
+    fun fromVideoFrame(c: Context, bmp: Bitmap): String? {
+        if (!Prefs.nameFromScreen(c)) return null
+        return try {
+            val text = Tasks.await(recognizer.process(InputImage.fromBitmap(bmp, 0)), 4000, TimeUnit.MILLISECONDS)
+            for (b in text.textBlocks) for (l in b.lines) {
+                val m = AT.find(l.text) ?: continue
+                val n = m.groupValues[1].trimEnd('.')
+                if (n.any { it.isLetter() } && n.lowercase().replace(".", "") !in NOISE) return n
+            }
+            read(c, bmp, StringBuilder())
+        } catch (e: Throwable) { null }
+    }
+
     private fun read(c: Context, full: Bitmap, dbg: StringBuilder): String? {
         // ครั้งแรกต้องโหลดโมเดล อาจช้า — ให้เวลา 4 วิ
         val text = Tasks.await(recognizer.process(InputImage.fromBitmap(full, 0)), 4000, TimeUnit.MILLISECONDS)
