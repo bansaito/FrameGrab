@@ -26,11 +26,13 @@ object FrameStore {
     }
 
     fun dir(c: Context): File = File(c.filesDir, "frames").apply { mkdirs() }
+    /** video = true: ชุดภาพที่แตกจากไฟล์วิดีโอ เก็บแยกจากภาพที่จับจากจอ (แตกวิดีโอใหม่ = ล้างชุดนี้เอง ภาพจากจอไม่หาย) */
+    fun dir(c: Context, video: Boolean): File = if (video) File(c.filesDir, "vframes").apply { mkdirs() } else dir(c)
 
     private val NAME = Regex("""f_(\d+)_([cs])_(\d+)\.jpg""")
 
-    fun list(c: Context): List<Frame> =
-        (dir(c).listFiles() ?: emptyArray())
+    fun list(c: Context, video: Boolean = false): List<Frame> =
+        (dir(c, video).listFiles() ?: emptyArray())
             .mapNotNull { f ->
                 NAME.matchEntire(f.name)?.let { m ->
                     Frame(f, m.groupValues[1].toInt(), m.groupValues[2][0], m.groupValues[3].toLong())
@@ -38,19 +40,20 @@ object FrameStore {
             }
             .sortedBy { it.index }
 
-    fun count(c: Context): Int = list(c).size
+    fun count(c: Context, video: Boolean = false): Int = list(c, video).size
 
     // ---------- ชื่อบัญชีของภาพ (ไว้ตั้งชื่อไฟล์ตอนบันทึกลงแกลเลอรี) ----------
-    private fun ownerFile(c: Context) = File(dir(c), ".owners")
-    @Synchronized private fun owners(c: Context): MutableMap<String, String> =
-        ownerFile(c).takeIf { it.isFile }?.readLines()?.mapNotNull { l -> l.split('\t', limit = 2).takeIf { it.size == 2 }?.let { it[0] to it[1] } }
+    private fun ownerFile(d: File) = File(d, ".owners")
+    @Synchronized private fun owners(d: File): MutableMap<String, String> =
+        ownerFile(d).takeIf { it.isFile }?.readLines()?.mapNotNull { l -> l.split('\t', limit = 2).takeIf { it.size == 2 }?.let { it[0] to it[1] } }
             ?.toMap(LinkedHashMap()) ?: LinkedHashMap()
     @Synchronized fun setOwner(c: Context, f: File, user: String?) {
         if (user.isNullOrBlank()) return
-        val m = owners(c); m[f.name] = user
-        ownerFile(c).writeText(m.entries.joinToString("\n") { "${it.key}\t${it.value}" })
+        val d = f.parentFile ?: dir(c)
+        val m = owners(d); m[f.name] = user
+        ownerFile(d).writeText(m.entries.joinToString("\n") { "${it.key}\t${it.value}" })
     }
-    fun ownerOf(c: Context, f: File): String? = owners(c).let { m -> m[f.name] ?: if (f.name.contains("_c_")) m["*c"] else null }
+    fun ownerOf(c: Context, f: File): String? = owners(f.parentFile ?: dir(c)).let { m -> m[f.name] ?: if (f.name.contains("_c_")) m["*c"] else null }
     /** ภาพอัดต่อเนื่องทั้งชุดเป็นของคนเดียวกัน: เก็บครั้งเดียว */
     fun setRecordingOwner(c: Context, user: String?) { setOwner(c, File(dir(c), "*c"), user) }
 
@@ -76,23 +79,27 @@ object FrameStore {
     }
 
     // ---------- จำว่าภาพไหนบันทึกลงแกลเลอรีแล้ว (ไฟล์ .saved ในโฟลเดอร์เดียวกัน ล้างภาพ = ล้างด้วย) ----------
-    private fun markFile(c: Context) = File(dir(c), ".saved")
-    @Synchronized fun savedNames(c: Context): MutableSet<String> =
-        markFile(c).takeIf { it.isFile }?.readLines()?.filter { it.isNotBlank() }?.toMutableSet() ?: mutableSetOf()
-    fun isSaved(c: Context, f: File): Boolean = f.name in savedNames(c)
+    private fun markFile(d: File) = File(d, ".saved")
+    private fun names(d: File): MutableSet<String> =
+        markFile(d).takeIf { it.isFile }?.readLines()?.filter { it.isNotBlank() }?.toMutableSet() ?: mutableSetOf()
+    @Synchronized fun savedNames(c: Context, video: Boolean = false): MutableSet<String> = names(dir(c, video))
+    fun isSaved(c: Context, f: File): Boolean = f.name in names(f.parentFile ?: dir(c))
     @Synchronized fun markSaved(c: Context, files: Collection<File>) {
-        val s = savedNames(c); s.addAll(files.map { it.name }); markFile(c).writeText(s.joinToString("\n"))
+        files.groupBy { it.parentFile ?: dir(c) }.forEach { (d, fs) ->
+            val s = names(d); s.addAll(fs.map { it.name }); markFile(d).writeText(s.joinToString("\n"))
+        }
     }
     @Synchronized fun unmark(c: Context, f: File) {
-        val s = savedNames(c); if (s.remove(f.name)) markFile(c).writeText(s.joinToString("\n"))
+        val d = f.parentFile ?: dir(c)
+        val s = names(d); if (s.remove(f.name)) markFile(d).writeText(s.joinToString("\n"))
     }
 
-    fun clear(c: Context) {
-        dir(c).listFiles()?.forEach { it.delete() }
+    fun clear(c: Context, video: Boolean = false) {
+        dir(c, video).listFiles()?.forEach { it.delete() }
     }
 
     /** ขนาดรวมของภาพทั้งหมด (ไบต์) */
-    fun totalBytes(c: Context): Long = dir(c).listFiles()?.sumOf { it.length() } ?: 0L
+    fun totalBytes(c: Context, video: Boolean = false): Long = dir(c, video).listFiles()?.sumOf { it.length() } ?: 0L
 
     fun sizeLabel(bytes: Long): String = when {
         bytes >= 1024L * 1024 -> String.format(Locale.US, "%.1f MB", bytes / 1024.0 / 1024.0)
@@ -101,17 +108,17 @@ object FrameStore {
     }
 
     /** ถามยืนยันแล้วล้างภาพทั้งหมดในแอป (ภาพที่บันทึกลงแกลเลอรีแล้วไม่ถูกลบ) */
-    fun confirmClear(a: android.app.Activity, onDone: () -> Unit) {
-        val n = count(a)
+    fun confirmClear(a: android.app.Activity, video: Boolean = false, onDone: () -> Unit) {
+        val n = count(a, video)
         if (n == 0) {
             android.widget.Toast.makeText(a, "ไม่มีภาพให้ล้าง", android.widget.Toast.LENGTH_SHORT).show()
             return
         }
         android.app.AlertDialog.Builder(a)
             .setTitle("ล้างภาพทั้งหมด $n ภาพ?")
-            .setMessage("ลบภาพที่จับไว้ในแอป (${sizeLabel(totalBytes(a))})\nภาพที่บันทึกลงแกลเลอรีแล้วจะยังอยู่")
+            .setMessage("ลบภาพที่จับไว้ในแอป (${sizeLabel(totalBytes(a, video))})\nภาพที่บันทึกลงแกลเลอรีแล้วจะยังอยู่")
             .setPositiveButton("ล้างทั้งหมด") { _, _ ->
-                clear(a)
+                clear(a, video)
                 android.widget.Toast.makeText(a, "🧹 ล้างภาพแล้ว", android.widget.Toast.LENGTH_SHORT).show()
                 onDone()
             }
@@ -120,9 +127,9 @@ object FrameStore {
     }
 
     @Synchronized
-    fun save(c: Context, bmp: Bitmap, kind: Char, tMs: Long, quality: Int = 92): File {
-        val next = (list(c).maxOfOrNull { it.index } ?: 0) + 1
-        val f = File(dir(c), String.format(Locale.US, "f_%06d_%c_%09d.jpg", next, kind, tMs))
+    fun save(c: Context, bmp: Bitmap, kind: Char, tMs: Long, quality: Int = 92, video: Boolean = false): File {
+        val next = (list(c, video).maxOfOrNull { it.index } ?: 0) + 1
+        val f = File(dir(c, video), String.format(Locale.US, "f_%06d_%c_%09d.jpg", next, kind, tMs))
         FileOutputStream(f).use { bmp.compress(Bitmap.CompressFormat.JPEG, quality, it) }
         return f
     }

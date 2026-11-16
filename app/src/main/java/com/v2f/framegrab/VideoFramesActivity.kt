@@ -30,7 +30,8 @@ import kotlin.math.roundToInt
  * เข้าได้ 2 ทาง: แชร์วิดีโอจากแกลเลอรีมาที่ FrameGrab / ปุ่ม "แตกเฟรมจากวิดีโอ" ในหน้าแอป (เลือกไฟล์)
  *  - เลื่อนแถบ = ดูภาพคร่าว ๆ (เฟรมหลัก เร็ว) ปล่อยนิ้ว = ภาพตรงเฟรม
  *  - ‹ › = ถอย/ไปทีละเฟรม, "จับเฟรมนี้" = เก็บ 1 ภาพ, "แตกทั้งคลิป" = เก็บทุก X วินาที
- * ภาพเก็บรวมกับภาพที่จับไว้ (ดู/บันทึกลงแกลเลอรีได้ในหน้าดูภาพเดิม) ตัดขอบดำของวิดีโอออกให้
+ * เลือกวิดีโอแล้วแตกทั้งคลิปทันที แล้วเปิดหน้าดูภาพ — ภาพเก็บเป็น "ชุดวิดีโอ" แยกจากภาพที่จับจากจอ
+ * แตกวิดีโอใหม่ = ล้างชุดเก่าเองไม่ต้องถาม (ภาพที่บันทึกลงแกลเลอรีแล้วยังอยู่) ตัดขอบดำของวิดีโอออกให้
  * ชื่อบัญชี: ถ้าเป็นวิดีโอที่ FrameGrab บันทึกเอง (ชื่อ-วว-ดด-ปปปป-0001.mp4) ใช้ชื่อนั้นต่อ
  */
 class VideoFramesActivity : Activity() {
@@ -105,7 +106,7 @@ class VideoFramesActivity : Activity() {
             intervalIdx = (intervalIdx + 1) % INTERVALS.size
             Prefs.setExtractEvery(this, INTERVALS[intervalIdx]); updateEvery()
         }
-        allBtn = btn("แตกทั้งคลิป", 0xFF1F3A2E.toInt()) { if (busy) cancel = true else askExtractAll() }
+        allBtn = btn("แตกทั้งคลิป", 0xFF1F3A2E.toInt()) { if (busy) cancel = true else extractAll() }
         root.addView(row(everyBtn to 1f, allBtn to 1f), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10f) })
         setContentView(root)
         updateEvery()
@@ -155,6 +156,8 @@ class VideoFramesActivity : Activity() {
                     seek.max = maxOf(0, lastIndex())
                     setEnabledUi(true)
                     show(0, rough = false)
+                    // เลือกวิดีโอแล้วแตกทั้งคลิปทันที (ใช้ช่วงเวลาที่ตั้งไว้ล่าสุด) — หน้านี้ยังเลือกเฟรมเองต่อได้หลังกลับมา
+                    extractAll()
                 }
             } catch (e: Exception) {
                 main.post { toast("เปิดวิดีโอนี้ไม่ได้: ${e.message ?: ""}"); finish() }
@@ -251,7 +254,7 @@ class VideoFramesActivity : Activity() {
 
     private fun saveFrame(b: Bitmap, i: Int): java.io.File = saveFrameMs(b, timeOf(i))
     private fun saveFrameMs(b: Bitmap, ms: Long): java.io.File {
-        val f = FrameStore.save(this, b, 'c', ms)
+        val f = FrameStore.save(this, b, 'c', ms, video = true)
         // ไม่มีชื่อ: ใส่ "-" ไว้ ไม่ให้ไปใช้ชื่อของชุดอัดต่อเนื่องก่อนหน้า (ภาพ 'c' ใช้ชื่อชุดเป็นค่าตั้งต้น)
         FrameStore.setOwner(this, f, owner ?: "-")
         return f
@@ -264,23 +267,11 @@ class VideoFramesActivity : Activity() {
             val b = frameAt(i, rough = false)?.let { cropped(it) }
             if (b == null) { main.post { toast("ดึงเฟรมนี้ไม่ได้") }; return@post }
             val f = try { saveFrame(b, i) } catch (e: Exception) { null } finally { b.recycle() }
-            val saved = f != null && Prefs.autoSaveSingle(this) && FrameStore.saveFileToGallery(this, f, FrameStore.count(this))
+            val saved = f != null && Prefs.autoSaveSingle(this) && FrameStore.saveFileToGallery(this, f, FrameStore.count(this, true))
             main.post {
-                toast(if (f == null) "เก็บภาพไม่สำเร็จ" else if (saved) "บันทึกลงแกลเลอรีแล้ว" else "เก็บแล้ว (${FrameStore.count(this)} ภาพ)")
+                toast(if (f == null) "เก็บภาพไม่สำเร็จ" else if (saved) "บันทึกลงแกลเลอรีแล้ว" else "เก็บแล้ว (${FrameStore.count(this, true)} ภาพ)")
             }
         }
-    }
-
-    private fun askExtractAll() {
-        if (mmr == null) return
-        val n = FrameStore.count(this)
-        if (n == 0) { extractAll(); return }
-        AlertDialog.Builder(this)
-            .setMessage("มีภาพที่จับไว้แล้ว $n ภาพ ล้างก่อนแตกคลิปนี้ไหม")
-            .setPositiveButton("ล้างก่อน") { _, _ -> FrameStore.clear(this); extractAll() }
-            .setNeutralButton("เก็บไว้ด้วย") { _, _ -> extractAll() }
-            .setNegativeButton("ยกเลิก", null)
-            .show()
     }
 
     private fun extractAll() {
@@ -293,6 +284,8 @@ class VideoFramesActivity : Activity() {
             t += every
         }
         busy = true; cancel = false
+        // ชุดวิดีโอก่อนหน้าล้างทิ้งเลย (ภาพที่จับจากจอเก็บแยก ไม่โดนลบ / ที่บันทึกลงแกลเลอรีแล้วก็ยังอยู่)
+        FrameStore.clear(this, video = true)
         setEnabledUi(false)
         allBtn.text = "หยุด"
         val targets = idxs.map { timeOf(it) }
@@ -355,7 +348,7 @@ class VideoFramesActivity : Activity() {
                 toast("ได้ $done ภาพ" + if (cancel) " (หยุดกลางคัน)" else "")
                 // เปิดหน้าดูภาพ ที่ภาพแรกของคลิปนี้
                 Prefs.setViewerLast(this, first)
-                startActivity(Intent(this, ViewerActivity::class.java))
+                startActivity(Intent(this, ViewerActivity::class.java).putExtra(ViewerActivity.EXTRA_VIDEO, true))
             }
         }
     }

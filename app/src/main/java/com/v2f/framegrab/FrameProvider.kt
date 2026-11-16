@@ -15,14 +15,15 @@ class FrameProvider : ContentProvider() {
 
     companion object {
         const val AUTHORITY = "com.v2f.framegrab.frames"
-        fun uriFor(f: File): Uri = Uri.parse("content://$AUTHORITY/${Uri.encode(f.name)}")
+        fun uriFor(f: File): Uri = Uri.parse("content://$AUTHORITY/${Uri.encode((if (f.parentFile?.name == "vframes") "v~" else "") + f.name)}")
     }
 
     private fun fileFor(uri: Uri): File {
         val ctx = context ?: throw FileNotFoundException()
         val name = uri.lastPathSegment ?: throw FileNotFoundException()
         if (name.contains('/') || name.contains("..")) throw FileNotFoundException()
-        val f = File(FrameStore.dir(ctx), name)
+        // ภาพจากจอ หรือชุดที่แตกจากวิดีโอ (ชื่อไฟล์ซ้ำกันได้ ใช้ "v~" นำหน้าแยกชุดวิดีโอ)
+        val f = if (name.startsWith("v~")) File(FrameStore.dir(ctx, true), name.removePrefix("v~")) else File(FrameStore.dir(ctx), name)
         if (!f.isFile) throw FileNotFoundException(name)
         return f
     }

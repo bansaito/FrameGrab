@@ -44,6 +44,7 @@ class MainActivity : Activity() {
     private lateinit var crashBox: TextView
     private lateinit var nameNote: TextView
     private lateinit var ocrNote: TextView
+    private lateinit var vidViewBtn: TextView
     private lateinit var cropBtn: TextView
     private lateinit var clearBtn: TextView
     private lateinit var appsPermBtn: TextView
@@ -110,6 +111,11 @@ class MainActivity : Activity() {
         col.addView(viewBtn, gap(10f))
         // แตกเฟรมจากไฟล์วิดีโอในเครื่อง (หรือแชร์วิดีโอจากแกลเลอรีมาที่ FrameGrab)
         col.addView(button("แตกเฟรมจากวิดีโอในเครื่อง", 0xFF2A2D3A.toInt()) { startActivity(Intent(this, VideoFramesActivity::class.java)) }, gap(10f))
+        // ชุดภาพจากวิดีโอล่าสุด (เก็บแยกจากภาพที่จับจากจอ)
+        vidViewBtn = button("", 0xFF2A2D3A.toInt()) {
+            startActivity(Intent(this, ViewerActivity::class.java).putExtra(ViewerActivity.EXTRA_VIDEO, true))
+        }
+        col.addView(vidViewBtn, gap(10f))
         clearBtn = button("", 0xFF3A2026.toInt()) { FrameStore.confirmClear(this) { refresh() } }
         col.addView(clearBtn, gap(10f))
 
@@ -318,6 +324,9 @@ class MainActivity : Activity() {
         }
         startBtn.text = if (CaptureService.running && !CaptureService.parked) "■ ปิดปุ่มลอย" else "▶ เปิดปุ่มลอย"
         reshareBtn.visibility = if (CaptureService.running) android.view.View.VISIBLE else android.view.View.GONE
+        val vn = FrameStore.count(this, true)
+        vidViewBtn.visibility = if (vn > 0) android.view.View.VISIBLE else android.view.View.GONE
+        vidViewBtn.text = "ดูภาพจากวิดีโอล่าสุด ($vn)"
         val n = FrameStore.count(this)
         viewBtn.text = "🖼 ดูภาพที่จับไว้ ($n)"
         clearBtn.text = if (n > 0) "🧹 ล้างภาพทั้งหมด ($n ภาพ · ${FrameStore.sizeLabel(FrameStore.totalBytes(this))})" else "🧹 ล้างภาพทั้งหมด"

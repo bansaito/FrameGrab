@@ -47,6 +47,7 @@ class ViewerActivity : Activity() {
     private lateinit var nextBtn: TextView
 
     private var frames: List<FrameStore.Frame> = emptyList()
+    private val video by lazy { intent.getBooleanExtra(EXTRA_VIDEO, false) }
     private var idx = 0
     private var uiVisible = true
     private var playing = false
@@ -149,7 +150,7 @@ class ViewerActivity : Activity() {
         row.addView(iconBtn("🗑") { deleteCurrent() }.apply {
             setOnLongClickListener {
                 setPlaying(false)
-                FrameStore.confirmClear(this@ViewerActivity) { thumbs.evictAll(); reload(keepIndex = false) }
+                FrameStore.confirmClear(this@ViewerActivity, video) { thumbs.evictAll(); reload(keepIndex = false) }
                 true
             }
         })
@@ -192,12 +193,14 @@ class ViewerActivity : Activity() {
     companion object {
         /** เปิดหลังอัดเสร็จ: เริ่มที่ภาพแรก */
         const val EXTRA_FROM_START = "fromStart"
+        /** เปิดชุดภาพที่แตกจากวิดีโอ (เก็บแยกจากภาพที่จับจากจอ) */
+        const val EXTRA_VIDEO = "videoSet"
     }
 
     override fun onResume() {
         super.onResume()
         CaptureService.setOwnUiHidden(this, true) // ไม่ให้ปุ่มลอย/กรอบทับหน้านี้
-        frames = FrameStore.list(this)
+        frames = FrameStore.list(this, video)
         // กลับมาที่ภาพที่ดูค้างไว้ (ยกเว้นเพิ่งอัดเสร็จ)
         val fromStart = intent.getBooleanExtra(EXTRA_FROM_START, false)
         intent.removeExtra(EXTRA_FROM_START)
@@ -219,8 +222,8 @@ class ViewerActivity : Activity() {
     }
 
     private fun reload(keepIndex: Boolean) {
-        frames = FrameStore.list(this)
-        savedSet = FrameStore.savedNames(this)
+        frames = FrameStore.list(this, video)
+        savedSet = FrameStore.savedNames(this, video)
         if (!keepIndex) idx = 0
         empty.visibility = if (frames.isEmpty()) View.VISIBLE else View.GONE
         top.visibility = if (frames.isEmpty()) View.GONE else View.VISIBLE
@@ -392,7 +395,7 @@ class ViewerActivity : Activity() {
         exec.execute {
             val n = FrameStore.saveAllToGallery(this, list)
             main.post {
-                savedSet = FrameStore.savedNames(this)
+                savedSet = FrameStore.savedNames(this, video)
                 updateSavedUi()
                 buzz(n > 0)
                 notice("บันทึก $n ภาพลงแกลเลอรีแล้ว (โฟลเดอร์ Pictures/FrameGrab)", long = true)
