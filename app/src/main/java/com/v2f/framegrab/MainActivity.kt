@@ -45,7 +45,7 @@ class MainActivity : Activity() {
     private lateinit var nameNote: TextView
     private lateinit var ocrNote: TextView
     private lateinit var shotStrip: LinearLayout
-    private lateinit var videoStrip: LinearLayout
+    private lateinit var videoGrid: LinearLayout
     private lateinit var vidStrip: LinearLayout
     private lateinit var videoPermBtn: TextView
     private lateinit var vidLabel: TextView
@@ -126,8 +126,8 @@ class MainActivity : Activity() {
         // คลิปล่าสุดในเครื่อง (แตะ = แตกเลย) — ต้องอนุญาตให้อ่านวิดีโอก่อน
         videoPermBtn = button("แสดงคลิปล่าสุดในเครื่อง", 0xFF2A2D3A.toInt()) { askVideoPermission() }
         vid.addView(videoPermBtn, gap(10f))
-        videoStrip = strip()
-        vid.addView(videoStrip.parent as android.view.View, gap(10f))
+        videoGrid = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        vid.addView(videoGrid, gap(10f))
         vid.addView(button("เลือกคลิปจากทั้งหมด", 0xFF2A2D3A.toInt()) { startActivity(Intent(this, VideoFramesActivity::class.java)) }, gap(8f))
         // แตกทุกกี่วินาที
         val everyRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
@@ -360,7 +360,7 @@ class MainActivity : Activity() {
         fillFrames(vidStrip, true)
         val vOk = hasVideoPermission()
         videoPermBtn.visibility = if (vOk) android.view.View.GONE else android.view.View.VISIBLE
-        if (vOk) fillVideos() else (videoStrip.parent as android.view.View).visibility = android.view.View.GONE
+        if (vOk) fillVideos() else videoGrid.visibility = android.view.View.GONE
         clearBtn.text = if (n > 0) "🧹 ล้างภาพทั้งหมด ($n ภาพ · ${FrameStore.sizeLabel(FrameStore.totalBytes(this))})" else "🧹 ล้างภาพทั้งหมด"
         clearBtn.alpha = if (n > 0) 1f else 0.5f
         intervalBtn.text = "⏱ จับทุก ${Prefs.intervalLabel(Prefs.interval(this))} วินาที  (แตะเพื่อเปลี่ยน)"
@@ -532,37 +532,82 @@ class MainActivity : Activity() {
         requestPermissions(p, REQ_VIDEO)
     }
 
+    /** ช่องสัดส่วน 3:4 (กว้างตามน้ำหนักในแถว สูง = กว้าง × 4/3) */
+    private inner class Cell : android.widget.FrameLayout(this@MainActivity) {
+        override fun onMeasure(w: Int, h: Int) {
+            val width = android.view.View.MeasureSpec.getSize(w)
+            super.onMeasure(w, android.view.View.MeasureSpec.makeMeasureSpec(width * 4 / 3, android.view.View.MeasureSpec.EXACTLY))
+        }
+    }
+
+    /** ไอคอนเล่น (วงกลมโปร่ง + สามเหลี่ยมเส้น) วาดเอง ไม่ใช้อีโมจิ */
+    private inner class PlayIcon : android.view.View(this@MainActivity) {
+        private val bg = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = 0x66000000 }
+        private val fg = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE; style = android.graphics.Paint.Style.STROKE; strokeWidth = dp(1.6f).toFloat(); strokeJoin = android.graphics.Paint.Join.ROUND
+        }
+        override fun onDraw(c: android.graphics.Canvas) {
+            val r = minOf(width, height) / 2f; val cx = width / 2f; val cy = height / 2f
+            c.drawCircle(cx, cy, r, bg)
+            val t = r * 0.42f
+            val p = android.graphics.Path().apply { moveTo(cx - t * 0.6f, cy - t); lineTo(cx + t, cy); lineTo(cx - t * 0.6f, cy + t); close() }
+            c.drawPath(p, fg)
+        }
+    }
+
+    /** คลิปล่าสุดในเครื่อง: ตาราง 4 ช่อง × 2 แถว (ภาพตัวอย่าง + ความยาว + เวลาที่ได้มา) แตะ = แตกเลย */
     private fun fillVideos() {
-        val row = videoStrip
-        val scroller = row.parent as android.view.View
+        val grid = videoGrid
         thumbPool.execute {
-            data class V(val uri: Uri, val durMs: Long)
+            data class V(val uri: Uri, val durMs: Long, val addedSec: Long)
             val list = ArrayList<V>()
             try {
                 contentResolver.query(android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-                    arrayOf(android.provider.MediaStore.Video.Media._ID, android.provider.MediaStore.Video.Media.DURATION),
+                    arrayOf(android.provider.MediaStore.Video.Media._ID, android.provider.MediaStore.Video.Media.DURATION, android.provider.MediaStore.Video.Media.DATE_ADDED),
                     null, null, android.provider.MediaStore.Video.Media.DATE_ADDED + " DESC")?.use { c ->
-                    while (c.moveToNext() && list.size < 12) {
-                        list.add(V(android.content.ContentUris.withAppendedId(android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI, c.getLong(0)), c.getLong(1)))
+                    while (c.moveToNext() && list.size < 8) {
+                        list.add(V(android.content.ContentUris.withAppendedId(android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI, c.getLong(0)), c.getLong(1), c.getLong(2)))
                     }
                 }
             } catch (e: Exception) { }
             ui.post {
-                row.removeAllViews()
-                scroller.visibility = if (list.isEmpty()) android.view.View.GONE else android.view.View.VISIBLE
-                for (v in list) {
-                    val t = tile { startActivity(Intent(this, VideoFramesActivity::class.java).setAction(Intent.ACTION_VIEW).setData(v.uri)) }
-                    val iv = img(); t.addView(iv, android.widget.FrameLayout.LayoutParams(-1, -1))
+                grid.removeAllViews()
+                grid.visibility = if (list.isEmpty()) android.view.View.GONE else android.view.View.VISIBLE
+                val today = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US).format(java.util.Date())
+                var row: LinearLayout? = null
+                for ((i, v) in list.withIndex()) {
+                    if (i % 4 == 0) {
+                        row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+                        grid.addView(row, LinearLayout.LayoutParams(-1, -2).apply { if (i > 0) topMargin = dp(6f) })
+                    }
+                    val cell = Cell().apply {
+                        background = GradientDrawable().apply { setColor(0xFF2A2D3A.toInt()); cornerRadius = dp(10f).toFloat() }
+                        clipToOutline = true
+                        outlineProvider = android.view.ViewOutlineProvider.BACKGROUND
+                        setOnClickListener { startActivity(Intent(this@MainActivity, VideoFramesActivity::class.java).setAction(Intent.ACTION_VIEW).setData(v.uri)) }
+                    }
+                    val iv = img(); cell.addView(iv, android.widget.FrameLayout.LayoutParams(-1, -1))
+                    cell.addView(PlayIcon(), android.widget.FrameLayout.LayoutParams(dp(28f), dp(28f), Gravity.CENTER))
                     val sec = v.durMs / 1000
-                    t.addView(label(String.format(java.util.Locale.US, "%d:%02d", sec / 60, sec % 60), 11f, Color.WHITE).apply {
-                        setShadowLayer(4f, 0f, 1f, Color.BLACK); setPadding(dp(5f), 0, 0, dp(3f))
+                    cell.addView(label(String.format(java.util.Locale.US, "%d:%02d", sec / 60, sec % 60), 11f, Color.WHITE).apply {
+                        setShadowLayer(4f, 0f, 1f, Color.BLACK); setPadding(0, 0, dp(6f), dp(4f))
+                    }, android.widget.FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.END))
+                    // วันนี้ = เวลา, วันอื่น = วันที่
+                    val d = java.util.Date(v.addedSec * 1000)
+                    val whenTxt = if (java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US).format(d) == today)
+                        java.text.SimpleDateFormat("HH:mm", java.util.Locale.US).format(d) else java.text.SimpleDateFormat("d/M", java.util.Locale.US).format(d)
+                    cell.addView(label(whenTxt, 10.5f, Color.WHITE).apply {
+                        setShadowLayer(4f, 0f, 1f, Color.BLACK); setPadding(dp(6f), 0, 0, dp(4f))
                     }, android.widget.FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.START))
-                    row.addView(t)
+                    row!!.addView(cell, LinearLayout.LayoutParams(0, -2, 1f).apply { if (i % 4 > 0) marginStart = dp(6f) })
                     thumbPool.execute {
-                        val b = try { contentResolver.loadThumbnail(v.uri, android.util.Size(dp(68f) * 2, dp(120f) * 2), null) } catch (e: Exception) { null }
+                        val b = try { contentResolver.loadThumbnail(v.uri, android.util.Size(dp(120f), dp(160f)), null) } catch (e: Exception) { null }
                         if (b != null) ui.post { iv.setImageBitmap(b) }
                     }
                 }
+                // แถวสุดท้ายไม่เต็ม: เติมช่องว่างให้ขนาดเท่ากัน
+                val rem = list.size % 4
+                if (rem > 0) repeat(4 - rem) { row?.addView(android.view.View(this), LinearLayout.LayoutParams(0, 1, 1f).apply { marginStart = dp(6f) }) }
             }
         }
     }
