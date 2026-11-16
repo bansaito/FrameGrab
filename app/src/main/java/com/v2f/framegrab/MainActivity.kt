@@ -497,7 +497,7 @@ class MainActivity : Activity() {
 
     private fun img(): android.widget.ImageView = android.widget.ImageView(this).apply { scaleType = android.widget.ImageView.ScaleType.CENTER_CROP }
 
-    /** ภาพล่าสุดของชุด (จับจากจอ / จากวิดีโอ) สูงสุด 6 ภาพ + ช่อง "ดูทั้งหมด" */
+    /** ตัวอย่างภาพเดียวของชุด (จับจากจอ = ภาพล่าสุด / จากวิดีโอ = ภาพแรก) + ช่อง "ดูทั้งหมด" */
     private fun fillFrames(row: LinearLayout, video: Boolean) {
         val frames = FrameStore.list(this, video)
         val scroller = row.parent as android.view.View
@@ -509,7 +509,7 @@ class MainActivity : Activity() {
             startActivity(Intent(this, ViewerActivity::class.java).putExtra(ViewerActivity.EXTRA_VIDEO, video))
         }
         // จับจากจอ: ใหม่สุดก่อน / จากวิดีโอ: เรียงตามเวลาในคลิป
-        val show = if (video) frames.take(6) else frames.takeLast(6).reversed()
+        val show = if (video) frames.take(1) else frames.takeLast(1)   // ตัวอย่างภาพเดียวพอ
         for (fr in show) {
             val t = tile { open(fr.file.name) }
             val iv = img(); t.addView(iv, android.widget.FrameLayout.LayoutParams(-1, -1))
