@@ -45,6 +45,7 @@ class MainActivity : Activity() {
     private lateinit var nameNote: TextView
     private lateinit var ocrNote: TextView
     private lateinit var vidViewBtn: TextView
+    private val everyBtns = ArrayList<Pair<Double, TextView>>()
     private lateinit var cropBtn: TextView
     private lateinit var clearBtn: TextView
     private lateinit var appsPermBtn: TextView
@@ -111,6 +112,16 @@ class MainActivity : Activity() {
         col.addView(viewBtn, gap(10f))
         // แตกเฟรมจากไฟล์วิดีโอในเครื่อง (หรือแชร์วิดีโอจากแกลเลอรีมาที่ FrameGrab)
         col.addView(button("แตกเฟรมจากวิดีโอในเครื่อง", 0xFF2A2D3A.toInt()) { startActivity(Intent(this, VideoFramesActivity::class.java)) }, gap(10f))
+        // แตกทุกกี่วินาที (เลือกตรงนี้ได้เลย ไม่ต้องเข้าไปเปลี่ยนในหน้าแตกเฟรม)
+        val everyRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        everyRow.addView(label("แตกทุก", 15f, Color.WHITE), LinearLayout.LayoutParams(-2, -2).apply { marginEnd = dp(12f) })
+        for (sec in doubleArrayOf(0.1, 0.2)) {
+            val b = button("$sec วิ", 0xFF2A2D3A.toInt()) { Prefs.setExtractEvery(this, sec); refresh() }
+            b.setPadding(dp(16f), dp(10f), dp(16f), dp(10f))
+            everyBtns.add(sec to b)
+            everyRow.addView(b, LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = dp(8f) })
+        }
+        col.addView(everyRow, gap(8f))
         // ชุดภาพจากวิดีโอล่าสุด (เก็บแยกจากภาพที่จับจากจอ)
         vidViewBtn = button("", 0xFF2A2D3A.toInt()) {
             startActivity(Intent(this, ViewerActivity::class.java).putExtra(ViewerActivity.EXTRA_VIDEO, true))
@@ -324,6 +335,8 @@ class MainActivity : Activity() {
         }
         startBtn.text = if (CaptureService.running && !CaptureService.parked) "■ ปิดปุ่มลอย" else "▶ เปิดปุ่มลอย"
         reshareBtn.visibility = if (CaptureService.running) android.view.View.VISIBLE else android.view.View.GONE
+        val every = Prefs.extractEvery(this)
+        for ((sec, b) in everyBtns) (b.background as? GradientDrawable)?.setColor(if (sec == every) 0xFF4F46E5.toInt() else 0xFF2A2D3A.toInt())
         val vn = FrameStore.count(this, true)
         vidViewBtn.visibility = if (vn > 0) android.view.View.VISIBLE else android.view.View.GONE
         vidViewBtn.text = "ดูภาพจากวิดีโอล่าสุด ($vn)"
