@@ -29,6 +29,7 @@ class MainActivity : Activity() {
     companion object {
         private const val REQ_CAPTURE = 10
         private const val REQ_NOTIF = 11
+        private const val REQ_VIDEO = 12
         /** เปิดมาจากแจ้งเตือน "🔄 เปลี่ยนแอป" */
         const val EXTRA_RESHARE = "reshare"
     }
@@ -38,13 +39,18 @@ class MainActivity : Activity() {
     private lateinit var reshareBtn: TextView
     private lateinit var replayBtn: TextView
     private var resharing = false
-    private lateinit var viewBtn: TextView
     private lateinit var intervalBtn: TextView
     private lateinit var maxBtn: TextView
     private lateinit var crashBox: TextView
     private lateinit var nameNote: TextView
     private lateinit var ocrNote: TextView
-    private lateinit var vidViewBtn: TextView
+    private lateinit var shotStrip: LinearLayout
+    private lateinit var videoStrip: LinearLayout
+    private lateinit var vidStrip: LinearLayout
+    private lateinit var videoPermBtn: TextView
+    private lateinit var vidLabel: TextView
+    private val thumbPool = java.util.concurrent.Executors.newSingleThreadExecutor()
+    private val ui = android.os.Handler(android.os.Looper.getMainLooper())
     private val everyBtns = ArrayList<Pair<Double, TextView>>()
     private lateinit var cropBtn: TextView
     private lateinit var clearBtn: TextView
@@ -102,33 +108,42 @@ class MainActivity : Activity() {
         }
         col.addView(crashBox, gap(10f))
 
+        // ===== โหมด 1: จับจากหน้าจอ (ปุ่มลอย) =====
+        val shot = section(col, "จับจากหน้าจอ", "ปุ่มลอยเหนือ TikTok / IG / Facebook")
         startBtn = button("", 0xFF4F46E5.toInt()) { onStartClicked() }
-        col.addView(startBtn, gap(12f))
-        // 🏦 ก่อนเปิดแอปธนาคาร: ปิดการช่วยเหลือพิเศษ + หยุดจับหน้าจอ ในครั้งเดียว
-        col.addView(button("🏦 โหมดธนาคาร (กดก่อนเปิดแอปธนาคาร)", 0xFF1F3A2E.toInt()) { bankMode() }, gap(10f))
+        shot.addView(startBtn, gap(10f))
         reshareBtn = button("🔄 เปลี่ยนแอปที่แชร์ (แอปเดียว / ทั้งหน้าจอ)", 0xFF2A2D3A.toInt()) { reshare() }
-        col.addView(reshareBtn, gap(10f))
-        viewBtn = button("", 0xFF2A2D3A.toInt()) { startActivity(Intent(this, ViewerActivity::class.java)) }
-        col.addView(viewBtn, gap(10f))
-        // แตกเฟรมจากไฟล์วิดีโอในเครื่อง (หรือแชร์วิดีโอจากแกลเลอรีมาที่ FrameGrab)
-        col.addView(button("แตกเฟรมจากวิดีโอในเครื่อง", 0xFF2A2D3A.toInt()) { startActivity(Intent(this, VideoFramesActivity::class.java)) }, gap(10f))
-        // แตกทุกกี่วินาที (เลือกตรงนี้ได้เลย ไม่ต้องเข้าไปเปลี่ยนในหน้าแตกเฟรม)
+        shot.addView(reshareBtn, gap(8f))
+        // ภาพที่จับล่าสุด (แตะ = เปิดดูที่ภาพนั้น)
+        shotStrip = strip()
+        shot.addView(shotStrip.parent as android.view.View, gap(10f))
+        clearBtn = button("", 0xFF3A2026.toInt()) { FrameStore.confirmClear(this) { refresh() } }
+        shot.addView(clearBtn, gap(8f))
+        // โหมดธนาคาร: ย้ายไปไว้ที่ปุ่มในแผงควบคุม (ดึงแถบแจ้งเตือนลง) — เอาออกจากหน้านี้ให้ไม่รก
+
+        // ===== โหมด 2: แตกเฟรมจากไฟล์วิดีโอในเครื่อง =====
+        val vid = section(col, "แตกเฟรมจากวิดีโอ", "เลือกคลิป → แตกทั้งคลิปทันที (หรือแชร์วิดีโอจากแกลเลอรีมาที่ FrameGrab)")
+        // คลิปล่าสุดในเครื่อง (แตะ = แตกเลย) — ต้องอนุญาตให้อ่านวิดีโอก่อน
+        videoPermBtn = button("แสดงคลิปล่าสุดในเครื่อง", 0xFF2A2D3A.toInt()) { askVideoPermission() }
+        vid.addView(videoPermBtn, gap(10f))
+        videoStrip = strip()
+        vid.addView(videoStrip.parent as android.view.View, gap(10f))
+        vid.addView(button("เลือกคลิปจากทั้งหมด", 0xFF2A2D3A.toInt()) { startActivity(Intent(this, VideoFramesActivity::class.java)) }, gap(8f))
+        // แตกทุกกี่วินาที
         val everyRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         everyRow.addView(label("แตกทุก", 15f, Color.WHITE), LinearLayout.LayoutParams(-2, -2).apply { marginEnd = dp(12f) })
         for (sec in doubleArrayOf(0.1, 0.2)) {
             val b = button("$sec วิ", 0xFF2A2D3A.toInt()) { Prefs.setExtractEvery(this, sec); refresh() }
             b.setPadding(dp(16f), dp(10f), dp(16f), dp(10f))
             everyBtns.add(sec to b)
-            everyRow.addView(b, LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = dp(8f) })
+            everyRow.addView(b, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(8f) })
         }
-        col.addView(everyRow, gap(8f))
-        // ชุดภาพจากวิดีโอล่าสุด (เก็บแยกจากภาพที่จับจากจอ)
-        vidViewBtn = button("", 0xFF2A2D3A.toInt()) {
-            startActivity(Intent(this, ViewerActivity::class.java).putExtra(ViewerActivity.EXTRA_VIDEO, true))
-        }
-        col.addView(vidViewBtn, gap(10f))
-        clearBtn = button("", 0xFF3A2026.toInt()) { FrameStore.confirmClear(this) { refresh() } }
-        col.addView(clearBtn, gap(10f))
+        vid.addView(everyRow, gap(10f))
+        // ภาพจากวิดีโอล่าสุด (เก็บแยกจากภาพที่จับจากจอ)
+        vidLabel = label("", 13f)
+        vid.addView(vidLabel, gap(12f))
+        vidStrip = strip()
+        vid.addView(vidStrip.parent as android.view.View, gap(6f))
 
         col.addView(CheckBox(this).apply {
             text = "📸 จับภาพนี้ แล้วบันทึกลงแกลเลอรีอัตโนมัติ"
@@ -338,10 +353,14 @@ class MainActivity : Activity() {
         val every = Prefs.extractEvery(this)
         for ((sec, b) in everyBtns) (b.background as? GradientDrawable)?.setColor(if (sec == every) 0xFF4F46E5.toInt() else 0xFF2A2D3A.toInt())
         val vn = FrameStore.count(this, true)
-        vidViewBtn.visibility = if (vn > 0) android.view.View.VISIBLE else android.view.View.GONE
-        vidViewBtn.text = "ดูภาพจากวิดีโอล่าสุด ($vn)"
+        vidLabel.visibility = if (vn > 0) android.view.View.VISIBLE else android.view.View.GONE
+        vidLabel.text = "ภาพจากคลิปล่าสุด ($vn ภาพ)"
         val n = FrameStore.count(this)
-        viewBtn.text = "🖼 ดูภาพที่จับไว้ ($n)"
+        fillFrames(shotStrip, false)
+        fillFrames(vidStrip, true)
+        val vOk = hasVideoPermission()
+        videoPermBtn.visibility = if (vOk) android.view.View.GONE else android.view.View.VISIBLE
+        if (vOk) fillVideos() else (videoStrip.parent as android.view.View).visibility = android.view.View.GONE
         clearBtn.text = if (n > 0) "🧹 ล้างภาพทั้งหมด ($n ภาพ · ${FrameStore.sizeLabel(FrameStore.totalBytes(this))})" else "🧹 ล้างภาพทั้งหมด"
         clearBtn.alpha = if (n > 0) 1f else 0.5f
         intervalBtn.text = "⏱ จับทุก ${Prefs.intervalLabel(Prefs.interval(this))} วินาที  (แตะเพื่อเปลี่ยน)"
@@ -444,8 +463,113 @@ class MainActivity : Activity() {
         startActivityForResult(mpm.createScreenCaptureIntent(), REQ_CAPTURE)
     }
 
+    // ---------- กล่องแยกโหมด ----------
+    private fun section(parent: LinearLayout, title: String, sub: String): LinearLayout {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14f), dp(14f), dp(14f), dp(16f))
+            background = GradientDrawable().apply { setColor(0xFF181B26.toInt()); cornerRadius = dp(16f).toFloat(); setStroke(dp(1f), 0xFF2C3142.toInt()) }
+        }
+        box.addView(label(title, 18f, Color.WHITE))
+        box.addView(label(sub, 12.5f))
+        parent.addView(box, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(16f) })
+        return box
+    }
+
+    /** แถวภาพเล็กเลื่อนแนวนอน (คืนแถวด้านใน; ตัวเลื่อนคือ parent) */
+    private fun strip(): LinearLayout {
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        android.widget.HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; addView(row) }
+        return row
+    }
+
+    private fun tile(onClick: () -> Unit) = android.widget.FrameLayout(this).apply {
+        layoutParams = LinearLayout.LayoutParams(dp(68f), dp(120f)).apply { marginEnd = dp(6f) }
+        background = GradientDrawable().apply { setColor(0xFF2A2D3A.toInt()); cornerRadius = dp(8f).toFloat() }
+        clipToOutline = true
+        outlineProvider = android.view.ViewOutlineProvider.BACKGROUND
+        setOnClickListener { onClick() }
+    }
+
+    private fun moreTile(text: String, onClick: () -> Unit) = tile(onClick).apply {
+        addView(label(text, 13f, Color.WHITE).apply { gravity = Gravity.CENTER }, android.widget.FrameLayout.LayoutParams(-1, -1))
+    }
+
+    private fun img(): android.widget.ImageView = android.widget.ImageView(this).apply { scaleType = android.widget.ImageView.ScaleType.CENTER_CROP }
+
+    /** ภาพล่าสุดของชุด (จับจากจอ / จากวิดีโอ) สูงสุด 6 ภาพ + ช่อง "ดูทั้งหมด" */
+    private fun fillFrames(row: LinearLayout, video: Boolean) {
+        val frames = FrameStore.list(this, video)
+        val scroller = row.parent as android.view.View
+        row.removeAllViews()
+        if (frames.isEmpty()) { scroller.visibility = android.view.View.GONE; return }
+        scroller.visibility = android.view.View.VISIBLE
+        val open = { name: String? ->
+            if (name != null) Prefs.setViewerLast(this, name)
+            startActivity(Intent(this, ViewerActivity::class.java).putExtra(ViewerActivity.EXTRA_VIDEO, video))
+        }
+        // จับจากจอ: ใหม่สุดก่อน / จากวิดีโอ: เรียงตามเวลาในคลิป
+        val show = if (video) frames.take(6) else frames.takeLast(6).reversed()
+        for (fr in show) {
+            val t = tile { open(fr.file.name) }
+            val iv = img(); t.addView(iv, android.widget.FrameLayout.LayoutParams(-1, -1))
+            row.addView(t)
+            thumbPool.execute {
+                val o = android.graphics.BitmapFactory.Options().apply { inSampleSize = 8 }
+                val b = try { android.graphics.BitmapFactory.decodeFile(fr.file.absolutePath, o) } catch (e: Exception) { null }
+                if (b != null) ui.post { iv.setImageBitmap(b) }
+            }
+        }
+        row.addView(moreTile("ดูทั้งหมด\n${frames.size}") { open(null) })
+    }
+
+    // ---------- คลิปล่าสุดในเครื่อง ----------
+    private val videoPerm get() = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_VIDEO else Manifest.permission.READ_EXTERNAL_STORAGE
+    private fun hasVideoPermission(): Boolean = checkSelfPermission(videoPerm) == PackageManager.PERMISSION_GRANTED ||
+        (Build.VERSION.SDK_INT >= 34 && checkSelfPermission("android.permission.READ_MEDIA_VISUAL_USER_SELECTED") == PackageManager.PERMISSION_GRANTED)
+    private fun askVideoPermission() {
+        val p = if (Build.VERSION.SDK_INT >= 34) arrayOf(videoPerm, "android.permission.READ_MEDIA_VISUAL_USER_SELECTED") else arrayOf(videoPerm)
+        requestPermissions(p, REQ_VIDEO)
+    }
+
+    private fun fillVideos() {
+        val row = videoStrip
+        val scroller = row.parent as android.view.View
+        thumbPool.execute {
+            data class V(val uri: Uri, val durMs: Long)
+            val list = ArrayList<V>()
+            try {
+                contentResolver.query(android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+                    arrayOf(android.provider.MediaStore.Video.Media._ID, android.provider.MediaStore.Video.Media.DURATION),
+                    null, null, android.provider.MediaStore.Video.Media.DATE_ADDED + " DESC")?.use { c ->
+                    while (c.moveToNext() && list.size < 12) {
+                        list.add(V(android.content.ContentUris.withAppendedId(android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI, c.getLong(0)), c.getLong(1)))
+                    }
+                }
+            } catch (e: Exception) { }
+            ui.post {
+                row.removeAllViews()
+                scroller.visibility = if (list.isEmpty()) android.view.View.GONE else android.view.View.VISIBLE
+                for (v in list) {
+                    val t = tile { startActivity(Intent(this, VideoFramesActivity::class.java).setAction(Intent.ACTION_VIEW).setData(v.uri)) }
+                    val iv = img(); t.addView(iv, android.widget.FrameLayout.LayoutParams(-1, -1))
+                    val sec = v.durMs / 1000
+                    t.addView(label(String.format(java.util.Locale.US, "%d:%02d", sec / 60, sec % 60), 11f, Color.WHITE).apply {
+                        setShadowLayer(4f, 0f, 1f, Color.BLACK); setPadding(dp(5f), 0, 0, dp(3f))
+                    }, android.widget.FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.START))
+                    row.addView(t)
+                    thumbPool.execute {
+                        val b = try { contentResolver.loadThumbnail(v.uri, android.util.Size(dp(68f) * 2, dp(120f) * 2), null) } catch (e: Exception) { null }
+                        if (b != null) ui.post { iv.setImageBitmap(b) }
+                    }
+                }
+            }
+        }
+    }
+
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQ_VIDEO) { refresh(); return }
         if (requestCode == REQ_NOTIF) askCapture() // ไม่อนุญาตแจ้งเตือนก็ใช้ได้ แค่ไม่เห็นปุ่มหยุดในแถบแจ้งเตือน
     }
 
