@@ -137,7 +137,9 @@ class VideoFramesActivity : Activity() {
         open(u)
     }
 
+    private var uri: Uri? = null
     private fun open(uri: Uri) {
+        this.uri = uri
         owner = ownerFromName(uri)
         work.post {
             try {
@@ -247,8 +249,9 @@ class VideoFramesActivity : Activity() {
         allBtn.alpha = if (on || busy) 1f else 0.45f
     }
 
-    private fun saveFrame(b: Bitmap, i: Int): java.io.File {
-        val f = FrameStore.save(this, b, 'c', timeOf(i))
+    private fun saveFrame(b: Bitmap, i: Int): java.io.File = saveFrameMs(b, timeOf(i))
+    private fun saveFrameMs(b: Bitmap, ms: Long): java.io.File {
+        val f = FrameStore.save(this, b, 'c', ms)
         // ไม่มีชื่อ: ใส่ "-" ไว้ ไม่ให้ไปใช้ชื่อของชุดอัดต่อเนื่องก่อนหน้า (ภาพ 'c' ใช้ชื่อชุดเป็นค่าตั้งต้น)
         FrameStore.setOwner(this, f, owner ?: "-")
         return f
@@ -292,24 +295,57 @@ class VideoFramesActivity : Activity() {
         busy = true; cancel = false
         setEnabledUi(false)
         allBtn.text = "หยุด"
+        val targets = idxs.map { timeOf(it) }
         work.post {
-            var done = 0
+            val doneN = java.util.concurrent.atomic.AtomicInteger(0)
             var first: String? = null
             val start = System.currentTimeMillis()
-            for (i in idxs) {
-                if (cancel) break
-                val b = frameAt(i, rough = false)?.let { cropped(it) } ?: continue
-                try { val f = saveFrame(b, i); if (first == null) first = f.name; done++ } catch (e: Exception) { }
-                // แสดงภาพล่าสุดเป็นระยะ (ไม่ทุกภาพ จะได้ไม่ช้า)
-                val showIt = done % 5 == 1
-                val disp = if (showIt) b else { b.recycle(); null }
+            fun progress(b: Bitmap?) {
+                val done = doneN.get()
                 val sec = (System.currentTimeMillis() - start) / 1000.0
                 main.post {
                     allBtn.text = "หยุด ($done/${idxs.size})"
                     info.text = "กำลังแตกเฟรม $done/${idxs.size} · ${String.format(Locale.US, "%.1f", sec)} วิ"
-                    if (disp != null) { val old = shown; shown = disp; img.setImageBitmap(disp); if (old != null && old !== disp) old.recycle() }
+                    if (b != null) { val old = shown; shown = b; img.setImageBitmap(b); if (old != null && old !== b) old.recycle() }
                 }
             }
+            fun keep(raw: Bitmap, ms: Long) {
+                val b = cropped(raw)
+                try { val f = saveFrameMs(b, ms); if (first == null) first = f.name; doneN.incrementAndGet() } catch (e: Exception) { }
+                // แสดงภาพล่าสุดเป็นระยะ (ไม่ทุกภาพ จะได้ไม่ช้า)
+                if (doneN.get() % 5 == 1) progress(b) else { b.recycle(); progress(null) }
+            }
+            // 1) แบบเร็ว: ถอดรหัสต่อเนื่องครั้งเดียว + บันทึก JPEG อีกเธรดพร้อมกัน
+            var fastOk = false
+            val u = uri
+            if (u != null) {
+                val q = java.util.concurrent.ArrayBlockingQueue<Pair<Bitmap, Long>>(3)
+                val end = Pair(Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888), -1L)
+                val saver = Thread {
+                    while (true) {
+                        val (b, ms) = q.take()
+                        if (ms < 0) break
+                        if (cancel) { b.recycle(); continue }
+                        keep(b, ms)
+                    }
+                }.apply { start() }
+                try {
+                    FastExtractor(this, u).run(targets) { b, ms ->
+                        if (cancel) { b.recycle(); false } else { q.put(b to ms); true }
+                    }
+                    fastOk = true
+                } catch (e: Throwable) { }
+                q.put(end); saver.join(); end.first.recycle()
+            }
+            // 2) แบบเดิม (ทีละเฟรม) ถ้าแบบเร็วใช้กับไฟล์นี้ไม่ได้
+            if (!fastOk && doneN.get() == 0) {
+                for (i in idxs) {
+                    if (cancel) break
+                    val b = frameAt(i, rough = false) ?: continue
+                    keep(b, timeOf(i))
+                }
+            }
+            val done = doneN.get()
             main.post {
                 busy = false
                 allBtn.text = "แตกทั้งคลิป"
