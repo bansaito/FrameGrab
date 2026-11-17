@@ -69,8 +69,9 @@ object Prefs {
     fun cropMode(c: Context): Int = sp(c).getInt("cropMode", 0)
     fun setCropMode(c: Context, v: Int) = sp(c).edit().putInt("cropMode", v).apply()
     /** กรอบที่เลือก: "full", "auto", "custom" หรือสัดส่วนเช่น "9:16" */
-    fun cropPreset(c: Context): String = sp(c).getString("cropPreset", null) ?: when (cropMode(c)) {
-        1 -> "auto"; 2 -> "custom"; else -> "full"
+    // ยังไม่เคยเลือก (ติดตั้งใหม่ / ล้างข้อมูลแอป) = อัตโนมัติ (เดิมเป็นทั้งจอ ทำให้ดูเหมือนหากรอบไม่เจอ)
+    fun cropPreset(c: Context): String = sp(c).getString("cropPreset", null) ?: when (sp(c).getInt("cropMode", 1)) {
+        0 -> "full"; 2 -> "custom"; else -> "auto"
     }
     fun setCropPreset(c: Context, v: String) = sp(c).edit().putString("cropPreset", v).apply()
 
