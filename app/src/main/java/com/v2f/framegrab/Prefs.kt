@@ -6,7 +6,7 @@ import android.content.SharedPreferences
 object Prefs {
     private fun sp(c: Context): SharedPreferences = c.getSharedPreferences("framegrab", Context.MODE_PRIVATE)
 
-    val INTERVALS = floatArrayOf(0.25f, 0.5f, 1f)
+    val INTERVALS = floatArrayOf(0.1f, 0.2f, 0.25f, 0.5f, 1f)
     val MAX_SECONDS = intArrayOf(15, 30, 60, 0) // 0 = ไม่จำกัด (สูงสุด 5 นาที)
 
     fun interval(c: Context): Float = sp(c).getFloat("interval", 0.25f)

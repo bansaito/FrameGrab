@@ -91,6 +91,9 @@ class CaptureService : Service() {
     private val workThread = HandlerThread("fg-work", android.os.Process.THREAD_PRIORITY_BACKGROUND).apply { start() }
     private val imgHandler = Handler(imgThread.looper)
     private val work = Handler(workThread.looper)
+    // บันทึก JPEG อีกเธรด ให้จังหวะจับภาพตรงทุก 0.1 วิ ไม่ต้องรอเข้ารหัสไฟล์
+    private val saver = java.util.concurrent.Executors.newSingleThreadExecutor()
+    private val savePending = java.util.concurrent.atomic.AtomicInteger(0)
 
     private var projection: MediaProjection? = null
     private var display: VirtualDisplay? = null
@@ -168,7 +171,7 @@ class CaptureService : Service() {
     private var savedBubblePos: Pair<Int, Int>? = null
     @Volatile private var recording = false
     @Volatile private var recStart = 0L
-    private var recCount = 0
+    @Volatile private var recCount = 0
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -303,7 +306,7 @@ class CaptureService : Service() {
         @Suppress("DEPRECATION") wm.defaultDisplay.getRealMetrics(m)
         screenW = m.widthPixels
         screenH = m.heightPixels
-        // จำกัดด้านกว้างไม่เกิน 1080 เพื่อให้บันทึกภาพได้เร็วพอสำหรับทุก 0.25 วินาที
+        // จำกัดด้านกว้างไม่เกิน 1080 เพื่อให้บันทึกภาพได้เร็วพอสำหรับทุก 0.1 วินาที
         val scale = if (m.widthPixels > 1080) 1080f / m.widthPixels else 1f
         val w = (m.widthPixels * scale).roundToInt() / 2 * 2
         val h = (m.heightPixels * scale).roundToInt() / 2 * 2
@@ -684,10 +687,14 @@ class CaptureService : Service() {
                         val sig = if (skipDup) dupSig(out) else null
                         val prev = lastSig
                         val dup = sig != null && prev != null && sig.indices.all { abs(sig[it] - prev[it]) <= 4 }
-                        if (!dup) {
-                            try { FrameStore.save(this@CaptureService, out, 'c', el, 90); recCount++; lastSig = sig } catch (e: Exception) { }
-                        }
-                        out.recycle()
+                        if (!dup && savePending.get() < 8) {
+                            lastSig = sig
+                            savePending.incrementAndGet()
+                            saver.execute {
+                                try { FrameStore.save(this@CaptureService, out, 'c', el, 90); recCount++ } catch (e: Exception) { }
+                                out.recycle(); savePending.decrementAndGet()
+                            }
+                        } else out.recycle()
                     }
                     if (recCount % 4 == 0) main.post { updateNotification() }
                     // ข้ามช่องที่ช้าเกินไป แทนการวิ่งไล่ตาม
@@ -730,6 +737,7 @@ class CaptureService : Service() {
         showOverlay()
         updateNotification()
         work.post {
+            try { saver.submit {}.get(15, java.util.concurrent.TimeUnit.SECONDS) } catch (e: Exception) { } // รอบันทึกภาพที่ค้างให้ครบ
             if (dropLastMs > 0) FrameStore.dropAfter(this, el - dropLastMs)
             if (cutAtMs >= 0) FrameStore.dropAfter(this, cutAtMs - 1) // ตัดภาพที่เกินจุดจบ
             val n = FrameStore.count(this)
@@ -1977,6 +1985,7 @@ class CaptureService : Service() {
         quit()
         imgThread.quitSafely()
         workThread.quitSafely()
+        saver.shutdown()
         super.onDestroy()
     }
 }
