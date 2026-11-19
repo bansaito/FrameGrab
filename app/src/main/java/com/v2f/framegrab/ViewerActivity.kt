@@ -18,6 +18,7 @@ import android.os.Looper
 import android.util.LruCache
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
@@ -88,7 +89,7 @@ class ViewerActivity : Activity() {
         image = ZoomImageView(this).apply {
             onSwipe = { d -> setPlaying(false); show(idx + d) }
             onTap = { _ -> setUiVisible(!uiVisible) }   // แตะตรงไหนก็ได้ = ซ่อน/แสดงปุ่ม
-            onLongPress = { saveCurrent() } // กดค้าง = บันทึกภาพนี้
+            onLongPress = null // กดค้าง = บันทึก จัดการที่ dispatchTouchEvent (ได้ทั้งจอ)
             onZoomChanged = { z -> setUiVisible(!z); if (z) setPlaying(false) }
         }
         root.addView(image, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
@@ -283,6 +284,57 @@ class ViewerActivity : Activity() {
             val b = BitmapFactory.decodeFile(f.file.path)
             main.post { if (token == loadToken && b != null) image.setImageBitmap(b) }
         }
+    }
+
+    // ---------- กดค้างตรงไหนก็ได้ = บันทึกภาพนี้ (เว้นรอบปุ่ม/ภาพย่อ 12dp) ----------
+    private var lpX = 0f
+    private var lpY = 0f
+    private var lpFired = false
+    private val lpSlop by lazy { android.view.ViewConfiguration.get(this).scaledTouchSlop }
+    private val lpRun = Runnable {
+        lpFired = true
+        image.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+        // ยกเลิกท่าที่ค้างอยู่ในปุ่ม/แถบเลื่อน ไม่ให้กลายเป็นแตะหรือเลื่อนตอนปล่อยนิ้ว
+        val now = android.os.SystemClock.uptimeMillis()
+        val c = MotionEvent.obtain(now, now, MotionEvent.ACTION_CANCEL, lpX, lpY, 0)
+        try { window.superDispatchTouchEvent(c) } catch (e: Exception) { }
+        c.recycle()
+        saveCurrent()
+    }
+
+    private fun nearButton(x: Float, y: Float): Boolean {
+        val pad = dp(12f)
+        val loc = IntArray(2)
+        fun walk(v: View): Boolean {
+            if (v.visibility != View.VISIBLE || v.alpha < 0.05f) return false
+            if (v !== image && (v.hasOnClickListeners() || v.isLongClickable)) {
+                v.getLocationOnScreen(loc)
+                if (x >= loc[0] - pad && x <= loc[0] + v.width + pad && y >= loc[1] - pad && y <= loc[1] + v.height + pad) return true
+            }
+            if (v is ViewGroup) for (i in 0 until v.childCount) if (walk(v.getChildAt(i))) return true
+            return false
+        }
+        return walk(window.decorView)
+    }
+
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        when (ev.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                lpFired = false
+                main.removeCallbacks(lpRun)
+                lpX = ev.rawX; lpY = ev.rawY
+                if (frames.isNotEmpty() && !nearButton(ev.rawX, ev.rawY)) main.postDelayed(lpRun, 350)
+            }
+            MotionEvent.ACTION_MOVE ->
+                if (kotlin.math.abs(ev.rawX - lpX) > lpSlop || kotlin.math.abs(ev.rawY - lpY) > lpSlop) main.removeCallbacks(lpRun)
+            MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> main.removeCallbacks(lpRun)
+        }
+        if (lpFired) {
+            // กดค้างบันทึกไปแล้ว: กินท่าที่เหลือจนปล่อยนิ้ว
+            if (ev.actionMasked == MotionEvent.ACTION_UP || ev.actionMasked == MotionEvent.ACTION_CANCEL) lpFired = false
+            return true
+        }
+        return super.dispatchTouchEvent(ev)
     }
 
     private fun setUiVisible(v: Boolean) {
