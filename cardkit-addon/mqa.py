@@ -875,6 +875,14 @@ class SettingsDialog(QDialog):
         hint.setWordWrap(True)
         hint.setStyleSheet("color: gray; font-size: 11px;")
         lay.addWidget(hint)
+        kb = QPushButton("⌨  ตั้งคีย์ลัด…")
+        kb.setToolTip("เปลี่ยนปุ่มลัดของปุ่มลอย Rounds เช่น อีก 1 รอบ / ย้อน / เริ่มใหม่")
+
+        def _open_keys():
+            from . import shortcuts
+            shortcuts.open_dialog(self)
+        kb.clicked.connect(_open_keys)
+        lay.addWidget(kb)
         bb = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )

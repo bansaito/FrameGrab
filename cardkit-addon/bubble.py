@@ -324,8 +324,10 @@ class Menu(QFrame):
         # ปุ่มหลัก
         row = QHBoxLayout()
         row.setSpacing(6)
-        plus = _chip("➕ อีก 1 รอบ", "#2563EB", "#3B82F6", "อีก 1 รอบ: F หรือ Space (มือซ้าย) · Enter ก็ได้\n"
-                     "ไม่ต้องเปิดเมนู: Shift+G · หน้าแรกกด S = ท่องชุดนี้")
+        from . import shortcuts as SC
+        plus = _chip("➕ อีก 1 รอบ", "#2563EB", "#3B82F6",
+                     f"อีก 1 รอบ: {SC.text('plus')} · Enter ก็ได้\n"
+                     f"ไม่ต้องเปิดเมนู: {SC.text('plus_now')} · หน้าแรกกด {SC.text('study')} = ท่องชุดนี้")
         self._plus, self._undo_btn = plus, None
         plus.clicked.connect(lambda: self._do(lambda: R.bump(g)))
         row.addWidget(plus)
@@ -416,41 +418,42 @@ class Menu(QFrame):
     # ---- คีย์ลัดตอนเมนูเปิด
     def keyPressEvent(self, ev):
         from . import keymap
-        k, mod = ev.key(), ev.modifiers()
+        from . import shortcuts as SC
+        k = ev.key()
         K = Qt.Key
-        shift = bool(mod & Qt.KeyboardModifier.ShiftModifier)
         L = keymap.latin(ev)                     # ตำแหน่งปุ่ม → ใช้ได้ทั้งแป้นไทย/อังกฤษ
-        if k in (K.Key_Return, K.Key_Enter, K.Key_Space) or ev.text() in ("+", "=") or L == "F":
+        if k in (K.Key_Return, K.Key_Enter) or ev.text() in ("+", "=") or SC.match(ev, "plus"):
             self._plus.click()
-        elif L == "Z" and self._undo_btn is not None:
+        elif SC.match(ev, "undo") and self._undo_btn is not None:
             self._undo_btn.click()
-        elif L == "R" and shift:
+        elif SC.match(ev, "reset_all"):
             self._allb.click()
-        elif L == "R":
+        elif SC.match(ev, "reset"):
             self._rst.click()
-        elif L and L.isdigit() and L != "0" and getattr(self, "_others", None):
+        elif SC.match(ev, "study") and mw.state == "deckBrowser":
+            self._study(self.g["name"])                 # ท่องชุดหลัก (ชุดที่แสดงอยู่)
+        elif SC.match(ev, "menu"):
+            self.close()                                # ปุ่มเปิดเมนูอีกครั้ง = ปิด
+        elif SC.match(ev, "eye"):
+            if not ev.isAutoRepeat():
+                self._eye_fx.setOpacity(1.0)
+                self._peek(self._eye, True)
+        elif L and L.isdigit() and L != "0" and getattr(self, "_others", None) \
+                and not (ev.modifiers() & Qt.KeyboardModifier.ShiftModifier):
             i = int(L) - 1
             if i < len(self._others):
                 if mw.state == "deckBrowser":          # หน้าแรก: กดเลข = เข้าไปท่องชุดนั้นเลย
                     self._study(self._others[i])
                 else:                                   # หน้าอื่น: สลับดูชุด
                     self._switch(self._others[i])
-        elif L == "S" and mw.state == "deckBrowser":
-            self._study(self.g["name"])                 # S = ท่องชุดหลัก (ชุดที่แสดงอยู่)
-        elif L == "G":
-            self.close()                                # G อีกครั้ง = ปิด
-        elif L == "E":
-            if not ev.isAutoRepeat():
-                self._eye_fx.setOpacity(1.0)
-                self._peek(self._eye, True)
         elif k == K.Key_Escape:
             self.close()
         else:
             super().keyPressEvent(ev)
 
     def keyReleaseEvent(self, ev):
-        from . import keymap
-        if keymap.latin(ev) == "E" and not ev.isAutoRepeat():
+        from . import shortcuts as SC
+        if SC.match(ev, "eye") and not ev.isAutoRepeat():
             self._eye_fx.setOpacity(0.4)
             self._peek(self._eye, False)
         else:
@@ -600,7 +603,7 @@ def refresh_soon(*_args):
 
 # ---------------------------------------------------------------- คีย์ลัด G = เปิด/ปิดเมนูปุ่มลอย
 
-_g_shortcut = None
+
 
 
 def _on_g():
@@ -626,26 +629,36 @@ def _on_shift_g():
         print("[rounds bubble] Shift+G", e)
 
 
-_sg_shortcut = None
+_qs = []          # QShortcut ที่สร้างไว้ (สร้างใหม่ทุกครั้งที่เปลี่ยนคีย์ลัด)
+_km_keys = []     # ปุ่มที่ลงทะเบียนกับ keymap (แป้นไทย)
 
 
-def _setup_g_shortcut():
-    """G ใช้ได้เฉพาะหน้ารายการ deck / หน้าก่อนท่อง (หน้าอื่นปล่อยให้ Anki ใช้ตามปกติ)"""
-    global _g_shortcut
+def _setup_g_shortcut(rebuild=False):
+    """ปุ่มเปิดเมนู / อีก 1 รอบทันที — ใช้ได้เฉพาะหน้ารายการ deck / หน้าก่อนท่อง"""
     from aqt.qt import QShortcut, QKeySequence
-    if _g_shortcut is None:
-        from . import keymap
-        _g_shortcut = QShortcut(QKeySequence("G"), mw)
-        _g_shortcut.activated.connect(_on_g)
-        keymap.register(["deckBrowser", "overview"], "G", _on_g)   # แป้นไทย: ปุ่ม เ ก็ได้
-    global _sg_shortcut
-    if _sg_shortcut is None:
-        from . import keymap
-        _sg_shortcut = QShortcut(QKeySequence("Shift+G"), mw)
-        _sg_shortcut.activated.connect(_on_shift_g)
-        keymap.register(["deckBrowser", "overview"], "Shift+G", _on_shift_g)   # แป้นไทย: Shift+เ (ฌ)
-    _g_shortcut.setEnabled(_should_show())
-    _sg_shortcut.setEnabled(_should_show())
+    from . import keymap
+    from . import shortcuts as SC
+    global _qs, _km_keys
+    if rebuild or not _qs:
+        for q in _qs:
+            q.setEnabled(False)
+            q.setParent(None)
+        for st in ("deckBrowser", "overview"):
+            keymap.unregister_state(st, _km_keys)
+        _qs, _km_keys = [], []
+        for cmd, fn in (("menu", _on_g), ("plus_now", _on_shift_g)):
+            for key in SC.get(cmd):
+                q = QShortcut(QKeySequence(key), mw)
+                q.activated.connect(fn)
+                _qs.append(q)
+                keymap.register(["deckBrowser", "overview"], key, fn)   # แป้นไทยก็ได้
+                _km_keys.append(key)
+    for q in _qs:
+        q.setEnabled(_should_show())
+
+
+def reload_shortcuts():
+    _setup_g_shortcut(rebuild=True)
 
 
 def set_edge(on):

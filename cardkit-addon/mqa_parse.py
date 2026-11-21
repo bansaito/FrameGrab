@@ -194,9 +194,32 @@ def _single_answer(question_html, back_html, q_re, h_re):
     if len(groups) != 1:
         return {}
     first = next((line_text(x) for x in _BOUNDARY.split(back_html)[::2] if line_text(x)), "")
-    if not _CORRECT_ONLY.match(first):
+    if not first:
         return {}
+    # เฉลยขึ้นต้นด้วย ก–จ ก็ใช้เลย · ไม่มีตัวอักษรตอบ (มีแต่คำอธิบาย) ก็ยังคลิกตอบได้ — เดาตัวถูกจากเนื้อหา
     return {groups[0]["n"]: _trim_breaks(back_html)}
+
+
+_WORD = re.compile(r"[A-Za-z][A-Za-z\-]{3,}|[ก-๙]{4,}")
+
+
+def guess_choice(choices, answer_html):
+    """เฉลยไม่บอกว่าข้อไหน → เดาจากคำที่ตรงกัน (เช่น "Nitrosomonas" มีแค่ใน ข.)
+    choices: {"ก": "ข้อความตัวเลือก", …} · ไม่ชัดพอ = "" (ไม่เดา จะได้ไม่ขึ้นถูก/ผิดมั่ว)"""
+    ans = line_text(answer_html).lower()
+    if not ans:
+        return ""
+    words = {c: {w.lower() for w in _WORD.findall(t)} for c, t in choices.items()}
+    common = set.intersection(*words.values()) if len(words) > 1 else set()
+    score = {}
+    for c, ws in words.items():
+        score[c] = sum(len(w) for w in ws - common if w in ans)    # ไม่นับคำที่ทุกตัวเลือกมีเหมือนกัน
+    best = sorted(score.items(), key=lambda x: -x[1])
+    if not best or best[0][1] < 6:
+        return ""
+    if len(best) > 1 and best[0][1] < 2 * best[1][1]:
+        return ""
+    return best[0][0]
 
 
 def correct_choice(answer_html: str):
@@ -232,6 +255,15 @@ def inline_reveal(question_html: str, back_html: str, patterns,
     for idx, g in enumerate(targets, start=1):
         ans = answers[g["n"]]
         right = correct_choice(ans)
+        if not right:
+            opts = {}
+            for j in range(g["start"], g["end"]):
+                if j % 2 == 0:
+                    m = _CHOICE.match(line_text(parts[j]))
+                    if m:
+                        opts[m.group(1)] = line_text(parts[j])[m.end():]
+            if len(opts) >= 2:
+                right = guess_choice(opts, ans)
         if click_choice:
             # ห่อบรรทัด ก./ข./ค./ง. ให้คลิกตอบได้ (แก้ใน parts ตรง ๆ ไม่เปลี่ยนตำแหน่ง)
             for j in range(g["start"], g["end"]):

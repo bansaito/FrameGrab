@@ -69,3 +69,5 @@
 **mac_emoji_picker_fix** – (Mac) อีโมจิจากแผง Ctrl+Cmd+Space ลงช่องแก้การ์ดได้ (true/false)
 
 **decks_keep_scroll** – หน้า Decks จำตำแหน่งเลื่อนเดิมระหว่างเปิด Anki (กลับมาจากการท่อง / กด ➕ แล้วไม่เด้งขึ้นบนสุด) (true/false)
+
+**shortcuts** – คีย์ลัดที่ตั้งเอง (แก้ง่ายกว่าที่ CardKit → ตั้งค่า → ⌨ ตั้งคีย์ลัด…)
