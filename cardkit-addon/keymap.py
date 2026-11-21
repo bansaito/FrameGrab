@@ -127,7 +127,11 @@ class _Filter(QObject):
             if not is_non_latin(ev):
                 return False                     # แป้นอังกฤษ: ให้คีย์ลัดเดิมทำงาน
             key = latin(ev)
-            fn = _handlers.get((mw.state, key)) if key else None
+            fn = None
+            if key and ev.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+                fn = _handlers.get((mw.state, "Shift+" + key))
+            if fn is None and key:
+                fn = _handlers.get((mw.state, key))
             if fn is None:
                 return False
             if t == QEvent.Type.ShortcutOverride:

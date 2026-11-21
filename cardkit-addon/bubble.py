@@ -324,7 +324,8 @@ class Menu(QFrame):
         # ปุ่มหลัก
         row = QHBoxLayout()
         row.setSpacing(6)
-        plus = _chip("➕ อีก 1 รอบ", "#2563EB", "#3B82F6", "อีก 1 รอบ (Enter) · หน้าแรกกด S = ท่องชุดนี้")
+        plus = _chip("➕ อีก 1 รอบ", "#2563EB", "#3B82F6", "อีก 1 รอบ: F หรือ Space (มือซ้าย) · Enter ก็ได้\n"
+                     "ไม่ต้องเปิดเมนู: Shift+G · หน้าแรกกด S = ท่องชุดนี้")
         self._plus, self._undo_btn = plus, None
         plus.clicked.connect(lambda: self._do(lambda: R.bump(g)))
         row.addWidget(plus)
@@ -419,7 +420,7 @@ class Menu(QFrame):
         K = Qt.Key
         shift = bool(mod & Qt.KeyboardModifier.ShiftModifier)
         L = keymap.latin(ev)                     # ตำแหน่งปุ่ม → ใช้ได้ทั้งแป้นไทย/อังกฤษ
-        if k in (K.Key_Return, K.Key_Enter) or ev.text() in ("+", "="):
+        if k in (K.Key_Return, K.Key_Enter, K.Key_Space) or ev.text() in ("+", "=") or L == "F":
             self._plus.click()
         elif L == "Z" and self._undo_btn is not None:
             self._undo_btn.click()
@@ -611,6 +612,23 @@ def _on_g():
     _bubble.toggle_menu()
 
 
+def _on_shift_g():
+    """Shift+G = อีก 1 รอบ ของชุดหลักทันที (ไม่ต้องเปิดเมนู)"""
+    if not _should_show() or _bubble is None:
+        return
+    try:
+        if _bubble.menu_open():
+            _bubble.menu._plus.click()
+            return
+        m = Menu(_bubble)                        # สร้างแบบไม่โชว์ แล้วกด ➕ ให้
+        m._plus.click()
+    except Exception as e:
+        print("[rounds bubble] Shift+G", e)
+
+
+_sg_shortcut = None
+
+
 def _setup_g_shortcut():
     """G ใช้ได้เฉพาะหน้ารายการ deck / หน้าก่อนท่อง (หน้าอื่นปล่อยให้ Anki ใช้ตามปกติ)"""
     global _g_shortcut
@@ -620,7 +638,14 @@ def _setup_g_shortcut():
         _g_shortcut = QShortcut(QKeySequence("G"), mw)
         _g_shortcut.activated.connect(_on_g)
         keymap.register(["deckBrowser", "overview"], "G", _on_g)   # แป้นไทย: ปุ่ม เ ก็ได้
+    global _sg_shortcut
+    if _sg_shortcut is None:
+        from . import keymap
+        _sg_shortcut = QShortcut(QKeySequence("Shift+G"), mw)
+        _sg_shortcut.activated.connect(_on_shift_g)
+        keymap.register(["deckBrowser", "overview"], "Shift+G", _on_shift_g)   # แป้นไทย: Shift+เ (ฌ)
     _g_shortcut.setEnabled(_should_show())
+    _sg_shortcut.setEnabled(_should_show())
 
 
 def set_edge(on):
