@@ -95,7 +95,15 @@ object FrameStore {
     }
 
     fun clear(c: Context, video: Boolean = false) {
-        dir(c, video).listFiles()?.forEach { it.delete() }
+        val d = dir(c, video)
+        // ย้ายทั้งโฟลเดอร์ไปทิ้ง (ทันที) แล้วค่อยลบไฟล์อีกเธรด — ภาพหลายร้อยภาพ ลบทีละไฟล์ทำให้เริ่มอัดช้า
+        val trash = File(c.filesDir, ".trash_" + System.nanoTime())
+        if (d.renameTo(trash)) {
+            d.mkdirs()
+            Thread {
+                c.filesDir.listFiles()?.filter { it.name.startsWith(".trash_") }?.forEach { it.deleteRecursively() }
+            }.start()
+        } else d.listFiles()?.forEach { it.delete() }
     }
 
     /** ขนาดรวมของภาพทั้งหมด (ไบต์) */

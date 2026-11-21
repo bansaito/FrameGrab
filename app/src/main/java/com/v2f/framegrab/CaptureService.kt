@@ -94,6 +94,9 @@ class CaptureService : Service() {
     // บันทึก JPEG อีกเธรด ให้จังหวะจับภาพตรงทุก 0.1 วิ ไม่ต้องรอเข้ารหัสไฟล์
     private val saver = java.util.concurrent.Executors.newSingleThreadExecutor()
     private val savePending = java.util.concurrent.atomic.AtomicInteger(0)
+    // อ่านชื่อจากภาพ (ML Kit/Tesseract ใช้เวลา 0.5–2 วิ) ทำอีกเธรด ไม่ให้หน่วงตอนเริ่มอัด
+    private val ocrExec = java.util.concurrent.Executors.newSingleThreadExecutor()
+    @Volatile private var recGen = 0
 
     private var projection: MediaProjection? = null
     private var display: VirtualDisplay? = null
@@ -513,7 +516,7 @@ class CaptureService : Service() {
             // ไม่ได้ชื่อจากการช่วยเหลือพิเศษ: อ่านจากภาพเต็มจอแทน (แยกเธรด ไม่ให้การเริ่มอัดช้า)
             if (!replay && videoUser == null && b != null && NameOcr.enabled(this)) {
                 val ob = b.copy(b.config ?: Bitmap.Config.ARGB_8888, false)
-                Thread { if (videoUser == null) videoUser = NameOcr.find(this, ob); ob.recycle() }.start()
+                ocrExec.execute { try { if (videoUser == null) videoUser = NameOcr.find(this, ob) } catch (e: Throwable) { } finally { ob.recycle() } }
             }
             b?.recycle()
             recRect = rect; recBmpW = rd.width; recBmpH = rd.height
@@ -597,7 +600,7 @@ class CaptureService : Service() {
         closeMenu()
         toast("💾 กำลังเก็บ ${Prefs.replaySec(this)} วิล่าสุด…")
         videoUser = try { HoldService.instance?.findUsername() } catch (x: Exception) { null }
-        if (videoUser == null && NameOcr.enabled(this)) work.post { grabBitmap()?.let { b -> videoUser = NameOcr.find(this, b); b.recycle() } }
+        if (videoUser == null && NameOcr.enabled(this)) work.post { grabBitmap()?.let { b -> ocrExec.execute { try { if (videoUser == null) videoUser = NameOcr.find(this, b) } catch (e: Throwable) { } finally { b.recycle() } } } }
         e.saveReplay { f -> if (f != null) videoListener.onFile(f) else main.post { toast("ยังไม่มีภาพให้เก็บ") } }
     }
 
@@ -616,7 +619,8 @@ class CaptureService : Service() {
     private fun startRecording() {
         if (recording || videoEngine != null && !replayOn) return
         closeMenu()
-        FrameStore.clear(this) // อัดคลิปใหม่ ล้างภาพเก่าทันที
+        recGen++
+        FrameStore.clear(this) // อัดคลิปใหม่ ล้างภาพเก่าทันที (ย้ายโฟลเดอร์ทิ้งแล้วลบทีหลัง เร็วแม้มีหลายร้อยภาพ)
         FrameStore.setRecordingOwner(this, try { HoldService.instance?.findUsername() } catch (e: Exception) { null })
         recording = true
         recCount = 0
@@ -642,7 +646,16 @@ class CaptureService : Service() {
             // วัดกรอบจากภาพแรก (ใช้ทั้งคลิป) แล้ววางปุ่ม ■ ไว้นอกกรอบถ้าทำได้
             grabBitmap()?.let { b ->
                 recRect = cropRectFor(b); recBmpW = b.width; recBmpH = b.height
-                if (FrameStore.ownerOf(this, java.io.File("x_c_")) == null) NameOcr.find(this, b)?.let { FrameStore.setRecordingOwner(this, it) }
+                if (FrameStore.ownerOf(this, java.io.File("x_c_")) == null && NameOcr.enabled(this)) {
+                    val gen = recGen
+                    val ob = b.copy(Bitmap.Config.ARGB_8888, false)
+                    ocrExec.execute {
+                        try {
+                            val who = NameOcr.find(this, ob)
+                            if (who != null && gen == recGen && FrameStore.ownerOf(this, java.io.File("x_c_")) == null) FrameStore.setRecordingOwner(this, who)
+                        } catch (e: Throwable) { } finally { ob.recycle() }
+                    }
+                }
                 b.recycle()
             }
             if (showStop) {
@@ -1986,6 +1999,7 @@ class CaptureService : Service() {
         imgThread.quitSafely()
         workThread.quitSafely()
         saver.shutdown()
+        ocrExec.shutdown()
         super.onDestroy()
     }
 }
