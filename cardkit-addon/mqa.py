@@ -36,7 +36,8 @@ KEYS = {"inline": "mqa_inline", "inline_stealth": "mqa_inline_stealth",
         "shift_quote": "shift_quote_any_layout",
         "deck_tree": "deck_picker_tree",
         "mac_menubar_fix": "mac_keep_menubar",
-        "mac_emoji_fix": "mac_emoji_picker_fix"}
+        "mac_emoji_fix": "mac_emoji_picker_fix",
+        "deck_scroll": "decks_keep_scroll"}
 
 TAG_NEW = "แยกข้อ::ใหม่"
 TAG_ORIG = "แยกข้อ::ต้นฉบับ"
@@ -55,7 +56,7 @@ def cfg():
 DEFAULT_ON = {"inline", "inline_stealth", "inline_hidebtn", "inline_accordion",
               "click_choice", "choice_noframe", "hover_open", "keep_scroll", "edit_here",
               "mouse_back", "mouse_mid_quote", "shift_quote",
-              "deck_tree", "mac_menubar_fix", "mac_emoji_fix"}
+              "deck_tree", "mac_menubar_fix", "mac_emoji_fix", "deck_scroll"}
 
 
 def on(feature):
@@ -822,6 +823,8 @@ OPTIONS = [
      "ถ้าแถบเมนูเหลือแค่ Anki / Edit จะคืนโฟกัสให้หน้าต่างที่ใช้อยู่เอง (เฉพาะ Mac)", None),
     ("mac_emoji_fix", "Mac: ใส่อีโมจิจากแผงอีโมจิได้",
      "กด Ctrl+Cmd+Space เลือกอีโมจิ แล้วลงช่องแก้การ์ดได้ (เฉพาะ Mac)", None),
+    ("deck_scroll", "หน้า Decks จำตำแหน่งเลื่อนเดิม",
+     "กลับมาหน้า Decks (หลังท่อง / กด ➕ ในปุ่มลอย) อยู่ตรงเดิม ไม่เด้งขึ้นบนสุด · ปิด Anki แล้วเริ่มบนสุด", None),
 ]
 
 

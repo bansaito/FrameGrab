@@ -33,5 +33,6 @@
     "deck_picker_tree": true,
     "mac_keep_menubar": true,
     "mac_emoji_picker_fix": true,
+    "decks_keep_scroll": true,
     "mouse_quote_extra": []
 }

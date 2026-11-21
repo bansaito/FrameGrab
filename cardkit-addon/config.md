@@ -67,3 +67,5 @@
 **mac_keep_menubar** – (Mac) ถ้าแถบเมนูบนสุดหายเหลือแค่ Anki / Edit จะคืนโฟกัสให้หน้าต่างหลักเอง (true/false)
 
 **mac_emoji_picker_fix** – (Mac) อีโมจิจากแผง Ctrl+Cmd+Space ลงช่องแก้การ์ดได้ (true/false)
+
+**decks_keep_scroll** – หน้า Decks จำตำแหน่งเลื่อนเดิมระหว่างเปิด Anki (กลับมาจากการท่อง / กด ➕ แล้วไม่เด้งขึ้นบนสุด) (true/false)
