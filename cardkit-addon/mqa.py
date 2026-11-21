@@ -1171,9 +1171,11 @@ gui_hooks.webview_did_receive_js_message.append(_ks_msg)
 _ANCHOR_JS = r"""
 (function(){
   var out = [], tops = [], seen = {};
-  var x = Math.round(window.innerWidth / 2);
-  [12, 40, 80, 140, 220, 320].forEach(function(y){
-    [x, 60, Math.round(window.innerWidth / 4)].forEach(function(px){
+  var W = window.innerWidth, ys = [], xs = [Math.round(W / 2), Math.round(W / 4), Math.round(W * 3 / 4), 60];
+  for (var yy = 12; yy < window.innerHeight - 10 && ys.length < 40; yy += 28) ys.push(yy);   // ทั้งจอ ไม่ใช่แค่ส่วนบน
+  ys.forEach(function(y){
+    if (out.length >= 16) return;
+    xs.forEach(function(px){
       var r = document.caretRangeFromPoint && document.caretRangeFromPoint(px, y);
       var n = r && r.startContainer;
       if (!n || n.nodeType !== 3) return;
@@ -1209,13 +1211,24 @@ _JUMP_JS = r"""
   function visible(el){ return el && el.getClientRects().length > 0 && !el.closest('.CodeMirror'); }
   function find(){
     var nodes = texts(document, []);
-    for (var i = 0; i < d.a.length; i++){
-      var want = d.a[i], hit = [];
+    var texts_ = nodes.map(function(n){ return norm(n.data); });
+    function look(want){
+      var hit = [];
       for (var k = 0; k < nodes.length; k++){
-        var t = norm(nodes[k].data), at = t.indexOf(want);
+        var at = texts_[k].indexOf(want);
         if (at >= 0 && visible(nodes[k].parentElement)) hit.push([nodes[k], at]);
+        if (hit.length > 1) break;
       }
-      if (hit.length === 1) return [hit[0][0], hit[0][1], i];          // ข้อความซ้ำหลายที่ = ไม่แน่ใจ ข้ามไปอันถัดไป
+      return hit.length === 1 ? hit[0] : null;             // ซ้ำหลายที่ = ไม่แน่ใจ
+    }
+    // รอบแรก: ข้อความเต็ม (แม่นสุด) · รอบสอง: แค่ต้นข้อความ (ทนเรื่องตัวหนา/ช่องว่างต่างกัน)
+    for (var pass = 0; pass < 2; pass++){
+      for (var i = 0; i < d.a.length; i++){
+        var want = pass ? d.a[i].slice(0, 14) : d.a[i];
+        if (pass && (want.length < 8 || want === d.a[i])) continue;
+        var h = look(want);
+        if (h) return [h[0], h[1], i];
+      }
     }
     return null;
   }
@@ -1234,7 +1247,10 @@ _JUMP_JS = r"""
       var r = document.createRange();
       r.setStart(f[0], 0); r.setEnd(f[0], Math.min(f[0].data.length, 1));
       var top = r.getBoundingClientRect().top;
-      var want = d.win && d.t ? d.t[f[2]] : 8;      // หน้าทบทวน: ให้อยู่ระยะเดิมจากขอบบน
+      // ให้ข้อความอยู่ระยะเดิมจากขอบบนเหมือนในหน้าการ์ด (หน้าต่าง Edit: ไม่ให้ต่ำเกิน 7 ใน 10 ของจอ)
+      var vh = sc ? sc.clientHeight : window.innerHeight;
+      var want = d.t ? d.t[f[2]] : 8;
+      if (!d.win) want = Math.max(8, Math.min(want, vh * 0.7));
       if (sc) sc.scrollTop += top - sc.getBoundingClientRect().top - want;
       else window.scrollBy(0, top - want);
       return;
