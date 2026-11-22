@@ -145,6 +145,8 @@ class CaptureService : Service() {
     /** เหตุผลที่ปุ่มลอยซ่อนอยู่ (แสดงในแจ้งเตือน) */
     @Volatile private var hideReason: String? = null
     private var storyMiss = 0                   // นับครั้งที่ไม่เจอหน้าสตอรี่ติดกัน (กันกะพริบ)
+    // แชร์แบบ "แอปเดียว" แล้วไปเปิดแอปอื่น: ปุ่มลอยเหลือเป็นปุ่มจาง ๆ "เปลี่ยนแอป" แตะ = เลือกแชร์แอปนี้
+    @Volatile private var switchMode = false
     @Volatile private var capturedAppVisible = true // Android 14+ อัด "แอปเดียว": แอปนั้นอยู่บนจอไหม
     @Volatile private var fgLabel: String? = null   // แอปที่ตรวจเจอ (แสดงในแจ้งเตือน)
     private var lastBase: android.graphics.RectF? = null // พื้นที่วิดีโอล่าสุด (พิกัดจอ)
@@ -856,7 +858,7 @@ class CaptureService : Service() {
                     downX = e.rawX; downY = e.rawY; startX = lp.x; startY = lp.y; moved = false
                     longFired = false
                     wake()
-                    if (!recording) main.postDelayed(longPress, 400L)   // ไม่ใช้ค่าระบบ (แต่ละยี่ห้อไม่เท่ากัน)
+                    if (!recording && !switchMode) main.postDelayed(longPress, 400L)   // ไม่ใช้ค่าระบบ (แต่ละยี่ห้อไม่เท่ากัน)
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = e.rawX - downX; val dy = e.rawY - downY
@@ -878,6 +880,9 @@ class CaptureService : Service() {
                         Prefs.setBubble(this, lp.x, lp.y)
                     } else if (recording) {
                         if (videoRec) stopVideo(null) else stopRecording(0)
+                    } else if (switchMode) {
+                        // แตะปุ่ม "เปลี่ยนแอป" → หน้าต่าง Android ให้เลือกแอปที่จะแชร์ (เลือกแอปที่เพิ่งเปิดอยู่)
+                        try { reshareIntent().send() } catch (ex: Exception) { }
                     } else if (SystemClock.uptimeMillis() - lastOutsideClose > 300) {
                         if (menuOpen) closeMenu() else openMenu()
                     }
@@ -1257,6 +1262,12 @@ class CaptureService : Service() {
 
     /** ปุ่มกลม: ไอคอน + สัดส่วนวิดีโอตัวเล็กด้านล่าง */
     private fun bubbleLabel(): CharSequence {
+        if (switchMode) {
+            val sb = android.text.SpannableStringBuilder("⇄\nเปลี่ยนแอป")
+            sb.setSpan(android.text.style.AbsoluteSizeSpan(16, true), 0, 1, 0)
+            sb.setSpan(android.text.style.AbsoluteSizeSpan(9, true), 2, sb.length, 0)
+            return sb
+        }
         val head = if (replayOn) "⟲" else "🎞️"
         val r = videoRatio?.substringBefore(" (") ?: return head
         val sb = android.text.SpannableStringBuilder("$head\n$r")
@@ -1292,14 +1303,21 @@ class CaptureService : Service() {
             val reason = when {
                 parked -> null   // มีแจ้งเตือนของตัวเองแล้ว
                 ownUiHidden -> "เปิดหน้าของ FrameGrab อยู่"
-                !capturedAppVisible -> "ออกจากแอปที่เลือกแชร์ไว้ (กด 🔄 เปลี่ยนแอป ถ้าจะใช้แอปนี้)"
+                !capturedAppVisible -> "ออกจากแอปที่เลือกแชร์ไว้ (แตะปุ่มลอย ⇄ หรือ 🔄 เปลี่ยนแอป ถ้าจะใช้แอปนี้)"
                 forceShow -> null
                 feedHidden -> "อยู่หน้าแรก TikTok (จะกลับมาเมื่อเปิดสตอรี่/ออกจากหน้าแรก)"
                 outside -> "ไม่ได้อยู่ใน TikTok / IG / FB"
                 else -> null
             }
-            val hide = parked || reason != null
+            val sw = !parked && !ownUiHidden && !capturedAppVisible && !recording
+            val hide = parked || (reason != null && !sw)
             if (reason != hideReason) { hideReason = reason; updateNotification() }
+            if (sw != switchMode) {
+                switchMode = sw
+                if (sw) { if (guideEditing) finishGuideEdit(false); closeMenu() }
+                if (!recording) bubble.text = bubbleLabel()
+                if (!recording && !holdHidden) showOverlay()
+            }
             if (hide != appHidden) {
                 appHidden = hide
                 if (hide) {
@@ -1320,7 +1338,7 @@ class CaptureService : Service() {
             if (root == null) return
             val svc = this@CaptureService
             val visibleOrFeedHidden = root?.visibility == View.VISIBLE || (feedHidden && !holdHidden)
-            if (!parked && !recording && !menuOpen && !guideEditing && !draggingGuide && !inOwnApp && visibleOrFeedHidden) {
+            if (!parked && !switchMode && !recording && !menuOpen && !guideEditing && !draggingGuide && !inOwnApp && visibleOrFeedHidden) {
                 val preset = Prefs.cropPreset(svc)
                 val guideLive = Prefs.showGuide(svc) && preset != "full" && preset != "custom"
                 val storyOnly = Prefs.storyOnly(svc)
@@ -1401,7 +1419,7 @@ class CaptureService : Service() {
     }
 
     private fun shouldShowGuide(): Boolean =
-        guideEditing || (!appHidden && !replayOn && Prefs.showGuide(this) && !recording && root?.visibility == View.VISIBLE && guide?.rect != null)
+        guideEditing || (!appHidden && !switchMode && !replayOn && Prefs.showGuide(this) && !recording && root?.visibility == View.VISIBLE && guide?.rect != null)
 
     // ---------- จุดจับบนกรอบ (ลากได้ทันที ไม่ต้องเข้าเมนู) ----------
     @SuppressLint("ClickableViewAccessibility")
@@ -1735,7 +1753,7 @@ class CaptureService : Service() {
         r.visibility = View.VISIBLE
         lp.flags = lp.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
         wm.updateViewLayout(r, lp)
-        guide?.visibility = if (shouldShowGuide()) View.VISIBLE else View.INVISIBLE
+        guide?.visibility = if (!switchMode && shouldShowGuide()) View.VISIBLE else View.INVISIBLE
         syncHandles()
         scheduleFade()
     }
