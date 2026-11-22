@@ -18,6 +18,7 @@ from . import bubble  # noqa: F401  (ปุ่มลอย Rounds แบบม�
 from . import decktree  # noqa: F401  (Choose Deck แบบต้นไม้)
 from . import macfix  # noqa: F401  (Mac: กันแถบเมนูหาย)
 from . import scrollkeep  # noqa: F401  (หน้า Decks จำตำแหน่งเลื่อน)
+from . import wordsplit  # noqa: F401  (การ์ดคำศัพท์แยกหน้า/หลัง)
 from . import mouse  # noqa: F401  (ปุ่มเมาส์กลาง = ", ปุ่มข้าง = ย้อนกลับ)
 
 mw.addonManager.setConfigUpdatedAction(__name__, drop.reload_config)

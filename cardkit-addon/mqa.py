@@ -37,7 +37,8 @@ KEYS = {"inline": "mqa_inline", "inline_stealth": "mqa_inline_stealth",
         "deck_tree": "deck_picker_tree",
         "mac_menubar_fix": "mac_keep_menubar",
         "mac_emoji_fix": "mac_emoji_picker_fix",
-        "deck_scroll": "decks_keep_scroll"}
+        "deck_scroll": "decks_keep_scroll",
+        "word_split": "word_card_split"}
 
 TAG_NEW = "แยกข้อ::ใหม่"
 TAG_ORIG = "แยกข้อ::ต้นฉบับ"
@@ -56,7 +57,7 @@ def cfg():
 DEFAULT_ON = {"inline", "inline_stealth", "inline_hidebtn", "inline_accordion",
               "click_choice", "choice_noframe", "hover_open", "keep_scroll", "edit_here",
               "mouse_back", "mouse_mid_quote", "shift_quote",
-              "deck_tree", "mac_menubar_fix", "mac_emoji_fix", "deck_scroll"}
+              "deck_tree", "mac_menubar_fix", "mac_emoji_fix", "deck_scroll", "word_split"}
 
 
 def on(feature):
@@ -825,6 +826,9 @@ OPTIONS = [
      "กด Ctrl+Cmd+Space เลือกอีโมจิ แล้วลงช่องแก้การ์ดได้ (เฉพาะ Mac)", None),
     ("deck_scroll", "หน้า Decks จำตำแหน่งเลื่อนเดิม",
      "กลับมาหน้า Decks (หลังท่อง / กด ➕ ในปุ่มลอย) อยู่ตรงเดิม ไม่เด้งขึ้นบนสุด · ปิด Anki แล้วเริ่มบนสุด", None),
+    ("word_split", "การ์ดคำศัพท์: แยกหน้า/หลังให้อัตโนมัติ",
+     "ช่องหน้าเป็น \"🏆 Deed : ความหมาย …\" และช่องหลังว่าง → หน้า = Deed + ภาพ+syn, "
+     "หลัง = 🏆 : ความหมาย … (ทำตอนออกจากช่องหน้า / กด Add)", None),
 ]
 
 
