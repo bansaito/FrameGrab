@@ -1309,7 +1309,9 @@ class CaptureService : Service() {
                 outside -> "ไม่ได้อยู่ใน TikTok / IG / FB"
                 else -> null
             }
-            val sw = !parked && !ownUiHidden && !capturedAppVisible && !recording
+            // ปุ่ม "เปลี่ยนแอป" แสดงเฉพาะตอนอยู่ใน TikTok / IG / FB (แอปอื่น = ซ่อน ใช้ 🔄 ในแจ้งเตือนเอง)
+            val fgNow = fg ?: if (!capturedAppVisible && AppWatch.hasPermission(svc)) AppWatch.foreground(svc) else null
+            val sw = !parked && !ownUiHidden && !capturedAppVisible && !recording && fgNow != null && fgNow in AppWatch.VIDEO_APPS
             val hide = parked || (reason != null && !sw)
             if (reason != hideReason) { hideReason = reason; updateNotification() }
             if (sw != switchMode) {
