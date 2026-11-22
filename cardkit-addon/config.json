@@ -35,6 +35,7 @@
     "mac_emoji_picker_fix": true,
     "decks_keep_scroll": true,
     "word_card_split": true,
-    "word_split_front_tail": "<br><br><br><br><br>ภาพ+syn<br><br><br>",
+    "word_split_front_tail": "<br><br><br><br><br>ภาพ+syn",
+    "word_split_pad_lines": 8,
     "mouse_quote_extra": []
 }

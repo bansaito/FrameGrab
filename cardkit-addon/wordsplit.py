@@ -13,7 +13,7 @@ from aqt.qt import QTimer
 
 from .mqa import cfg, on
 
-DEFAULT_TAIL = "<br><br><br><br><br>ภาพ+syn<br><br><br>"
+DEFAULT_TAIL = "<br><br><br><br><br>ภาพ+syn"
 
 # บรรทัดแรก: [แท็ก html] [อีโมจิ/สัญลักษณ์] คำอังกฤษ : ความหมาย
 _FIRST = re.compile(
@@ -45,9 +45,24 @@ def convert(front, back):
         return None
     emo = m.group("emo").replace("&nbsp;", " ").strip()
     new_back = f'{m.group("lead")}{emo} :{m.group("rest")}{after}'
-    tail = cfg().get("word_split_front_tail", DEFAULT_TAIL)
-    new_front = f"{word}{tail}"
+    c = cfg()
+    tail = c.get("word_split_front_tail", DEFAULT_TAIL)
+    # เว้นบรรทัดว่างท้ายคำสุดท้าย ทั้งหน้าและหลัง (ค่าเริ่มต้น 8 บรรทัด)
+    try:
+        n = max(0, int(c.get("word_split_pad_lines", 8)))
+    except (TypeError, ValueError):
+        n = 8
+    pad = "<br>" * (n + 1) if n else ""          # บรรทัดว่าง n บรรทัด = <br> n+1 ตัว (ตัวแรกจบบรรทัดสุดท้าย)
+    new_front = _rstrip_breaks(f"{word}{tail}") + pad
+    new_back = _rstrip_breaks(new_back) + pad
     return new_front, new_back
+
+
+_TRAIL = re.compile(r"(?:\s|&nbsp;|<br\s*/?>|<div>\s*(?:<br\s*/?>)?\s*</div>)+$", re.I)
+
+
+def _rstrip_breaks(html):
+    return _TRAIL.sub("", html or "")
 
 
 # ด้านหลังที่เพิ่งแยกให้ — ถ้าช่องหลังถูกเขียนทับด้วยค่าว่าง (ตอนเคอร์เซอร์อยู่ในช่องหลัง Anki ไม่โหลดช่องนั้นใหม่
