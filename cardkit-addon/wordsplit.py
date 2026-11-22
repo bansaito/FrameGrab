@@ -5,8 +5,11 @@
 """
 
 import re
+import time
+import weakref
 
 from aqt import gui_hooks
+from aqt.qt import QTimer
 
 from .mqa import cfg, on
 
@@ -47,6 +50,12 @@ def convert(front, back):
     return new_front, new_back
 
 
+# ด้านหลังที่เพิ่งแยกให้ — ถ้าช่องหลังถูกเขียนทับด้วยค่าว่าง (ตอนเคอร์เซอร์อยู่ในช่องหลัง Anki ไม่โหลดช่องนั้นใหม่
+# พอคลิกออกก็ส่งค่าว่างกลับมาทับ) → ใส่คืนให้
+_pending = {}            # id(note) → (ด้านหลัง, เวลา)
+_editors = weakref.WeakSet()
+
+
 def _apply(note):
     if not on("word_split") or len(note.fields) < 2:
         return False
@@ -54,15 +63,39 @@ def _apply(note):
     if not r:
         return False
     note.fields[0], note.fields[1] = r
+    _pending[id(note)] = (r[1], time.time())
     return True
 
 
+def _restore(note):
+    p = _pending.get(id(note))
+    if not p or time.time() - p[1] > 600:
+        return False
+    if _plain(note.fields[1]):
+        _pending.pop(id(note), None)                 # ผู้ใช้พิมพ์ด้านหลังเองแล้ว → เลิกยุ่ง
+        return False
+    note.fields[1] = p[0]
+    return True
+
+
+def _refresh_editor(note):
+    """ช่องหลังที่โฟกัสอยู่ไม่ถูกโหลดใหม่ → ปลดโฟกัสก่อน (จะเกิด blur → ใส่คืน → โหลดใหม่)"""
+    for ed in list(_editors):
+        try:
+            if ed.note is note and ed.web is not None:
+                ed.web.eval("document.activeElement && document.activeElement.blur && document.activeElement.blur();"
+                            "var a=document.activeElement; try{ (a&&a.shadowRoot&&a.shadowRoot.activeElement||a).blur(); }catch(e){}")
+        except Exception:
+            pass
+
+
 def _on_unfocus(changed, note, idx):
-    if idx != 0:
-        return changed
     try:
-        if _apply(note):
+        if idx == 0 and _apply(note):
+            QTimer.singleShot(250, lambda n=note: _refresh_editor(n))
             return True                               # ให้ editor โหลดใหม่ เห็นผลทันที
+        if idx == 1 and _restore(note):
+            return True
     except Exception:
         pass
     return changed
@@ -70,10 +103,19 @@ def _on_unfocus(changed, note, idx):
 
 def _on_add(problem, note):
     try:
-        _apply(note)
+        if not _apply(note):
+            _restore(note)
+        _pending.pop(id(note), None)
     except Exception:
         pass
     return problem
+
+
+def _on_editor_init(ed):
+    _editors.add(ed)
+
+
+gui_hooks.editor_did_init.append(_on_editor_init)
 
 
 gui_hooks.editor_did_unfocus_field.append(_on_unfocus)
