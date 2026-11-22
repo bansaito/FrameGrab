@@ -97,8 +97,9 @@ object Prefs {
     fun setOnlyInVideoApps(c: Context, v: Boolean) = sp(c).edit().putBoolean("onlyInApps", v).apply()
 
     /** ภาพที่ดูค้างไว้ในหน้าดูภาพ (ชื่อไฟล์) */
-    fun viewerLast(c: Context): String? = sp(c).getString("viewerLast", null)
-    fun setViewerLast(c: Context, v: String?) = sp(c).edit().putString("viewerLast", v).apply()
+    /** ภาพที่ดูค้างไว้ แยกตามชุด (จับจากจอ / แตกจากวิดีโอ) */
+    fun viewerLast(c: Context, video: Boolean = false): String? = sp(c).getString(if (video) "viewerLastV" else "viewerLast", null)
+    fun setViewerLast(c: Context, v: String?, video: Boolean = false) = sp(c).edit().putString(if (video) "viewerLastV" else "viewerLast", v).apply()
 
     /** แสดงปุ่มลอยและกรอบเฉพาะตอนดูสตอรี่ (TikTok / IG / FB) */
     fun storyOnly(c: Context): Boolean = sp(c).getBoolean("storyOnly", true)

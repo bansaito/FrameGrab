@@ -361,7 +361,7 @@ class VideoFramesActivity : Activity() {
                 if (done == 0) { toast("ดึงเฟรมไม่ได้"); return@post }
                 toast("ได้ $done ภาพ" + if (cancel) " (หยุดกลางคัน)" else "")
                 // เปิดหน้าดูภาพ ที่ภาพแรกของคลิปนี้
-                Prefs.setViewerLast(this, first)
+                Prefs.setViewerLast(this, first, true)
                 startActivity(Intent(this, ViewerActivity::class.java).putExtra(ViewerActivity.EXTRA_VIDEO, true))
             }
         }

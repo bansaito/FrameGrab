@@ -205,7 +205,7 @@ class ViewerActivity : Activity() {
         // กลับมาที่ภาพที่ดูค้างไว้ (ยกเว้นเพิ่งอัดเสร็จ)
         val fromStart = intent.getBooleanExtra(EXTRA_FROM_START, false)
         intent.removeExtra(EXTRA_FROM_START)
-        val last = if (fromStart) null else Prefs.viewerLast(this)
+        val last = if (fromStart) null else Prefs.viewerLast(this, video)
         idx = frames.indexOfFirst { it.file.name == last }.coerceAtLeast(0)
         reload(keepIndex = true)
     }
@@ -262,7 +262,7 @@ class ViewerActivity : Activity() {
         if (frames.isEmpty() || i !in frames.indices) return
         idx = i
         val f = frames[i]
-        Prefs.setViewerLast(this, f.file.name)
+        Prefs.setViewerLast(this, f.file.name, video)
         updateSavedUi()
         time.text = f.label
         bars.set(frames.size, i)
