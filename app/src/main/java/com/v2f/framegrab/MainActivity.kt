@@ -343,7 +343,7 @@ class MainActivity : Activity() {
         ocrNote.text = "ครั้งล่าสุด: ${lastOcr ?: ""}"
         val overlayOk = Settings.canDrawOverlays(this)
         status.text = when {
-            CaptureService.running && CaptureService.parked -> "💤 ปุ่มลอยซ่อนอยู่ — กด ▶ เพื่อเลือกแอปที่จะแชร์แล้วเปิดปุ่มลอย"
+            CaptureService.running && CaptureService.parked -> "💤 ปุ่มลอยซ่อนอยู่ — กด ▶ เพื่อเปิดกลับมา (ใช้แอปที่แชร์ไว้เดิม ไม่ต้องยืนยันใหม่)"
             CaptureService.running -> "✅ ปุ่มลอยทำงานอยู่ — เปิดแอปที่ต้องการแล้วแตะปุ่ม 🎞️"
             !overlayOk -> "⚠️ ยังไม่ได้อนุญาต \"แสดงทับแอปอื่น\""
             else -> "พร้อมใช้งาน"
@@ -434,8 +434,13 @@ class MainActivity : Activity() {
 
     private fun onStartClicked() {
         if (CaptureService.running) {
-            // ปุ่มลอยซ่อนอยู่: เปิดใหม่ = ให้เลือกแอปที่จะแชร์ใหม่ทันที (ยกเลิก = ยังใช้แอปเดิม)
-            if (CaptureService.parked) { reshare(); return }
+            // ปุ่มลอยซ่อนอยู่: เปิดกลับมาเลย ใช้แอปที่แชร์ไว้เดิม ไม่ต้องยืนยันใหม่ (เปลี่ยนแอป = ปุ่ม "เปลี่ยนแอปที่แชร์")
+            if (CaptureService.parked) {
+                startService(Intent(this, CaptureService::class.java).setAction(CaptureService.ACTION_UNPARK))
+                Toast.makeText(this, "ปุ่มลอยกลับมาแล้ว — เปิดแอปที่แชร์ไว้ได้เลย", Toast.LENGTH_SHORT).show()
+                status.postDelayed({ refresh() }, 300)
+                return
+            }
             val act = CaptureService.ACTION_PARK
             startService(Intent(this, CaptureService::class.java).setAction(act)
                 .putExtra(CaptureService.EXTRA_EXIT_APP, false))
