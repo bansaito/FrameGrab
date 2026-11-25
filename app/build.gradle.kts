@@ -11,8 +11,8 @@ android {
         applicationId = "com.v2f.framegrab"
         minSdk = 29
         targetSdk = 34
-        versionCode = 98
-        versionName = "9.8.1"
+        versionCode = 99
+        versionName = "9.8.2"
         // ใส่เฉพาะไลบรารีของ ARM 64 บิต (S23 Ultra / Xiaomi 14T และมือถือรุ่นใหม่เกือบทั้งหมด) แอปจะเล็กลงมาก
         ndk { abiFilters += "arm64-v8a" }
     }
