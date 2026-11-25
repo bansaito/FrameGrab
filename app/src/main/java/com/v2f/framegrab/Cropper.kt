@@ -211,6 +211,34 @@ object Cropper {
     }
 
     /**
+     * ช่อง "ส่งข้อความ" แบบเส้นขอบ (IG/FB สตอรี่รุ่นใหม่): เส้นเทาบาง ๆ ยาวขวางจอ 2 เส้น (ขอบบน/ล่างของช่อง) ห่างกัน 3.5–8% ของจอ
+     * ใช้กันเคส "ภาพในสตอรี่ดำ ๆ มีลาย" ที่ hasFeedNav เข้าใจผิดว่าเป็นแถบเมนูล่างของหน้าแรก
+     * (ทดสอบ 55 ภาพ: สตอรี่ IG/FB เจอ 3/3, หน้าแรก/หน้าอื่น ไม่เจอเลย)
+     */
+    fun hasReplyPill(b: Bitmap): Boolean {
+        val w = b.width; val h = b.height
+        val xs = IntArray(40) { (w * (0.10f + 0.52f * it / 39f)).toInt().coerceIn(0, w - 1) }
+        val d = (h / 640).coerceAtLeast(2) * 2   // ≈4px บนจอ 2576
+        val lines = ArrayList<Int>()
+        var y = (h * 0.78f).toInt() + d
+        val yEnd = (h * 0.995f).toInt() - d
+        while (y < yEnd) {
+            var k = 0
+            for (x in xs) {
+                val p = b.getPixel(x, y)
+                val r = (p shr 16) and 0xFF; val g = (p shr 8) and 0xFF; val bl = p and 0xFF
+                val l = lum(p)
+                if (l in 70..200 && maxOf(r, g, bl) - minOf(r, g, bl) < 25 && lum(b.getPixel(x, y - d)) < 45 && lum(b.getPixel(x, y + d)) < 45) k++
+            }
+            if (k >= 36) lines.add(y)
+            y++
+        }
+        val lo = h * 0.035f; val hi = h * 0.08f
+        for (a in lines) for (c in lines) { val g = c - a; if (g >= lo && g <= hi) return true }
+        return false
+    }
+
+    /**
      * หน้าสตอรี่ (TikTok / IG / FB): มีช่องพิมพ์ "ข้อความ…" สีเทาเข้มยาวด้านล่าง บนพื้นดำ
      * (ทดสอบกับภาพจริง: สตอรี่ 7/7 ใช่, หน้าฟีด/กำลังติดตาม/หน้าโฮม/หน้าดูภาพ 5/5 ไม่ใช่)
      */

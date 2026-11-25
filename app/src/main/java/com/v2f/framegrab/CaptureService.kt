@@ -1351,9 +1351,12 @@ class CaptureService : Service() {
                     //  ซ่อนอยู่แล้วกลับมาแสดงเมื่อเห็นแถบความคืบหน้าสีขาวของสตอรี่ด้านบน
                     //  เห็นปุ่มหัวใจ+แชร์มุมขวาล่าง = หน้าสตอรี่แน่นอน → แสดงเสมอ
                     //  ออกจากหน้าแรกไปหน้าอื่น (ไม่เห็นแถบเมนูล่าง 4 รอบติด ≈ 2.4 วิ) → กลับมาแสดง
-                    val nav = storyOnly && Cropper.hasFeedNav(b)
+                    //  เห็นช่อง "ส่งข้อความ" แบบเส้นขอบ = หน้าสตอรี่ (กันภาพดำ ๆ มีลายในสตอรี่ ถูกเข้าใจผิดเป็นแถบเมนูล่าง)
+                    val nav0 = storyOnly && Cropper.hasFeedNav(b)
+                    val pill = storyOnly && (nav0 || feedHidden) && Cropper.hasReplyPill(b)
+                    val nav = nav0 && !pill
                     navMiss = if (nav) 0 else navMiss + 1
-                    val hide = !forceShow && storyOnly && !Cropper.hasStoryActions(b) &&
+                    val hide = !forceShow && storyOnly && !pill && !Cropper.hasStoryActions(b) &&
                         (nav || (feedHidden && navMiss < 4 && !StoryBar.hasBar(b)))
                     val story = !hide
                     if (hide != feedHidden) {
