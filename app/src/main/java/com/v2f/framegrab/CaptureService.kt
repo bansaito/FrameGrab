@@ -140,6 +140,7 @@ class CaptureService : Service() {
     @Volatile private var feedHidden = false    // ไม่ได้อยู่หน้าสตอรี่ และตั้งให้แสดงเฉพาะสตอรี่
     private var lastFg: String? = null
     private var navMiss = 0
+    private var navHit = 0   // เห็นแถบเมนูล่างติดกันกี่รอบ (ต้อง 2 รอบถึงจะซ่อน กันภาพในสตอรี่หลอกแค่เฟรมเดียว)
     /** ผู้ใช้กด "แสดงเลย" ในแจ้งเตือน: ไม่ซ่อนเพราะหน้าแรก/นอกแอปวิดีโอ จนกว่าจะเปลี่ยนแอปหรือกด ✕ */
     @Volatile private var forceShow = false
     /** เหตุผลที่ปุ่มลอยซ่อนอยู่ (แสดงในแจ้งเตือน) */
@@ -1358,8 +1359,10 @@ class CaptureService : Service() {
                     val story0 = maybe && (Cropper.hasReplyPill(b) || StoryBar.hasBar(b))
                     val nav = nav0 && !story0
                     navMiss = if (nav) 0 else navMiss + 1
+                    navHit = if (nav) navHit + 1 else 0
+                    //  กำลังแสดงอยู่: ต้องเห็นแถบเมนูล่าง 2 รอบติด (≈1.2 วิ) ถึงจะซ่อน
                     val hide = !forceShow && storyOnly && !story0 && !Cropper.hasStoryActions(b) &&
-                        (nav || (feedHidden && navMiss < 4))
+                        ((nav && (feedHidden || navHit >= 2)) || (feedHidden && navMiss < 4))
                     val story = !hide
                     if (hide != feedHidden) {
                         feedHidden = hide
