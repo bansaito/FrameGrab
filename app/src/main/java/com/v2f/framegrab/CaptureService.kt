@@ -1353,7 +1353,7 @@ class CaptureService : Service() {
                     //  ออกจากหน้าแรกไปหน้าอื่น (ไม่เห็นแถบเมนูล่าง 4 รอบติด ≈ 2.4 วิ) → กลับมาแสดง
                     //  เห็นช่อง "ส่งข้อความ" แบบเส้นขอบ = หน้าสตอรี่ (กันภาพดำ ๆ มีลายในสตอรี่ ถูกเข้าใจผิดเป็นแถบเมนูล่าง)
                     //  เห็นแถบความคืบหน้าของสตอรี่ด้านบน = หน้าสตอรี่ (สตอรี่ที่ไม่มีช่องส่งข้อความ/ปุ่มหัวใจอยู่บนพื้นสว่าง)
-                    val nav0 = storyOnly && Cropper.hasFeedNav(b)
+                    val nav0 = storyOnly && (Cropper.hasFeedNav(b) || Cropper.hasFeedNavLight(b))
                     val maybe = storyOnly && (nav0 || feedHidden)
                     val story0 = maybe && (Cropper.hasReplyPill(b) || StoryBar.hasBar(b))
                     val nav = nav0 && !story0

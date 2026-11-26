@@ -179,6 +179,40 @@ object Cropper {
     }
 
     /**
+     * แถบเมนูล่างของหน้าแรก แบบธีมสว่าง (พื้นขาว ไอคอนดำ — IG โหมดสว่าง)
+     * ไอคอนเข้มที่ x≈10/30/50/70% คั่นด้วยช่องขาวที่ x≈20/40/60% และไม่นับแถบปุ่มระบบด้านล่างสุด (เกิน 94.5% ของจอ)
+     * (ทดสอบ 56 ภาพ: เจอเฉพาะหน้าแรก IG โหมดสว่าง ไม่เจอในสตอรี่/หน้าอื่น)
+     */
+    fun hasFeedNavLight(b: Bitmap): Boolean {
+        val w = b.width; val h = b.height
+        val band = (h * 0.05f).toInt().coerceAtLeast(4)
+        val sy = (h / 400).coerceAtLeast(1); val sx = (w / 180).coerceAtLeast(1)
+        fun gap(c: Float, y0: Int): Float {
+            var d = 0; var n = 0
+            val x0 = (w * (c - 0.015f)).toInt(); val x1 = (w * (c + 0.015f)).toInt()
+            val stx = (sx / 2).coerceAtLeast(1)
+            var y = y0
+            while (y < y0 + band) { var x = x0; while (x <= x1) { n++; if (lum(b.getPixel(x, y)) > 225) d++; x += stx }; y += sy }
+            return if (n == 0) 0f else d / n.toFloat()
+        }
+        fun ink(c: Float, y0: Int): Float {
+            var d = 0; var n = 0
+            val x0 = (w * (c - 0.07f)).toInt().coerceAtLeast(0); val x1 = (w * (c + 0.07f)).toInt().coerceAtMost(w - 1)
+            var y = y0
+            while (y < y0 + band) { var x = x0; while (x < x1) { n++; if (lum(b.getPixel(x, y)) < 110) d++; x += sx }; y += sy }
+            return if (n == 0) 0f else d / n.toFloat()
+        }
+        var y0 = (h * 0.80f).toInt()
+        val yEnd = (h * 0.945f).toInt() - band
+        while (y0 < yEnd) {
+            if (gap(0.20f, y0) >= 0.9f && gap(0.40f, y0) >= 0.9f && gap(0.60f, y0) >= 0.9f &&
+                ink(0.30f, y0) >= 0.07f && ink(0.10f, y0) >= 0.07f && ink(0.50f, y0) >= 0.07f && ink(0.70f, y0) >= 0.07f) return true
+            y0 += sy
+        }
+        return false
+    }
+
+    /**
      * ปุ่มหัวใจ + แชร์ ที่มุมขวาล่างของหน้าสตอรี่ (มีแม้สตอรี่ไม่มีช่องพิมพ์ข้อความ)
      * ตรวจ: ไอคอนสว่างที่ x≈80% และ x≈92%, ช่องว่างดำระหว่างกันที่ x≈86%
      * (ทดสอบ: สตอรี่ ≥0.136, หน้าแรก TikTok ≤0.053 → เกณฑ์ 0.10)
