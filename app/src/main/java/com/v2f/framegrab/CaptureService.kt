@@ -141,6 +141,8 @@ class CaptureService : Service() {
     private var lastFg: String? = null
     private var navMiss = 0
     private var navHit = 0
+    // สัดส่วนความสูงแถบปุ่มของระบบ (■ ● ◀ / แถบท่าทาง) ที่ล่างจอ — ไม่เอามาตรวจแถบเมนูของแอป
+    @Volatile private var sysNavFrac = -1f
     @Volatile private var navWhy = ""   // ตัวที่ทำให้ซ่อน (โชว์ในแจ้งเตือน ใช้หาบัค)   // เห็นแถบเมนูล่างติดกันกี่รอบ (ต้อง 2 รอบถึงจะซ่อน กันภาพในสตอรี่หลอกแค่เฟรมเดียว)
     /** ผู้ใช้กด "แสดงเลย" ในแจ้งเตือน: ไม่ซ่อนเพราะหน้าแรก/นอกแอปวิดีโอ จนกว่าจะเปลี่ยนแอปหรือกด ✕ */
     @Volatile private var forceShow = false
@@ -1313,7 +1315,8 @@ class CaptureService : Service() {
             }
             // ปุ่ม "เปลี่ยนแอป" แสดงเฉพาะตอนอยู่ใน TikTok / IG / FB (แอปอื่น = ซ่อน ใช้ 🔄 ในแจ้งเตือนเอง)
             val fgNow = fg ?: if (!capturedAppVisible && AppWatch.hasPermission(svc)) AppWatch.foreground(svc) else null
-            val sw = !parked && !ownUiHidden && !capturedAppVisible && !recording && fgNow != null && fgNow in AppWatch.VIDEO_APPS
+            //  รู้ว่าเปิดแอปอะไร (มีสิทธิ์การใช้งาน) → แสดงเฉพาะ TikTok/IG/FB ; ไม่รู้ → แสดงทุกแอปที่ไม่ใช่แอปที่แชร์ไว้
+            val sw = !parked && !ownUiHidden && !capturedAppVisible && !recording && (fgNow == null || fgNow in AppWatch.VIDEO_APPS)
             val hide = parked || (reason != null && !sw)
             if (reason != hideReason) { hideReason = reason; updateNotification() }
             if (sw != switchMode) {
@@ -1346,6 +1349,11 @@ class CaptureService : Service() {
                 val preset = Prefs.cropPreset(svc)
                 val guideLive = Prefs.showGuide(svc) && preset != "full" && preset != "custom"
                 val storyOnly = Prefs.storyOnly(svc)
+                if (android.os.Build.VERSION.SDK_INT >= 30) {
+                    val ins = root?.rootWindowInsets?.getInsets(android.view.WindowInsets.Type.navigationBars())
+                    if (ins != null && screenH > 0) sysNavFrac = ins.bottom / screenH.toFloat()
+                }
+                val navBottom = if (sysNavFrac >= 0f) (1f - sysNavFrac).coerceIn(0.85f, 1f) else -1f
                 work.post {
                     val b = grabBitmap() ?: return@post
                     // แสดงเฉพาะตอนดูสตอรี่:
@@ -1355,8 +1363,9 @@ class CaptureService : Service() {
                     //  ออกจากหน้าแรกไปหน้าอื่น (ไม่เห็นแถบเมนูล่าง 4 รอบติด ≈ 2.4 วิ) → กลับมาแสดง
                     //  เห็นช่อง "ส่งข้อความ" แบบเส้นขอบ = หน้าสตอรี่ (กันภาพดำ ๆ มีลายในสตอรี่ ถูกเข้าใจผิดเป็นแถบเมนูล่าง)
                     //  เห็นแถบความคืบหน้าของสตอรี่ด้านบน = หน้าสตอรี่ (สตอรี่ที่ไม่มีช่องส่งข้อความ/ปุ่มหัวใจอยู่บนพื้นสว่าง)
-                    val navD = storyOnly && Cropper.hasFeedNav(b)
-                    val navL = storyOnly && !navD && Cropper.hasFeedNavLight(b)
+                    //  ไม่นับแถบปุ่มของระบบล่างสุด (■ ● ◀ บนพื้นดำในสตอรี่ เคยถูกเข้าใจผิดเป็นเมนูล่างของแอป)
+                    val navD = storyOnly && Cropper.hasFeedNav(b, if (navBottom > 0f) navBottom else 1f)
+                    val navL = storyOnly && !navD && Cropper.hasFeedNavLight(b, if (navBottom > 0f) navBottom else 0.945f)
                     val nav0 = navD || navL
                     val maybe = storyOnly && (nav0 || feedHidden)
                     val story0 = maybe && (Cropper.hasReplyPill(b) || StoryBar.hasBar(b))

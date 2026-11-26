@@ -150,7 +150,8 @@ object Cropper {
      * ตรวจ: ไอคอน/ตัวหนังสือสว่างที่ตำแหน่ง 10%, 30% (ร้านค้า), 50% (+) และช่องว่างดำสนิทที่ 20%, 40%
      * (ไอคอนอาจถูกหรี่ จึงนับสว่าง >70; ทดสอบ: ฟีด 4/4 ใช่ (≥0.088), สตอรี่/อื่นๆ 15/15 ไม่ใช่ (≤0.052))
      */
-    fun hasFeedNav(b: Bitmap): Boolean {
+    /** bottom = ขอบล่างที่ตรวจได้ (สัดส่วนของจอ) — ไม่นับแถบปุ่ม ■ ● ◀ ของระบบ */
+    fun hasFeedNav(b: Bitmap, bottom: Float = 1f): Boolean {
         val w = b.width; val h = b.height
         val band = (h * 0.05f).toInt().coerceAtLeast(4)
         val sy = (h / 400).coerceAtLeast(1); val sx = (w / 180).coerceAtLeast(1)
@@ -170,7 +171,8 @@ object Cropper {
             return if (n == 0) 0f else d / n.toFloat()
         }
         var y0 = (h * 0.80f).toInt()
-        while (y0 < h - band) {
+        val yEnd = (h * bottom).toInt() - band
+        while (y0 < yEnd) {
             if (darkFrac(0.20f, y0) >= 0.9f && darkFrac(0.40f, y0) >= 0.9f &&
                 brightFrac(0.30f, y0) >= 0.07f && brightFrac(0.10f, y0) >= 0.07f && brightFrac(0.50f, y0) >= 0.07f) return true
             y0 += sy
@@ -183,7 +185,7 @@ object Cropper {
      * ไอคอนเข้มที่ x≈10/30/50/70% คั่นด้วยช่องขาวที่ x≈20/40/60% และไม่นับแถบปุ่มระบบด้านล่างสุด (เกิน 94.5% ของจอ)
      * (ทดสอบ 56 ภาพ: เจอเฉพาะหน้าแรก IG โหมดสว่าง ไม่เจอในสตอรี่/หน้าอื่น)
      */
-    fun hasFeedNavLight(b: Bitmap): Boolean {
+    fun hasFeedNavLight(b: Bitmap, bottom: Float = 0.945f): Boolean {
         val w = b.width; val h = b.height
         val band = (h * 0.05f).toInt().coerceAtLeast(4)
         val sy = (h / 400).coerceAtLeast(1); val sx = (w / 180).coerceAtLeast(1)
@@ -203,7 +205,7 @@ object Cropper {
             return if (n == 0) 0f else d / n.toFloat()
         }
         var y0 = (h * 0.80f).toInt()
-        val yEnd = (h * 0.945f).toInt() - band
+        val yEnd = (h * bottom).toInt() - band
         while (y0 < yEnd) {
             if (gap(0.20f, y0) >= 0.9f && gap(0.40f, y0) >= 0.9f && gap(0.60f, y0) >= 0.9f &&
                 ink(0.30f, y0) >= 0.07f && ink(0.10f, y0) >= 0.07f && ink(0.50f, y0) >= 0.07f && ink(0.70f, y0) >= 0.07f) return true
