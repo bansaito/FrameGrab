@@ -140,7 +140,8 @@ class CaptureService : Service() {
     @Volatile private var feedHidden = false    // ไม่ได้อยู่หน้าสตอรี่ และตั้งให้แสดงเฉพาะสตอรี่
     private var lastFg: String? = null
     private var navMiss = 0
-    private var navHit = 0   // เห็นแถบเมนูล่างติดกันกี่รอบ (ต้อง 2 รอบถึงจะซ่อน กันภาพในสตอรี่หลอกแค่เฟรมเดียว)
+    private var navHit = 0
+    @Volatile private var navWhy = ""   // ตัวที่ทำให้ซ่อน (โชว์ในแจ้งเตือน ใช้หาบัค)   // เห็นแถบเมนูล่างติดกันกี่รอบ (ต้อง 2 รอบถึงจะซ่อน กันภาพในสตอรี่หลอกแค่เฟรมเดียว)
     /** ผู้ใช้กด "แสดงเลย" ในแจ้งเตือน: ไม่ซ่อนเพราะหน้าแรก/นอกแอปวิดีโอ จนกว่าจะเปลี่ยนแอปหรือกด ✕ */
     @Volatile private var forceShow = false
     /** เหตุผลที่ปุ่มลอยซ่อนอยู่ (แสดงในแจ้งเตือน) */
@@ -1306,7 +1307,7 @@ class CaptureService : Service() {
                 ownUiHidden -> "เปิดหน้าของ FrameGrab อยู่"
                 !capturedAppVisible -> "ออกจากแอปที่เลือกแชร์ไว้ (แตะปุ่มลอย ⇄ หรือ 🔄 เปลี่ยนแอป ถ้าจะใช้แอปนี้)"
                 forceShow -> null
-                feedHidden -> "อยู่หน้าแรก TikTok (จะกลับมาเมื่อเปิดสตอรี่/ออกจากหน้าแรก)"
+                feedHidden -> "อยู่หน้าแรก (จะกลับมาเมื่อเปิดสตอรี่/ออกจากหน้าแรก) [$navWhy]"
                 outside -> "ไม่ได้อยู่ใน TikTok / IG / FB"
                 else -> null
             }
@@ -1354,7 +1355,9 @@ class CaptureService : Service() {
                     //  ออกจากหน้าแรกไปหน้าอื่น (ไม่เห็นแถบเมนูล่าง 4 รอบติด ≈ 2.4 วิ) → กลับมาแสดง
                     //  เห็นช่อง "ส่งข้อความ" แบบเส้นขอบ = หน้าสตอรี่ (กันภาพดำ ๆ มีลายในสตอรี่ ถูกเข้าใจผิดเป็นแถบเมนูล่าง)
                     //  เห็นแถบความคืบหน้าของสตอรี่ด้านบน = หน้าสตอรี่ (สตอรี่ที่ไม่มีช่องส่งข้อความ/ปุ่มหัวใจอยู่บนพื้นสว่าง)
-                    val nav0 = storyOnly && (Cropper.hasFeedNav(b) || Cropper.hasFeedNavLight(b))
+                    val navD = storyOnly && Cropper.hasFeedNav(b)
+                    val navL = storyOnly && !navD && Cropper.hasFeedNavLight(b)
+                    val nav0 = navD || navL
                     val maybe = storyOnly && (nav0 || feedHidden)
                     val story0 = maybe && (Cropper.hasReplyPill(b) || StoryBar.hasBar(b))
                     val nav = nav0 && !story0
@@ -1364,6 +1367,8 @@ class CaptureService : Service() {
                     val hide = !forceShow && storyOnly && !story0 && !Cropper.hasStoryActions(b) &&
                         ((nav && (feedHidden || navHit >= 2)) || (feedHidden && navMiss < 4))
                     val story = !hide
+                    val why = if (!hide) "" else (if (nav) (if (navD) "เมนูล่างมืด" else "เมนูล่างสว่าง") else "ยังไม่พ้นหน้าแรก") + " · ไม่เห็นเมนู $navMiss รอบ"
+                    if (why != navWhy) { navWhy = why; main.post { updateNotification() } }
                     if (hide != feedHidden) {
                         feedHidden = hide
                         resetLock()
