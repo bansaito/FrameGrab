@@ -1367,7 +1367,9 @@ class CaptureService : Service() {
                     //  ไม่นับแถบปุ่มของระบบล่างสุด (■ ● ◀ บนพื้นดำในสตอรี่ เคยถูกเข้าใจผิดเป็นเมนูล่างของแอป)
                     val navD = storyOnly && Cropper.hasFeedNav(b, if (navBottom > 0f) navBottom else 1f)
                     val navL = storyOnly && !navD && Cropper.hasFeedNavLight(b, if (navBottom > 0f) navBottom else 0.945f)
-                    val nav0 = navD || navL
+                    //  ตารางรูป 3 คอลัมน์ (หน้าโปรไฟล์ที่เปิดจากสตอรี่/ค้นหา ไม่มีเมนูล่าง) = ไม่ใช่สตอรี่
+                    val navG = storyOnly && !navD && !navL && Cropper.hasGrid3(b)
+                    val nav0 = navD || navL || navG
                     val maybe = storyOnly && (nav0 || feedHidden)
                     val story0 = maybe && (Cropper.hasReplyPill(b) || StoryBar.hasBar(b))
                     val nav = nav0 && !story0
@@ -1377,7 +1379,7 @@ class CaptureService : Service() {
                     val hide = !forceShow && storyOnly && !story0 && !Cropper.hasStoryActions(b) &&
                         ((nav && (feedHidden || navHit >= 2)) || (feedHidden && navMiss < 4))
                     val story = !hide
-                    val why = if (!hide) "" else (if (nav) (if (navD) "เมนูล่างมืด" else "เมนูล่างสว่าง") else "ยังไม่พ้นหน้าแรก") + " · ไม่เห็นเมนู $navMiss รอบ"
+                    val why = if (!hide) "" else (if (nav) (if (navD) "เมนูล่างมืด" else if (navL) "เมนูล่างสว่าง" else "ตารางโปรไฟล์") else "ยังไม่พ้นหน้าแรก") + " · ไม่เห็นเมนู $navMiss รอบ"
                     if (why != navWhy) { navWhy = why; main.post { updateNotification() } }
                     if (hide != feedHidden) {
                         feedHidden = hide

@@ -182,6 +182,33 @@ object Cropper {
     }
 
     /**
+     * ตารางรูป 3 คอลัมน์ (หน้าโปรไฟล์ / ค้นหา IG): เส้นคั่นบาง ๆ สีขาว (หรือดำ) ยาวลงมาที่ x≈1/3 และ 2/3 ของจอ
+     * เส้นต้องบาง (ข้าง ๆ 10px ไม่ใช่สีเดียวกัน) กันภาพสตอรี่มืดทั้งภาพ
+     * (ทดสอบ 70 ภาพ: เจอเฉพาะหน้าโปรไฟล์ IG ไม่เจอในสตอรี่/หน้าอื่น)
+     */
+    fun hasGrid3(b: Bitmap): Boolean {
+        val w = b.width; val h = b.height
+        val y0 = (h * 0.45f).toInt(); val y1 = (h * 0.95f).toInt()
+        val sy = ((y1 - y0) / 150).coerceAtLeast(1)
+        fun frac(x: Int, light: Boolean): Float {
+            var n = 0; var k = 0; var y = y0
+            while (y < y1) { val l = lum(b.getPixel(x, y)); n++; if (if (light) l > 235 else l < 22) k++; y += sy }
+            return if (n == 0) 0f else k / n.toFloat()
+        }
+        fun gutter(c: Float, light: Boolean): Boolean {
+            val d = (w / 108).coerceAtLeast(3)   // ≈10px บนจอกว้าง 1080
+            var x = (w * (c - 0.02f)).toInt()
+            val xe = (w * (c + 0.02f)).toInt()
+            while (x < xe) {
+                if (frac(x, light) >= 0.9f && frac((x - d).coerceAtLeast(0), light) < 0.6f && frac((x + d).coerceAtMost(w - 1), light) < 0.6f) return true
+                x++
+            }
+            return false
+        }
+        return (gutter(1 / 3f, true) && gutter(2 / 3f, true)) || (gutter(1 / 3f, false) && gutter(2 / 3f, false))
+    }
+
+    /**
      * แถบเมนูล่างของหน้าแรก แบบธีมสว่าง (พื้นขาว ไอคอนดำ — IG โหมดสว่าง)
      * ไอคอนเข้มที่ x≈10/30/50/70% คั่นด้วยช่องขาวที่ x≈20/40/60% และไม่นับแถบปุ่มระบบด้านล่างสุด (เกิน 94.5% ของจอ)
      * (ทดสอบ 56 ภาพ: เจอเฉพาะหน้าแรก IG โหมดสว่าง ไม่เจอในสตอรี่/หน้าอื่น)
