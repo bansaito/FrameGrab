@@ -173,7 +173,8 @@ object Cropper {
         var y0 = (h * 0.80f).toInt()
         val yEnd = (h * bottom).toInt() - band
         while (y0 < yEnd) {
-            if (darkFrac(0.20f, y0) >= 0.9f && darkFrac(0.40f, y0) >= 0.9f &&
+            // ช่องว่างระหว่างไอคอนต้องดำสนิท (≥98%) — ขอบล่างของภาพสตอรี่เหนือพื้นดำ เป็นเส้นสว่างยาวเต็มจอ ช่องว่างจึงดำแค่ ~92% (เคยหลอกว่าเป็นเมนูล่าง)
+            if (darkFrac(0.20f, y0) >= 0.98f && darkFrac(0.40f, y0) >= 0.98f &&
                 brightFrac(0.30f, y0) >= 0.07f && brightFrac(0.10f, y0) >= 0.07f && brightFrac(0.50f, y0) >= 0.07f) return true
             y0 += sy
         }

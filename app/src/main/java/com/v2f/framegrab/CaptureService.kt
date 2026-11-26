@@ -1307,7 +1307,8 @@ class CaptureService : Service() {
             val reason = when {
                 parked -> null   // มีแจ้งเตือนของตัวเองแล้ว
                 ownUiHidden -> "เปิดหน้าของ FrameGrab อยู่"
-                !capturedAppVisible -> "ออกจากแอปที่เลือกแชร์ไว้ (แตะปุ่มลอย ⇄ หรือ 🔄 เปลี่ยนแอป ถ้าจะใช้แอปนี้)"
+                !capturedAppVisible -> if (AppWatch.hasPermission(svc)) "ออกจากแอปที่เลือกแชร์ไว้ (แตะปุ่มลอย ⇄ หรือ 🔄 เปลี่ยนแอป ถ้าจะใช้แอปนี้)"
+                    else "ออกจากแอปที่เลือกแชร์ไว้ (กด 🔄 เปลี่ยนแอป · อนุญาต \"การเข้าถึงข้อมูลการใช้งาน\" ให้ FrameGrab แล้วปุ่ม ⇄ จะขึ้นเองใน TikTok/IG)"
                 forceShow -> null
                 feedHidden -> "อยู่หน้าแรก (จะกลับมาเมื่อเปิดสตอรี่/ออกจากหน้าแรก) [$navWhy]"
                 outside -> "ไม่ได้อยู่ใน TikTok / IG / FB"
@@ -1315,8 +1316,8 @@ class CaptureService : Service() {
             }
             // ปุ่ม "เปลี่ยนแอป" แสดงเฉพาะตอนอยู่ใน TikTok / IG / FB (แอปอื่น = ซ่อน ใช้ 🔄 ในแจ้งเตือนเอง)
             val fgNow = fg ?: if (!capturedAppVisible && AppWatch.hasPermission(svc)) AppWatch.foreground(svc) else null
-            //  รู้ว่าเปิดแอปอะไร (มีสิทธิ์การใช้งาน) → แสดงเฉพาะ TikTok/IG/FB ; ไม่รู้ → แสดงทุกแอปที่ไม่ใช่แอปที่แชร์ไว้
-            val sw = !parked && !ownUiHidden && !capturedAppVisible && !recording && (fgNow == null || fgNow in AppWatch.VIDEO_APPS)
+            //  แสดงเฉพาะใน TikTok/IG/FB (ต้องรู้ว่าเปิดแอปอะไร = สิทธิ์ "การเข้าถึงข้อมูลการใช้งาน") — หน้าจอหลัก/แอปอื่นไม่แสดง
+            val sw = !parked && !ownUiHidden && !capturedAppVisible && !recording && fgNow != null && fgNow in AppWatch.VIDEO_APPS
             val hide = parked || (reason != null && !sw)
             if (reason != hideReason) { hideReason = reason; updateNotification() }
             if (sw != switchMode) {
