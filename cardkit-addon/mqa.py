@@ -42,6 +42,7 @@ KEYS = {"inline": "mqa_inline", "inline_stealth": "mqa_inline_stealth",
         "decks_hide_empty": "decks_hide_empty", "decks_rounds_only": "decks_rounds_only",
         "auto_start": "auto_start_countdown", "auto_next": "auto_next_deck",
         "auto_every": "auto_start_every_time", "web_search": "right_click_web_search",
+        "decks_keep_round": "decks_keep_round_set", "due_button": "toolbar_due_button",
         "decks_hover_hide": "decks_hover_hide"}
 
 TAG_NEW = "แยกข้อ::ใหม่"
@@ -62,7 +63,8 @@ DEFAULT_ON = {"inline", "inline_stealth", "inline_hidebtn", "inline_accordion",
               "click_choice", "choice_noframe", "hover_open", "keep_scroll", "edit_here",
               "mouse_back", "mouse_mid_quote", "shift_quote",
               "deck_tree", "mac_menubar_fix", "mac_emoji_fix", "deck_scroll", "word_split",
-              "decks_hide_empty", "decks_hover_hide", "auto_start", "auto_next", "wrong_move", "web_search"}
+              "decks_hide_empty", "decks_hover_hide", "auto_start", "auto_next", "wrong_move", "web_search",
+              "decks_keep_round", "due_button"}
 
 
 def on(feature):
@@ -915,6 +917,10 @@ OPTIONS = [
     ("web_search", "คลิกขวา → ค้นหาในเว็บ",
      "เลือกข้อความแล้วคลิกขวา มี \"🔍 ค้นหา … ในเว็บ\" กดแล้วเปิด Google ในเบราว์เซอร์ทันที "
      "(หน้าการ์ดและช่องแก้การ์ด)", None),
+    ("decks_keep_round", "deck ในชุด Rounds เดียวกันไม่ซ่อน",
+     "ถ้ามี deck ในชุดไหนยังมีการ์ด deck อื่นในชุดนั้นจะโชว์ด้วย (ถึงจะเป็น 0) ให้เห็นครบทั้งรอบ", "decks_hide_empty"),
+    ("due_button", "ปุ่ม 📅 ตั้งวันทวน บนแถบด้านบน",
+     "ระหว่างท่อง ชี้เมาส์ทางขวาของ Sync มีปุ่มโผล่ กดแล้ว Set Due Date ของการ์ดนี้", None),
 ]
 
 
@@ -1046,8 +1052,8 @@ _move_act = None
 GROUPS = [
     ("📝 การ์ดข้อสอบ", ["inline", "inline_stealth", "inline_hidebtn", "inline_accordion", "click_choice",
                        "wrong_move", "choice_noframe", "compact_answer", "split_tool", "word_split"]),
-    ("✏️ ทบทวน / แก้ไข", ["keep_scroll", "edit_here", "deck_tree", "web_search"]),
-    ("🗂 หน้า Decks", ["decks_hide_empty", "decks_hover_hide", "decks_rounds_only", "deck_scroll",
+    ("✏️ ทบทวน / แก้ไข", ["keep_scroll", "edit_here", "deck_tree", "web_search", "due_button"]),
+    ("🗂 หน้า Decks", ["decks_hide_empty", "decks_keep_round", "decks_hover_hide", "decks_rounds_only", "deck_scroll",
                       "auto_start", "auto_next"]),
     ("🖱 เมาส์ / แป้นพิมพ์", ["mouse_back", "mouse_mid_quote", "shift_quote", "hover_open"]),
     ("🍎 Mac", ["mac_menubar_fix", "mac_emoji_fix"]),

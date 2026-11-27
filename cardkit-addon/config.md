@@ -99,3 +99,7 @@
 **right_click_web_search** – เลือกข้อความแล้วคลิกขวา มี "🔍 ค้นหา … ในเว็บ" เปิด Google ในเบราว์เซอร์ (true/false)
 
 **auto_start_delay** – รอเฉย ๆ กี่วิก่อนเส้นเขียวเริ่มวิ่ง (ค่าเริ่มต้น 3 · 0 = เริ่มทันที)
+
+**decks_keep_round_set** – หน้า Decks: deck ในชุด Rounds เดียวกันไม่ซ่อน ถ้าในชุดยังมี deck ที่มีการ์ด (true/false)
+
+**toolbar_due_button** – ระหว่างท่อง ชี้เมาส์ขวาของ Sync มีปุ่ม 📅 ตั้งวันทวน (Set Due Date) (true/false)

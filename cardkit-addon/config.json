@@ -43,6 +43,8 @@
     "auto_start_delay": 3,
     "auto_start_seconds": 3,
     "right_click_web_search": true,
+    "decks_keep_round_set": true,
+    "toolbar_due_button": true,
     "wrong_answer_move_button": true,
     "decks_hover_hide": true,
     "word_split_front_tail": "<br><br><br><br><br>ภาพ+syn",

@@ -86,6 +86,16 @@ def _visible_ids():
         show.add(did)
     hidden_manual = set(_manual())
     show -= hidden_manual
+    # ชุด Rounds เดียวกัน: มี deck ไหนในชุดโชว์อยู่ → โชว์ทั้งชุด (ถึงจะเป็น 0) จะได้เห็นครบรอบ
+    if hide_empty and on("decks_keep_round"):
+        try:
+            from . import rounds as R
+            for g in R.groups():
+                ids = [d["did"] for d in g["decks"] if d["did"] in info]
+                if any(i in show for i in ids):
+                    show.update(i for i in ids if i not in hidden_manual)
+        except Exception:
+            pass
     # แสดง deck แม่ของ deck ที่ต้องท่อง (ถึงจะเป็น 0) ให้รู้ว่าอยู่ใต้อะไร · ยกเว้นที่กด − ซ่อนเอง
     # เฉพาะ deck ลูกที่ถูกวาดจริง (deck แม่กางอยู่) — deck แม่ที่พับอยู่และเป็น 0 ไม่ต้องโชว์
     for did in [d for d in show if _rendered(d, info)]:
