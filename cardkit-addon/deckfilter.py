@@ -68,9 +68,15 @@ def _visible_ids():
         if hide_empty and n <= 0:
             continue
         show.add(did)
-    # ซ่อนให้หมด: deck แม่ที่เป็น 0 ก็ซ่อน (ไม่เก็บไว้)
     hidden_manual = set(_manual())
     show -= hidden_manual
+    # แสดง deck แม่ของ deck ที่ต้องท่อง (ถึงจะเป็น 0) ให้รู้ว่าอยู่ใต้อะไร · ยกเว้นที่กด − ซ่อนเอง
+    for did in list(show):
+        p = info[did][0]
+        while p is not None:
+            if p not in hidden_manual:
+                show.add(p)
+            p = info.get(p, (None, 0))[0]
     return show, len(info) - len(show)
 
 
