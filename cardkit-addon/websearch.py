@@ -23,14 +23,23 @@ CFG = "context_actions"
 DEFAULTS = [
     {"label": "🔍 ค้นหาในเว็บ", "url": "https://www.google.com/search?q={prompt}",
      "prompt": "{text}", "copy": False},
-    {"label": "🎨 สร้างภาพ", "url": "https://gemini.google.com/app?q={prompt}",
-     "prompt": "สร้างภาพประกอบที่ช่วยให้จำเรื่องนี้ได้ง่าย เข้าใจทันทีที่เห็น: {text}", "copy": True},
+    {"label": "🎨 สร้างภาพ", "url": "https://gemini.google.com/app?prompt={prompt}",
+     "prompt": "{text}\n\nสร้างภาพประกอบเรื่องข้างบนนี้ ให้จำง่าย เข้าใจทันทีที่เห็น", "copy": True},
 ]
+_OLD_GEMINI_PROMPT = "สร้างภาพประกอบที่ช่วยให้จำเรื่องนี้ได้ง่าย เข้าใจทันทีที่เห็น: {text}"
 
 
 def actions():
     v = cfg().get(CFG)
-    return v if isinstance(v, list) else [dict(d) for d in DEFAULTS]
+    if not isinstance(v, list):
+        return [dict(d) for d in DEFAULTS]
+    for a in v:                      # ของเก่า: Gemini ?q= ไม่ทำงาน → ?prompt= (ส่วนเสริม Send to Gemini อ่านได้)
+        u = a.get("url") or ""
+        if "gemini.google.com/app?q=" in u:
+            a["url"] = u.replace("gemini.google.com/app?q=", "gemini.google.com/app?prompt=")
+        if a.get("prompt") == _OLD_GEMINI_PROMPT:
+            a["prompt"] = DEFAULTS[1]["prompt"]
+    return v
 
 
 def _short(text):
@@ -46,7 +55,8 @@ def _run(a, text):
     if url:
         openLink(QUrl(url))
     if a.get("copy"):
-        tooltip("คัดลอก prompt แล้ว · ถ้าเว็บไม่เติมให้ กด Cmd/Ctrl+V วาง", period=2500)
+        tooltip("คัดลอก prompt แล้ว · ถ้า Gemini ไม่เติมให้ กด Cmd/Ctrl+V วาง "
+                "(ติดตั้งส่วนเสริม Chrome \"Send to Gemini\" = เติมและส่งให้เอง)", period=3500)
 
 
 def _add(menu, text):
