@@ -27,10 +27,25 @@ def _save_manual(ids):
     mw.addonManager.writeConfig(ADDON, c)
 
 
+_collapsed = set()      # deck ที่พับอยู่ในหน้า Decks (ลูกไม่ถูกวาด)
+
+
 def _walk(node, out, parent=None):
     for ch in node.children:
         out[ch.deck_id] = (parent, ch.new_count + ch.learn_count + ch.review_count)
+        if getattr(ch, "collapsed", False):
+            _collapsed.add(ch.deck_id)
         _walk(ch, out, ch.deck_id)
+
+
+def _rendered(did, info):
+    """แถวนี้ถูกวาดในหน้า Decks ไหม (deck แม่ทุกชั้นต้องกางอยู่)"""
+    p = info.get(did, (None, 0))[0]
+    while p is not None:
+        if p in _collapsed:
+            return False
+        p = info.get(p, (None, 0))[0]
+    return True
 
 
 def _visible_ids():
@@ -47,6 +62,7 @@ def _visible_ids():
         show = set(info) - set(_manual())
         return show, len(info) - len(show)
     info = {}
+    _collapsed.clear()
     _walk(mw.col.sched.deck_due_tree(), info)
     allowed = None
     if rounds_only:
@@ -71,13 +87,15 @@ def _visible_ids():
     hidden_manual = set(_manual())
     show -= hidden_manual
     # แสดง deck แม่ของ deck ที่ต้องท่อง (ถึงจะเป็น 0) ให้รู้ว่าอยู่ใต้อะไร · ยกเว้นที่กด − ซ่อนเอง
-    for did in list(show):
+    # เฉพาะ deck ลูกที่ถูกวาดจริง (deck แม่กางอยู่) — deck แม่ที่พับอยู่และเป็น 0 ไม่ต้องโชว์
+    for did in [d for d in show if _rendered(d, info)]:
         p = info[did][0]
         while p is not None:
             if p not in hidden_manual:
                 show.add(p)
             p = info.get(p, (None, 0))[0]
-    return show, len(info) - len(show)
+    drawn = [d for d in info if _rendered(d, info)]
+    return show, len([d for d in drawn if d not in show])
 
 
 _JS = r"""
