@@ -40,7 +40,8 @@ KEYS = {"inline": "mqa_inline", "inline_stealth": "mqa_inline_stealth",
         "deck_scroll": "decks_keep_scroll",
         "word_split": "word_card_split",
         "decks_hide_empty": "decks_hide_empty", "decks_rounds_only": "decks_rounds_only",
-        "start_study_main": "start_study_main"}
+        "start_study_main": "start_study_main",
+        "decks_hover_hide": "decks_hover_hide"}
 
 TAG_NEW = "แยกข้อ::ใหม่"
 TAG_ORIG = "แยกข้อ::ต้นฉบับ"
@@ -60,7 +61,7 @@ DEFAULT_ON = {"inline", "inline_stealth", "inline_hidebtn", "inline_accordion",
               "click_choice", "choice_noframe", "hover_open", "keep_scroll", "edit_here",
               "mouse_back", "mouse_mid_quote", "shift_quote",
               "deck_tree", "mac_menubar_fix", "mac_emoji_fix", "deck_scroll", "word_split",
-              "decks_hide_empty", "start_study_main"}
+              "decks_hide_empty", "start_study_main", "decks_hover_hide"}
 
 
 def on(feature):
@@ -832,12 +833,15 @@ OPTIONS = [
     ("word_split", "การ์ดคำศัพท์: แยกหน้า/หลังให้อัตโนมัติ",
      "ช่องหน้าเป็น \"🏆 Deed : ความหมาย …\" และช่องหลังว่าง → หน้า = Deed + ภาพ+syn, "
      "หลัง = 🏆 : ความหมาย … (ทำตอนออกจากช่องหน้า / กด Add)", None),
-    ("decks_hide_empty", "หน้า Decks: ซ่อน deck ที่ไม่มีการ์ดวันนี้",
+    ("decks_hide_empty", "หน้า Decks: ซ่อน deck ที่ไม่มีการ์ดวันนี้ (ซ่อนหมด รวม deck แม่)",
      "เหลือแค่ deck ที่ยังต้องท่อง · ท้ายตารางมีปุ่ม \"แสดงทั้งหมด\"", None),
     ("decks_rounds_only", "หน้า Decks: แสดงเฉพาะ deck ในชุด Rounds",
      "deck ที่ไม่ได้อยู่ในชุดไหนเลยจะถูกซ่อน (ยังไม่ได้ตั้งชุด = แสดงทั้งหมด)", None),
     ("start_study_main", "เปิด Anki แล้วเข้าท่องชุดหลักทันที",
      "ถ้าชุดหลักไม่มีการ์ดจะอยู่หน้า Decks ตามปกติ", None),
+    ("decks_hover_hide", "หน้า Decks: ปุ่ม − / + ตอนชี้เมาส์",
+     "ชี้ที่ deck มีปุ่ม − จาง ๆ หน้าชื่อ กดแล้วซ่อนแถวนั้นและแถวถัดไปทั้งหมด (อยู่เหนือกลุ่มที่ต้องท่อง = ซ่อนขึ้นบน) "
+     "· แถวติดกับที่ซ่อนมีปุ่ม + เปิดคืน", None),
 ]
 
 

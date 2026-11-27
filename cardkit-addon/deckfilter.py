@@ -14,6 +14,19 @@ from aqt.qt import QTimer
 from .mqa import on
 
 _show_all = {"on": False}            # กด "แสดงทั้งหมด" ไว้ (จนปิด Anki)
+CFG_MANUAL = "decks_manual_hidden"   # deck ที่กด − ซ่อนเอง (จำถาวร)
+
+
+def _manual():
+    from .mqa import cfg
+    return [int(x) for x in (cfg().get(CFG_MANUAL) or [])]
+
+
+def _save_manual(ids):
+    from .mqa import ADDON, cfg
+    c = cfg()
+    c[CFG_MANUAL] = sorted({int(x) for x in ids})
+    mw.addonManager.writeConfig(ADDON, c)
 
 
 def _walk(node, out, parent=None):
@@ -26,8 +39,15 @@ def _visible_ids():
     """deck ที่จะแสดง · None = ไม่กรอง"""
     hide_empty = on("decks_hide_empty")
     rounds_only = on("decks_rounds_only")
-    if not (hide_empty or rounds_only) or _show_all["on"] or mw.col is None:
+    if _show_all["on"] or mw.col is None:
         return None
+    if not (hide_empty or rounds_only):
+        if not _manual():
+            return None
+        info = {}
+        _walk(mw.col.sched.deck_due_tree(), info)
+        show = set(info) - set(_manual())
+        return show, len(info) - len(show)
     info = {}
     _walk(mw.col.sched.deck_due_tree(), info)
     allowed = None
@@ -50,52 +70,110 @@ def _visible_ids():
         if hide_empty and n <= 0:
             continue
         show.add(did)
-    for did in list(show):                         # เก็บ deck แม่ไว้ ต้นไม้จะได้ไม่ขาด
-        p = info[did][0]
-        while p is not None and p not in show:
-            show.add(p)
-            p = info.get(p, (None, 0))[0]
+    # ซ่อนให้หมด: deck แม่ที่เป็น 0 ก็ซ่อน (ไม่เก็บไว้)
+    hidden_manual = set(_manual())
+    show -= hidden_manual
     return show, len(info) - len(show)
 
 
 _JS = r"""
-(function(show, hidden, all){
+(function(show, hidden, all, manual, auto, handles){
+  if (!document.getElementById('ck-dbh-css')) {
+    var st = document.createElement('style'); st.id = 'ck-dbh-css';
+    st.textContent = '.ck-h{display:inline-block;width:1.1em;text-align:center;margin-right:2px;opacity:0;'
+      + 'cursor:pointer;user-select:none;transition:opacity .12s;font-weight:bold}'
+      + 'tr.deck:hover .ck-h{opacity:.4}.ck-h:hover{opacity:.9!important}';
+    document.head.appendChild(st);
+  }
   function run(){
-    var rows = document.querySelectorAll('tr.deck');
+    var rows = Array.prototype.slice.call(document.querySelectorAll('tr.deck'));
     if (!rows.length) return false;
-    rows.forEach(function(tr){
-      var id = parseInt(tr.id, 10);
-      tr.style.display = (all || !show || show.indexOf(id) >= 0) ? '' : 'none';
+    var ids = rows.map(function(tr){ return parseInt(tr.id, 10); });
+    var vis = ids.map(function(id){ return all || !show || show.indexOf(id) >= 0; });
+    rows.forEach(function(tr, i){ tr.style.display = vis[i] ? '' : 'none'; });
+    // กลุ่มที่ต้องท่อง (แถวแรก–แถวสุดท้ายที่ auto โชว์) → ใช้ตัดสินว่ากด − แล้วซ่อนขึ้นบนหรือลงล่าง
+    var autoIdx = ids.map(function(id, i){ return (!auto || auto.indexOf(id) >= 0) ? i : -1; })
+                     .filter(function(i){ return i >= 0; });
+    var first = autoIdx.length ? autoIdx[0] : 0;
+    var isMan = ids.map(function(id){ return manual.indexOf(id) >= 0; });
+    rows.forEach(function(tr, i){
+      var old = tr.querySelector('.ck-h'); if (old) old.remove();
+      if (!handles || all || !vis[i]) return;
+      var cell = tr.querySelector('td.decktd') || tr.cells[0]; if (!cell) return;
+      // แถวติดกับส่วนที่ซ่อนเอง → + (เปิดคืน) · ไม่งั้น − (ซ่อน)
+      // ข้ามแถวที่ถูกซ่อนอัตโนมัติ (deck ว่าง) ไปหาส่วนที่ซ่อนเอง
+      function hiddenRun(step){
+        var out = [], k = i + step, anyMan = false;
+        while (k >= 0 && k < rows.length && !vis[k]) { if (isMan[k]) { anyMan = true; out.push(ids[k]); } k += step; }
+        return anyMan ? out : null;
+      }
+      var below = hiddenRun(1), above = hiddenRun(-1);
+      var h = document.createElement('span'); h.className = 'ck-h';
+      if (below || above) {
+        h.textContent = '+'; h.title = 'แสดง deck ที่ซ่อนไว้';
+        h.onclick = function(e){
+          e.preventDefault(); e.stopPropagation();
+          pycmd('ck_dbunhide:' + (below || []).concat(above || []).join(','));
+        };
+      } else {
+        h.textContent = '−';
+        var up = i < first;
+        h.title = up ? 'ซ่อนแถวนี้และด้านบนทั้งหมด' : 'ซ่อนแถวนี้และด้านล่างทั้งหมด';
+        h.onclick = function(e){
+          e.preventDefault(); e.stopPropagation();
+          var out = up ? ids.slice(0, i + 1) : ids.slice(i);
+          pycmd('ck_dbhide:' + out.join(','));
+        };
+      }
+      cell.insertBefore(h, cell.firstChild);
     });
-    var old = document.getElementById('ck-showall'); if (old) old.remove();
-    if ((show === null || !hidden) && !all) return true;   // ไม่มีอะไรถูกซ่อน → ไม่ต้องมีปุ่ม
+    var old2 = document.getElementById('ck-showall'); if (old2) old2.remove();
+    if ((show === null || !hidden) && !all) return true;
     var tbl = rows[0].closest('table');
     var row = document.createElement('tr'); row.id = 'ck-showall';
     var td = document.createElement('td'); td.colSpan = 6;
-    td.style.cssText = 'text-align:center;padding:10px 0 2px;opacity:.55;font-size:.9em;cursor:pointer';
-    td.textContent = all ? 'ซ่อน deck ที่ไม่ต้องท่อง' : ('แสดงทั้งหมด' + (hidden ? ' (ซ่อนอยู่ ' + hidden + ')' : ''));
+    td.style.cssText = 'text-align:center;padding:10px 0 2px;opacity:.45;font-size:.9em;cursor:pointer';
+    td.textContent = all ? 'ซ่อนกลับ' : ('แสดงทั้งหมด' + (hidden ? ' (ซ่อนอยู่ ' + hidden + ')' : ''));
     td.onclick = function(){ pycmd('ck_dball:' + (all ? 0 : 1)); };
     row.appendChild(td); (tbl.tBodies[0] || tbl).appendChild(row);
     return true;
   }
   [0, 150, 500, 1200].forEach(function(t){ setTimeout(run, t); });   // add-on แดชบอร์ดอาจวาดช้า
-})(%s, %d, %s);
+})(%s, %d, %s, %s, %s, %s);
 """
 
 
 def _on_render(deck_browser):
     try:
-        if not (on("decks_hide_empty") or on("decks_rounds_only")):
+        if not (on("decks_hide_empty") or on("decks_rounds_only") or on("decks_hover_hide")):
             return
         r = _visible_ids()
         show, hidden = (sorted(r[0]), r[1]) if r else (None, 0)
-        deck_browser.web.eval(_JS % (json.dumps(show), hidden, "true" if _show_all["on"] else "false"))
+        man = _manual() if on("decks_hover_hide") else []
+        info = {}
+        _walk(mw.col.sched.deck_due_tree(), info)
+        auto = sorted(d for d, (_p, n) in info.items() if n > 0) or None   # deck ที่มีการ์ด → หาว่าแถวอยู่บน/ล่างกลุ่มท่อง
+        deck_browser.web.eval(_JS % (json.dumps(show), hidden, "true" if _show_all["on"] else "false",
+                                     json.dumps(man), json.dumps(auto),
+                                     "true" if on("decks_hover_hide") else "false"))
     except Exception as e:
         print("[cardkit deckfilter]", e)
 
 
 def _on_msg(handled, message, context):
-    if not (isinstance(message, str) and message.startswith("ck_dball:")):
+    if not isinstance(message, str):
+        return handled
+    if message.startswith(("ck_dbhide:", "ck_dbunhide:")):
+        cmd, _, arg = message.partition(":")
+        ids = {int(x) for x in arg.split(",") if x.strip().lstrip("-").isdigit()}
+        cur = set(_manual())
+        _save_manual(cur | ids if cmd == "ck_dbhide" else cur - ids)
+        try:
+            mw.deckBrowser.refresh()
+        except Exception:
+            pass
+        return (True, None)
+    if not message.startswith("ck_dball:"):
         return handled
     _show_all["on"] = message.endswith("1")
     try:

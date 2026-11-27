@@ -83,3 +83,7 @@
 **decks_rounds_only** – หน้า Decks แสดงเฉพาะ deck ในชุด Rounds (true/false)
 
 **start_study_main** – เปิด Anki แล้วเข้าท่องชุดหลักทันที ถ้าชุดหลักมีการ์ด (true/false)
+
+**decks_hover_hide** – หน้า Decks: ชี้เมาส์มีปุ่ม − จาง ๆ หน้าชื่อ กดซ่อนแถวนั้นและแถวถัดไปทั้งหมด (เหนือกลุ่มที่ต้องท่อง = ซ่อนขึ้นบน) · แถวติดกับที่ซ่อนมีปุ่ม + เปิดคืน (true/false)
+
+**decks_manual_hidden** – (จำเอง) deck ที่กด − ซ่อนไว้
