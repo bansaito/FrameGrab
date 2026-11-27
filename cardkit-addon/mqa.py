@@ -173,24 +173,37 @@ CSS_JS = r"""
     mqaMark(s, i, c);
     if (!s.classList.contains("open")) mqaToggle(i);
     var ans = s.getAttribute("data-ans");
-    if (window.mqaWrongMove && ans && c !== ans) mqaMovePill();
+    if (window.mqaWrongMove && ans && c !== ans)
+      mqaMovePill(document.querySelector('.mqa-choice.wrong[data-i="' + i + '"]'));
   }
-  // ตอบผิด → ปุ่ม "↪ ย้ายข้อนี้" โผล่ชั่วคราวด้านล่าง (ชี้เมาส์ = ค้างไว้) แล้วจางหาย
-  function mqaMovePill() {
+  // ตอบผิด → ปุ่ม "↪ ย้ายข้อนี้" โผล่ชั่วคราวต่อท้ายตัวเลือกที่ผิด (ชี้เมาส์ = ค้างไว้) แล้วจางหาย
+  function mqaMovePill(el) {
     var old = document.getElementById("mqa-pill"); if (old) old.remove();
-    var b = document.createElement("div"); b.id = "mqa-pill"; b.textContent = "↪ ย้ายข้อนี้";
+    var b = document.createElement("span"); b.id = "mqa-pill"; b.textContent = "↪ ย้ายข้อนี้";
     b.title = "ย้ายข้อที่ตอบผิดไปการ์ดใหม่";
-    b.style.cssText = "position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:9998;" +
-      "padding:7px 16px;border-radius:999px;background:#3b82f6;color:#fff;font:600 14px system-ui,sans-serif;" +
-      "cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.3);opacity:0;transition:opacity .25s ease;";
-    document.body.appendChild(b);
+    var base = "padding:4px 12px;border-radius:999px;background:#3b82f6;color:#fff;" +
+      "font:600 .7em system-ui,sans-serif;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.25);" +
+      "opacity:0;transition:opacity .25s ease;white-space:nowrap;";
+    if (el) {                                  // วางต่อจาก ❌ (❌ เป็น ::after ของตัวเลือก → ต้องวางนอกตัวเลือก)
+      b.style.cssText = base + "display:inline-block;margin-left:6px;vertical-align:middle;";
+      el.parentNode.insertBefore(b, el.nextSibling);
+    } else {                                   // หาตัวเลือกไม่เจอ → ลอยด้านล่างแทน
+      b.style.cssText = base + "position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:9998;";
+      document.body.appendChild(b);
+    }
     requestAnimationFrame(function () { b.style.opacity = "1"; });
     var t = null;
     function hide() { b.style.opacity = "0"; setTimeout(function () { b.remove(); }, 300); }
     function arm() { clearTimeout(t); t = setTimeout(hide, 4000); }
     b.onmouseenter = function () { clearTimeout(t); };
     b.onmouseleave = arm;
-    b.onclick = function () { clearTimeout(t); b.remove(); pycmd("mqamove:openbtn"); };
+    ["mousedown", "mouseup"].forEach(function (ev) {
+      b.addEventListener(ev, function (e) { e.stopPropagation(); });
+    });
+    b.onclick = function (e) {                 // ไม่ให้นับเป็นคลิกตัวเลือก
+      e.preventDefault(); e.stopPropagation();
+      clearTimeout(t); b.remove(); pycmd("mqamove:openbtn");
+    };
     arm();
   }
   function mqaMark(s, i, c) {
