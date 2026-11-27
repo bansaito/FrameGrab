@@ -36,7 +36,7 @@ KEYS = {"inline": "mqa_inline", "inline_stealth": "mqa_inline_stealth",
         "shift_quote": "shift_quote_any_layout",
         "deck_tree": "deck_picker_tree",
         "mac_menubar_fix": "mac_keep_menubar",
-        "mac_emoji_fix": "mac_emoji_picker_fix",
+        "mac_emoji_fix": "mac_emoji_picker_fix", "wrong_move": "wrong_answer_move_button",
         "deck_scroll": "decks_keep_scroll",
         "word_split": "word_card_split",
         "decks_hide_empty": "decks_hide_empty", "decks_rounds_only": "decks_rounds_only",
@@ -61,7 +61,7 @@ DEFAULT_ON = {"inline", "inline_stealth", "inline_hidebtn", "inline_accordion",
               "click_choice", "choice_noframe", "hover_open", "keep_scroll", "edit_here",
               "mouse_back", "mouse_mid_quote", "shift_quote",
               "deck_tree", "mac_menubar_fix", "mac_emoji_fix", "deck_scroll", "word_split",
-              "decks_hide_empty", "decks_hover_hide", "auto_start", "auto_next"}
+              "decks_hide_empty", "decks_hover_hide", "auto_start", "auto_next", "wrong_move"}
 
 
 def on(feature):
@@ -171,6 +171,26 @@ CSS_JS = r"""
     mqaCollapseOthers(s);
     mqaMark(s, i, c);
     if (!s.classList.contains("open")) mqaToggle(i);
+    var ans = s.getAttribute("data-ans");
+    if (window.mqaWrongMove && ans && c !== ans) mqaMovePill();
+  }
+  // ตอบผิด → ปุ่ม "↪ ย้ายข้อนี้" โผล่ชั่วคราวด้านล่าง (ชี้เมาส์ = ค้างไว้) แล้วจางหาย
+  function mqaMovePill() {
+    var old = document.getElementById("mqa-pill"); if (old) old.remove();
+    var b = document.createElement("div"); b.id = "mqa-pill"; b.textContent = "↪ ย้ายข้อนี้";
+    b.title = "ย้ายข้อที่ตอบผิดไปการ์ดใหม่";
+    b.style.cssText = "position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:9998;" +
+      "padding:7px 16px;border-radius:999px;background:#3b82f6;color:#fff;font:600 14px system-ui,sans-serif;" +
+      "cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.3);opacity:0;transition:opacity .25s ease;";
+    document.body.appendChild(b);
+    requestAnimationFrame(function () { b.style.opacity = "1"; });
+    var t = null;
+    function hide() { b.style.opacity = "0"; setTimeout(function () { b.remove(); }, 300); }
+    function arm() { clearTimeout(t); t = setTimeout(hide, 4000); }
+    b.onmouseenter = function () { clearTimeout(t); };
+    b.onmouseleave = arm;
+    b.onclick = function () { clearTimeout(t); b.remove(); pycmd("mqamove:openbtn"); };
+    arm();
   }
   function mqaMark(s, i, c) {
     s.setAttribute("data-picked", c);
@@ -307,6 +327,14 @@ def on_set_content(web_content, context):
 
 
 def on_card_will_show(text, card, kind):
+    out = _render_card(text, card, kind)
+    if kind in ("reviewQuestion", "reviewAnswer"):
+        flag = "true" if on("wrong_move") else "false"
+        out = f"<script>window.mqaWrongMove={flag};</script>" + out
+    return out
+
+
+def _render_card(text, card, kind):
     try:
         opts = dict(
             show_buttons=on("inline") and not on("inline_hidebtn"),
@@ -546,7 +574,6 @@ MOVE_CSS_JS = r"""
     transition: transform .22s ease; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
   .nightMode #mqa-mv, .night_mode #mqa-mv { background: #262626; color: #e8e8e8; }
   body.mqa-mv-open #mqa-mv { transform: none; }
-  #qa { transition: margin-right .22s ease; }
   body.mqa-mv-open #qa { margin-right: min(440px, 42vw); }
   .mqa-mv-head { display: flex; align-items: center; padding: 12px 14px; font-weight: 600;
     border-bottom: 1px solid rgba(128,128,128,.25); }
@@ -732,6 +759,14 @@ def _choose_deck():
               title="ย้ายไปที่ deck", parent=mw, dyn=False, callback=picked)
 
 
+_UNDIM_JS = """(function(){
+  document.body.classList.remove('mqa-mv-open');
+  [document.documentElement, document.body, document.getElementById('qa')].forEach(function(e){
+    if (e && e.style.opacity && e.style.opacity !== '1') e.style.opacity = '1';
+  });
+})();"""
+
+
 def _do_move(nums):
     nums = set(nums)
     note = mw.col.get_note(_mv["nid"])
@@ -761,6 +796,9 @@ def _do_move(nums):
         _rev_eval(f"mqaMoveClose(); if (window.mqaState) delete mqaState['{cid}'];")
         tooltip(f"ย้ายแล้ว {len(chosen)} ข้อ (Ctrl+Z เพื่อย้อนกลับ)")
         redraw_reviewer()
+        # กันหน้าการ์ดค้างจาง ๆ หลังวาดใหม่ (การวาดซ้อนกันระหว่างกำลัง fade)
+        for ms in (300, 900, 2000):
+            QTimer.singleShot(ms, lambda: _rev_eval(_UNDIM_JS))
 
     _run_op(mw, "ย้ายข้อไปการ์ดใหม่", body, done)
 
@@ -777,6 +815,8 @@ def on_js_message(handled, message, context):
     elif cmd.startswith("do:"):
         nums = json.loads(cmd[3:])
         QTimer.singleShot(0, lambda: _do_move(nums))
+    elif cmd == "openbtn":
+        QTimer.singleShot(0, open_move_panel)
     return (True, None)
 
 
@@ -800,6 +840,8 @@ OPTIONS = [
     ("click_choice", "คลิกตัวเลือกเพื่อตอบ",
      "หน้าโจทย์: คลิก ก./ข./ค./ง. ที่คิดว่าถูก → เปิดเฉลยข้อนั้น "
      "ตัวเลือกที่ถูกเป็นสีเขียว ถ้าตอบผิดตัวที่เลือกเป็นสีแดง · ตอบแล้วคลิกซ้ำเพื่อซ่อน/แสดงผลของข้อนั้น", None),
+    ("wrong_move", "ตอบผิด → มีปุ่ม \"↪ ย้ายข้อนี้\" ชั่วคราว",
+     "คลิกตัวเลือกผิดแล้วมีปุ่มสีฟ้าโผล่ด้านล่างประมาณ 4 วิ (ชี้เมาส์ = ค้างไว้) กดแล้วเปิดแผงย้ายข้อ", "click_choice"),
     ("choice_noframe", "ไม่มีกรอบสี เหลือแค่ ✅ ❌",
      "ตัวเลือกที่ตอบไม่มีกล่องสีเขียว/แดง มีแค่อีโมจิต่อท้าย", "click_choice"),
     ("compact_answer", "ย่อเฉลยเหลือแค่บรรทัดคำตอบ",
