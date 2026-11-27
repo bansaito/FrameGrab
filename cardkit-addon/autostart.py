@@ -70,7 +70,7 @@ def _start(did):
 # ---------------------------------------------------------------- นับถอยหลังตอนเปิดแอป
 
 _JS = r"""
-(function(cands, ms){
+(function(cands, ms, delay){
   if (window.__ckAuto) return; window.__ckAuto = 1;
   function pick(){
     var best = null;
@@ -118,8 +118,24 @@ _JS = r"""
     evs.forEach(function(e){ window.addEventListener(e, cancel, true); });
     setTimeout(function(){ stop('ck_auto:go:' + b[0]); }, ms);
   }
-  go(0);
-})(%s, %d);
+  // รอเฉย ๆ ก่อนเริ่ม (delay) · ระหว่างรอ ถ้าผู้ใช้กด/คลิก/เลื่อน/ขยับเมาส์ = ยกเลิกเลย
+  if (!delay) { go(0); return; }
+  var pre = ['keydown', 'mousedown', 'wheel', 'touchstart', 'mousemove'], px = null, py = null, gone = false;
+  function preCancel(e){
+    if (e.type === 'mousemove') {
+      if (px === null) { px = e.clientX; py = e.clientY; return; }
+      if (Math.abs(e.clientX - px) + Math.abs(e.clientY - py) < 30) return;
+    }
+    gone = true; clearTimeout(tm);
+    pre.forEach(function(ev){ window.removeEventListener(ev, preCancel, true); });
+    pycmd('ck_auto:cancel');
+  }
+  pre.forEach(function(ev){ window.addEventListener(ev, preCancel, true); });
+  var tm = setTimeout(function(){
+    pre.forEach(function(ev){ window.removeEventListener(ev, preCancel, true); });
+    if (!gone) go(0);
+  }, delay);
+})(%s, %d, %d);
 """
 
 
@@ -127,6 +143,15 @@ def _secs():
     from .mqa import cfg
     try:
         return max(1, min(60, int(cfg().get("auto_start_seconds", 3) or 3)))
+    except (TypeError, ValueError):
+        return 3
+
+
+def _delay():
+    """รอก่อนเริ่มนับ (วิ) · 0 = เริ่มนับทันที"""
+    from .mqa import cfg
+    try:
+        return max(0, min(60, int(cfg().get("auto_start_delay", 3))))
     except (TypeError, ValueError):
         return 3
 
@@ -175,7 +200,7 @@ def _on_render(deck_browser):
         cands = [[did, n] for did, n, _o in _candidates()]   # ทุก deck ที่มีการ์ดและโชว์อยู่
         if not cands:
             return
-        deck_browser.web.eval(_JS % (json.dumps(cands), _secs() * 1000))
+        deck_browser.web.eval(_JS % (json.dumps(cands), _secs() * 1000, _delay() * 1000))
     except Exception as e:
         print("[cardkit autostart]", e)
 

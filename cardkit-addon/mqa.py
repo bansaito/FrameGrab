@@ -968,7 +968,14 @@ class SettingsDialog(QDialog):
             if key == "auto_start":
                 row = QHBoxLayout()
                 row.setContentsMargins(52, 0, 0, 10)
-                row.addWidget(QLabel("นับถอยหลัง"))
+                row.addWidget(QLabel("รอก่อนเริ่ม"))
+                self.wait = QSpinBox()
+                self.wait.setRange(0, 60)
+                self.wait.setValue(int(c.get("auto_start_delay", 3)))
+                self.wait.setSuffix(" วิ")
+                row.addWidget(self.wait)
+                row.addSpacing(14)
+                row.addWidget(QLabel("เส้นเขียววิ่ง"))
                 self.secs = QSpinBox()
                 self.secs.setRange(1, 60)
                 self.secs.setValue(int(c.get("auto_start_seconds", 3) or 3))
@@ -1017,6 +1024,7 @@ class SettingsDialog(QDialog):
             c[KEYS[key]] = box.isChecked()
         if getattr(self, "secs", None) is not None:
             c["auto_start_seconds"] = self.secs.value()
+            c["auto_start_delay"] = self.wait.value()
         mw.addonManager.writeConfig(ADDON, c)
         super().accept()
         redraw_reviewer()
@@ -1067,15 +1075,72 @@ def _short_title(title):
     return title
 
 
-def _set_countdown_secs():
-    from aqt.qt import QInputDialog
+_time_menus = []      # [(เมนูย่อย, config key, ชื่อ, ค่าเริ่มต้น)]
+
+
+def _add_time_menus(sub):
+    """เลือกตัวเลขจากเมนูได้เลย ไม่ต้องเปิดหน้าต่าง"""
+    from aqt.qt import QActionGroup
+    for cfg_key, label, default, choices in (
+            ("auto_start_delay", "⏳ รอก่อนเริ่ม", 3, (0, 1, 2, 3, 5, 10, 15, 30)),
+            ("auto_start_seconds", "🟢 เส้นเขียววิ่ง", 3, (1, 2, 3, 5, 10, 15, 30))):
+        m = sub.addMenu("      " + label)
+        grp = QActionGroup(m)
+        grp.setExclusive(True)
+        for v in choices:
+            a = m.addAction(f"{v} วิ" if v else "ไม่รอ")
+            a.setCheckable(True)
+            a.setData(("time", cfg_key, v))
+            grp.addAction(a)
+            a.triggered.connect(lambda _=False, k=cfg_key, v=v: _set_time(k, v))
+        m.addSeparator()
+        m.addAction("อื่น ๆ…", _set_countdown_secs)
+        _time_menus.append((m, cfg_key, label, default))
+
+
+def _set_time(key, v):
     c = cfg()
-    cur = int(c.get("auto_start_seconds", 3) or 3)
-    v, ok = QInputDialog.getInt(mw, "นับถอยหลัง", "จำนวนวินาทีก่อนเข้าท่องเอง:", cur, 1, 60)
-    if ok:
-        c["auto_start_seconds"] = v
+    c[key] = int(v)
+    mw.addonManager.writeConfig(ADDON, c)
+    _sync_time_menus()
+
+
+def _sync_time_menus():
+    c = cfg()
+    for m, key, label, default in _time_menus:
+        try:
+            cur = int(c.get(key, default))
+        except (TypeError, ValueError):
+            cur = default
+        m.menuAction().setText(f"      {label}: {cur} วิ" if cur or key != "auto_start_delay" else f"      {label}: ไม่รอ")
+        for a in m.actions():
+            d = a.data()
+            if isinstance(d, (tuple, list)) and len(d) == 3 and d[0] == "time":
+                a.setChecked(d[2] == cur)
+
+
+def _set_countdown_secs():
+    from aqt.qt import QSpinBox, QFormLayout
+    c = cfg()
+    d = QDialog(mw)
+    d.setWindowTitle("นับถอยหลัง")
+    form = QFormLayout(d)
+    wait = QSpinBox(); wait.setRange(0, 60); wait.setSuffix(" วิ")
+    wait.setValue(int(c.get("auto_start_delay", 3)))
+    run = QSpinBox(); run.setRange(1, 60); run.setSuffix(" วิ")
+    run.setValue(int(c.get("auto_start_seconds", 3) or 3))
+    form.addRow("รอก่อนเริ่ม:", wait)
+    form.addRow("เส้นเขียววิ่ง:", run)
+    bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+    bb.accepted.connect(d.accept)
+    bb.rejected.connect(d.reject)
+    form.addRow(bb)
+    if d.exec():
+        c["auto_start_delay"] = wait.value()
+        c["auto_start_seconds"] = run.value()
         mw.addonManager.writeConfig(ADDON, c)
-        tooltip(f"นับถอยหลัง {v} วิ")
+        tooltip(f"รอ {wait.value()} วิ แล้ววิ่ง {run.value()} วิ")
+        _sync_time_menus()
 
 
 def _toggle(feature, checked):
@@ -1096,12 +1161,12 @@ def _all_actions(menu):
 
 def _sync_checks():
     try:
-        _secs_act.setText(f"⏱ ตั้งเวลานับถอยหลัง… ({int(cfg().get('auto_start_seconds', 3) or 3)} วิ)")
+        _sync_time_menus()
     except Exception:
         pass
     for act in _all_actions(_menu):
         feature = act.data()
-        if feature in KEYS:
+        if isinstance(feature, str) and feature in KEYS:
             act.setChecked(on(feature))
             parent_key = next(o[3] for o in OPTIONS if o[0] == feature)
             if parent_key:
@@ -1231,7 +1296,7 @@ def setup_menubar():
             act.setToolTip(desc)
             act.triggered.connect(lambda checked, k=key: _toggle(k, checked))
             if key == "auto_start":
-                _secs_act = sub.addAction("      ⏱ ตั้งเวลานับถอยหลัง…", _set_countdown_secs)
+                _add_time_menus(sub)
         sub.aboutToShow.connect(_sync_checks)
     _menu.addSeparator()
     _menu.addAction("ตั้งค่าเพิ่มเติม…", open_settings)

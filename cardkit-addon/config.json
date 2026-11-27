@@ -40,6 +40,7 @@
     "auto_start_countdown": true,
     "auto_next_deck": true,
     "auto_start_every_time": false,
+    "auto_start_delay": 3,
     "auto_start_seconds": 3,
     "right_click_web_search": true,
     "wrong_answer_move_button": true,
