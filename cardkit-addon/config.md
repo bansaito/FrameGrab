@@ -105,3 +105,5 @@
 **toolbar_due_button** – ระหว่างท่อง ชี้เมาส์ขวาของ Sync มีปุ่ม 📅 ตั้งวันทวน (Set Due Date) (true/false)
 
 **context_actions** – บรรทัดในเมนูคลิกขวา [{label, url, prompt, copy}] · {text} = ข้อความที่เลือก · {prompt} = prompt ที่เติมแล้ว (แก้ง่ายกว่าที่ CardKit → แก้เมนูคลิกขวา…)
+
+**auto_start_ignore_mouse_move** – เข้าท่องเอง: ขยับเมาส์ไม่นับว่าแตะ (นับใหม่เฉพาะคลิก/เลื่อน/กดปุ่ม) (true/false)

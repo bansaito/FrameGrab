@@ -322,7 +322,7 @@ class _Auto(QObject):
         elif t in (QEvent.Type.MouseButtonPress, QEvent.Type.Wheel):
             _log("แตะ: คลิก/เลื่อน")
             self.reset()
-        elif t == QEvent.Type.MouseMove:
+        elif t == QEvent.Type.MouseMove and not on("auto_ignore_move"):   # ค่าเริ่มต้น: ขยับเมาส์ไม่นับ
             try:
                 p = ev.globalPosition().toPoint()
             except Exception:

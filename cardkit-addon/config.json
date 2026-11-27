@@ -45,6 +45,7 @@
     "right_click_web_search": true,
     "decks_keep_round_set": true,
     "toolbar_due_button": true,
+    "auto_start_ignore_mouse_move": true,
     "wrong_answer_move_button": true,
     "decks_hover_hide": true,
     "word_split_front_tail": "<br><br><br><br><br>ภาพ+syn",

@@ -43,6 +43,7 @@ KEYS = {"inline": "mqa_inline", "inline_stealth": "mqa_inline_stealth",
         "auto_start": "auto_start_countdown", "auto_next": "auto_next_deck",
         "auto_every": "auto_start_every_time", "web_search": "right_click_web_search",
         "decks_keep_round": "decks_keep_round_set", "due_button": "toolbar_due_button",
+        "auto_ignore_move": "auto_start_ignore_mouse_move",
         "decks_hover_hide": "decks_hover_hide"}
 
 TAG_NEW = "แยกข้อ::ใหม่"
@@ -64,7 +65,7 @@ DEFAULT_ON = {"inline", "inline_stealth", "inline_hidebtn", "inline_accordion",
               "mouse_back", "mouse_mid_quote", "shift_quote",
               "deck_tree", "mac_menubar_fix", "mac_emoji_fix", "deck_scroll", "word_split",
               "decks_hide_empty", "decks_hover_hide", "auto_start", "auto_next", "wrong_move", "web_search",
-              "decks_keep_round", "due_button"}
+              "decks_keep_round", "due_button", "auto_ignore_move"}
 
 
 def on(feature):
@@ -908,6 +909,8 @@ OPTIONS = [
      "อยู่หน้า Decks แล้วไม่แตะอะไร: รอครู่หนึ่ง → เส้นเขียววิ่งรอบ deck ที่การ์ดเยอะสุด (เท่ากัน = อันบน) → เข้าท่อง "
      "· ขยับเมาส์/คลิก/เลื่อน/กดปุ่ม = เริ่มนับใหม่ · Esc = หยุดจนกว่าจะออกจากหน้านี้ "
      "· ไม่นับตอน sync หรือมีหน้าต่างอื่นอยู่ข้างหน้า", None),
+    ("auto_ignore_move", "ขยับเมาส์ไม่นับว่าแตะ",
+     "เริ่มนับใหม่เฉพาะตอนคลิก / เลื่อน / กดปุ่ม · ปิด = ขยับเมาส์ก็เริ่มนับใหม่", "auto_start"),
     ("auto_next", "ท่องจบ deck แล้วเข้า deck ถัดไปในชุดเอง",
      "เรียงการ์ดเยอะสุดก่อน จนหมดชุด (deck ที่ไม่อยู่ในชุด Rounds = ไป deck ไหนก็ได้ที่ยังมีการ์ด) "
      "แล้วค่อยขึ้นหน้า Congratulations", None),
@@ -1057,7 +1060,7 @@ GROUPS = [
                        "wrong_move", "choice_noframe", "compact_answer", "split_tool", "word_split"]),
     ("✏️ ทบทวน / แก้ไข", ["keep_scroll", "edit_here", "deck_tree", "web_search", "due_button"]),
     ("🗂 หน้า Decks", ["decks_hide_empty", "decks_keep_round", "decks_hover_hide", "decks_rounds_only", "deck_scroll",
-                      "auto_start", "auto_next"]),
+                      "auto_start", "auto_ignore_move", "auto_next"]),
     ("🖱 เมาส์ / แป้นพิมพ์", ["mouse_back", "mouse_mid_quote", "shift_quote", "hover_open"]),
     ("🍎 Mac", ["mac_menubar_fix", "mac_emoji_fix"]),
 ]
