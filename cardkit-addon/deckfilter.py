@@ -78,7 +78,9 @@ _JS = r"""
 (function(show, hidden, all, manual, auto, handles){
   if (!document.getElementById('ck-dbh-css')) {
     var st = document.createElement('style'); st.id = 'ck-dbh-css';
-    st.textContent = '.ck-h{display:inline-block;width:1.1em;text-align:center;margin-right:2px;opacity:0;'
+    // ชิดซ้ายสุดของตาราง เป็นแถวเดียวกันทุก deck (ไม่ขยับตามการย่อหน้า)
+    st.textContent = '.ck-hcell{position:relative}'
+      + '.ck-h{position:absolute;left:-26px;top:0;bottom:0;width:20px;display:flex;align-items:center;justify-content:center;opacity:0;'
       + 'cursor:pointer;user-select:none;transition:opacity .12s;font-weight:bold}'
       + 'tr.deck:hover .ck-h{opacity:.4}.ck-h:hover{opacity:.9!important}';
     document.head.appendChild(st);
@@ -96,8 +98,9 @@ _JS = r"""
     var isMan = ids.map(function(id){ return manual.indexOf(id) >= 0; });
     rows.forEach(function(tr, i){
       var old = tr.querySelector('.ck-h'); if (old) old.remove();
-      if (!handles || all || !vis[i]) return;
-      var cell = tr.querySelector('td.decktd') || tr.cells[0]; if (!cell) return;
+      if (!handles || !vis[i]) return;
+      var cell = tr.cells[0]; if (!cell) return;
+      cell.classList.add('ck-hcell');
       // แถวติดกับส่วนที่ซ่อนเอง → + (เปิดคืน) · ไม่งั้น − (ซ่อน)
       // ข้ามแถวที่ถูกซ่อนอัตโนมัติ (deck ว่าง) ไปหาส่วนที่ซ่อนเอง
       function hiddenRun(step){
@@ -106,6 +109,10 @@ _JS = r"""
         return anyMan ? out : null;
       }
       var below = hiddenRun(1), above = hiddenRun(-1);
+      if (all) {                                         // โหมดแสดงทั้งหมด: แถวที่เคยซ่อนเอง = + (เลิกซ่อน)
+        below = null; above = null;
+        if (isMan[i]) { var run = [], k = i; while (k > 0 && isMan[k - 1]) k--; for (; k < rows.length && isMan[k]; k++) run.push(ids[k]); below = run; }
+      }
       var h = document.createElement('span'); h.className = 'ck-h';
       if (below || above) {
         h.textContent = '+'; h.title = 'แสดง deck ที่ซ่อนไว้';
@@ -123,7 +130,7 @@ _JS = r"""
           pycmd('ck_dbhide:' + out.join(','));
         };
       }
-      cell.insertBefore(h, cell.firstChild);
+      cell.appendChild(h);
     });
     var old2 = document.getElementById('ck-showall'); if (old2) old2.remove();
     if ((show === null || !hidden) && !all) return true;
