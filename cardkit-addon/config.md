@@ -77,3 +77,9 @@
 **word_split_front_tail** – สิ่งที่ต่อท้ายคำศัพท์ในด้านหน้า (ค่าเริ่มต้น: บรรทัดว่าง + "ภาพ+syn")
 
 **word_split_pad_lines** – จำนวนบรรทัดว่างท้ายคำสุดท้าย ทั้งด้านหน้าและด้านหลัง (ค่าเริ่มต้น 8)
+
+**decks_hide_empty** – หน้า Decks ซ่อน deck ที่ไม่มีการ์ดวันนี้ (มีปุ่ม "แสดงทั้งหมด" ท้ายตาราง) (true/false)
+
+**decks_rounds_only** – หน้า Decks แสดงเฉพาะ deck ในชุด Rounds (true/false)
+
+**start_study_main** – เปิด Anki แล้วเข้าท่องชุดหลักทันที ถ้าชุดหลักมีการ์ด (true/false)

@@ -38,7 +38,9 @@ KEYS = {"inline": "mqa_inline", "inline_stealth": "mqa_inline_stealth",
         "mac_menubar_fix": "mac_keep_menubar",
         "mac_emoji_fix": "mac_emoji_picker_fix",
         "deck_scroll": "decks_keep_scroll",
-        "word_split": "word_card_split"}
+        "word_split": "word_card_split",
+        "decks_hide_empty": "decks_hide_empty", "decks_rounds_only": "decks_rounds_only",
+        "start_study_main": "start_study_main"}
 
 TAG_NEW = "แยกข้อ::ใหม่"
 TAG_ORIG = "แยกข้อ::ต้นฉบับ"
@@ -57,7 +59,8 @@ def cfg():
 DEFAULT_ON = {"inline", "inline_stealth", "inline_hidebtn", "inline_accordion",
               "click_choice", "choice_noframe", "hover_open", "keep_scroll", "edit_here",
               "mouse_back", "mouse_mid_quote", "shift_quote",
-              "deck_tree", "mac_menubar_fix", "mac_emoji_fix", "deck_scroll", "word_split"}
+              "deck_tree", "mac_menubar_fix", "mac_emoji_fix", "deck_scroll", "word_split",
+              "decks_hide_empty", "decks_rounds_only", "start_study_main"}
 
 
 def on(feature):
@@ -829,6 +832,12 @@ OPTIONS = [
     ("word_split", "การ์ดคำศัพท์: แยกหน้า/หลังให้อัตโนมัติ",
      "ช่องหน้าเป็น \"🏆 Deed : ความหมาย …\" และช่องหลังว่าง → หน้า = Deed + ภาพ+syn, "
      "หลัง = 🏆 : ความหมาย … (ทำตอนออกจากช่องหน้า / กด Add)", None),
+    ("decks_hide_empty", "หน้า Decks: ซ่อน deck ที่ไม่มีการ์ดวันนี้",
+     "เหลือแค่ deck ที่ยังต้องท่อง · ท้ายตารางมีปุ่ม \"แสดงทั้งหมด\"", None),
+    ("decks_rounds_only", "หน้า Decks: แสดงเฉพาะ deck ในชุด Rounds",
+     "deck ที่ไม่ได้อยู่ในชุดไหนเลยจะถูกซ่อน (ยังไม่ได้ตั้งชุด = แสดงทั้งหมด)", None),
+    ("start_study_main", "เปิด Anki แล้วเข้าท่องชุดหลักทันที",
+     "ถ้าชุดหลักไม่มีการ์ดจะอยู่หน้า Decks ตามปกติ", None),
 ]
 
 
