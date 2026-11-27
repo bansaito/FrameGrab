@@ -43,7 +43,8 @@ KEYS = {"inline": "mqa_inline", "inline_stealth": "mqa_inline_stealth",
         "auto_start": "auto_start_countdown", "auto_next": "auto_next_deck",
         "auto_every": "auto_start_every_time", "web_search": "right_click_web_search",
         "decks_keep_round": "decks_keep_round_set", "due_button": "toolbar_due_button",
-        "auto_ignore_move": "auto_start_ignore_mouse_move",
+        "auto_ignore_move": "auto_start_ignore_mouse_move", "find_replace": "review_find_replace",
+        "next_marker": "next_question_marker",
         "decks_hover_hide": "decks_hover_hide"}
 
 TAG_NEW = "แยกข้อ::ใหม่"
@@ -65,7 +66,7 @@ DEFAULT_ON = {"inline", "inline_stealth", "inline_hidebtn", "inline_accordion",
               "mouse_back", "mouse_mid_quote", "shift_quote",
               "deck_tree", "mac_menubar_fix", "mac_emoji_fix", "deck_scroll", "word_split",
               "decks_hide_empty", "decks_hover_hide", "auto_start", "auto_next", "wrong_move", "web_search",
-              "decks_keep_round", "due_button", "auto_ignore_move"}
+              "decks_keep_round", "due_button", "auto_ignore_move", "find_replace", "next_marker"}
 
 
 def on(feature):
@@ -90,6 +91,10 @@ CSS_JS = r"""
 <style>
   .mqa-slot { margin: 6px auto 4px; max-width: 46em; }
   .mqa-q { display: inline-block; width: 0; height: 0; overflow: hidden; vertical-align: top; }
+  .mqa-q.mqa-here { width: auto; height: auto; overflow: visible; vertical-align: baseline; }
+  .mqa-q.mqa-here::before { content: "👉"; margin-right: 6px; display: inline-block;
+    animation: mqaHere 1.2s ease-in-out 3; }
+  @keyframes mqaHere { 0%,100% { transform: translateX(0); } 50% { transform: translateX(5px); } }
   /* เริ่มต้นจาง → ผ่านไป 3 วินาทีค่อย ๆ ล่องหน → ชี้เมาส์ที่ข้อนั้นถึงโผล่ */
   .mqa-btn { display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
     user-select: none; font-size: .72em; padding: 2px 8px; border-radius: 6px;
@@ -218,7 +223,25 @@ CSS_JS = r"""
     };
     arm();
   }
+  // ตอบข้อหนึ่งแล้ว → ข้อถัดไปที่ยังไม่ตอบมี 👉 บอกว่าถึงข้อนี้แล้ว
+  function mqaHere() {
+    document.querySelectorAll(".mqa-q.mqa-here").forEach(function (m) { m.classList.remove("mqa-here"); });
+    if (!window.mqaNextMark) return;
+    var slots = Array.prototype.slice.call(document.querySelectorAll(".mqa-slot[data-i]"));
+    if (slots.length < 2) return;
+    var last = -1;
+    slots.forEach(function (sl, k) { if (sl.getAttribute("data-picked")) last = k; });
+    if (last < 0) return;
+    for (var k = last + 1; k < slots.length; k++) {
+      if (!slots[k].getAttribute("data-picked")) {
+        var m = document.querySelector('.mqa-q[data-i="' + slots[k].getAttribute("data-i") + '"]');
+        if (m) m.classList.add("mqa-here");
+        return;
+      }
+    }
+  }
   function mqaMark(s, i, c) {
+    setTimeout(mqaHere, 0);
     s.setAttribute("data-picked", c);
     var right = s.getAttribute("data-ans");
     document.querySelectorAll('.mqa-choice[data-i="' + i + '"]').forEach(function (el) {
@@ -356,7 +379,8 @@ def on_card_will_show(text, card, kind):
     out = _render_card(text, card, kind)
     if kind in ("reviewQuestion", "reviewAnswer"):
         flag = "true" if on("wrong_move") else "false"
-        out = f"<script>window.mqaWrongMove={flag};</script>" + out
+        nxt = "true" if on("next_marker") else "false"
+        out = f"<script>window.mqaWrongMove={flag};window.mqaNextMark={nxt};</script>" + out
     return out
 
 
@@ -866,6 +890,8 @@ OPTIONS = [
     ("click_choice", "คลิกตัวเลือกเพื่อตอบ",
      "หน้าโจทย์: คลิก ก./ข./ค./ง. ที่คิดว่าถูก → เปิดเฉลยข้อนั้น "
      "ตัวเลือกที่ถูกเป็นสีเขียว ถ้าตอบผิดตัวที่เลือกเป็นสีแดง · ตอบแล้วคลิกซ้ำเพื่อซ่อน/แสดงผลของข้อนั้น", None),
+    ("next_marker", "ตอบแล้ว → ข้อถัดไปมี 👉",
+     "การ์ดหลายข้อ: ตอบข้อหนึ่งแล้ว ข้อถัดไปที่ยังไม่ตอบมี 👉 ขยับเบา ๆ บอกว่าถึงข้อนี้แล้ว", "click_choice"),
     ("wrong_move", "ตอบผิด → มีปุ่ม \"↪ ย้ายข้อนี้\" ชั่วคราว",
      "คลิกตัวเลือกผิดแล้วมีปุ่มสีฟ้าต่อท้าย ❌ ประมาณ 4 วิ (ชี้เมาส์ = ค้างไว้) · หายไปแล้วชี้ที่ตัวเลือก ❌ = โผล่อีก · กดแล้วเปิดแผงย้ายข้อ", "click_choice"),
     ("choice_noframe", "ไม่มีกรอบสี เหลือแค่ ✅ ❌",
@@ -924,6 +950,9 @@ OPTIONS = [
      "ถ้ามี deck ในชุดไหนยังมีการ์ด deck อื่นในชุดนั้นจะโชว์ด้วย (ถึงจะเป็น 0) ให้เห็นครบทั้งรอบ", "decks_hide_empty"),
     ("due_button", "ปุ่ม 📅 Set Due Date บนแถบด้านบน",
      "ระหว่างท่อง ชี้เมาส์ทางขวาของ Sync มีปุ่มโผล่ กดแล้ว Set Due Date ของการ์ดนี้", None),
+    ("find_replace", "⌘F / Ctrl+F = ค้นหาและแทนที่ในการ์ด",
+     "หน้าทบทวน: ช่องค้นหามุมขวาบน บอก \"N จาก M\" · ⋮ = แทนที่ / แทนที่ทั้งหมด (แก้ในโน้ตจริง Ctrl+Z ย้อนได้) "
+     "· ช่องว่างก็นับ", None),
 ]
 
 
@@ -1057,8 +1086,8 @@ _move_act = None
 # หมวดของเมนู / แท็บตั้งค่า (ลำดับตามนี้)
 GROUPS = [
     ("📝 การ์ดข้อสอบ", ["inline", "inline_stealth", "inline_hidebtn", "inline_accordion", "click_choice",
-                       "wrong_move", "choice_noframe", "compact_answer", "split_tool", "word_split"]),
-    ("✏️ ทบทวน / แก้ไข", ["keep_scroll", "edit_here", "deck_tree", "web_search", "due_button"]),
+                       "next_marker", "wrong_move", "choice_noframe", "compact_answer", "split_tool", "word_split"]),
+    ("✏️ ทบทวน / แก้ไข", ["keep_scroll", "edit_here", "deck_tree", "web_search", "due_button", "find_replace"]),
     ("🗂 หน้า Decks", ["decks_hide_empty", "decks_keep_round", "decks_hover_hide", "decks_rounds_only", "deck_scroll",
                       "auto_start", "auto_ignore_move", "auto_next"]),
     ("🖱 เมาส์ / แป้นพิมพ์", ["mouse_back", "mouse_mid_quote", "shift_quote", "hover_open"]),

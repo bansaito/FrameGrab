@@ -107,3 +107,7 @@
 **context_actions** – บรรทัดในเมนูคลิกขวา [{label, url, prompt, copy}] · {text} = ข้อความที่เลือก · {prompt} = prompt ที่เติมแล้ว (แก้ง่ายกว่าที่ CardKit → แก้เมนูคลิกขวา…)
 
 **auto_start_ignore_mouse_move** – เข้าท่องเอง: ขยับเมาส์ไม่นับว่าแตะ (นับใหม่เฉพาะคลิก/เลื่อน/กดปุ่ม) (true/false)
+
+**review_find_replace** – หน้าทบทวน: ⌘F / Ctrl+F ค้นหาและแทนที่ในการ์ด (แทนที่ = แก้ในโน้ตจริง) (true/false)
+
+**next_question_marker** – การ์ดหลายข้อ: ตอบข้อหนึ่งแล้ว ข้อถัดไปที่ยังไม่ตอบมี 👉 (true/false)

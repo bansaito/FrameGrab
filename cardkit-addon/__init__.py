@@ -23,6 +23,7 @@ from . import deckfilter  # noqa: F401  (หน้า Decks ไม่รก)
 from . import autostart  # noqa: F401  (นับ 3 วิแล้วท่อง + ท่องจบไป deck ถัดไป)
 from . import websearch  # noqa: F401  (คลิกขวา → ค้นหาในเว็บ)
 from . import duebtn  # noqa: F401  (ปุ่ม 📅 ตั้งวันทวน บนแถบด้านบน)
+from . import findbar  # noqa: F401  (⌘F ค้นหา/แทนที่ในหน้าทบทวน)
 from . import mouse  # noqa: F401  (ปุ่มเมาส์กลาง = ", ปุ่มข้าง = ย้อนกลับ)
 
 mw.addonManager.setConfigUpdatedAction(__name__, drop.reload_config)
