@@ -2,6 +2,7 @@
 เข้าท่องอัตโนมัติ (เฉพาะ deck ในชุด Rounds ที่โชว์อยู่หน้า Decks · deck ที่ซ่อนไม่นับ)
   • เปิด Anki ครั้งแรก: แถว deck ที่การ์ดเยอะสุด (เท่ากัน = อันบนกว่า) มีเส้นขอบวิ่งครบรอบใน 3 วิ
     ไม่กดอะไร → เข้าท่อง deck นั้น · กดปุ่ม/คลิก/เลื่อน/ขยับเมาส์ = ยกเลิก        สวิตช์ auto_start_countdown
+    (auto_start_every_time = ทุกครั้งที่อยู่หน้า Decks · auto_start_seconds = กี่วิ)
   • ท่องจบ deck → เข้า deck ถัดไปในชุดเดียวกันเอง (การ์ดเยอะสุดก่อน) จนหมดชุด      สวิตช์ auto_next_deck
 """
 
@@ -66,7 +67,7 @@ def _start(did):
 # ---------------------------------------------------------------- นับถอยหลังตอนเปิดแอป
 
 _JS = r"""
-(function(cands){
+(function(cands, ms){
   if (window.__ckAuto) return; window.__ckAuto = 1;
   function pick(){
     var best = null;
@@ -90,7 +91,7 @@ _JS = r"""
         + ".ck-run{position:absolute;pointer-events:none;border-radius:10px;padding:2px;z-index:9999;"
         + "background:conic-gradient(from -90deg,#22c55e var(--ckp),rgba(34,197,94,.12) 0);"
         + "-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);"
-        + "-webkit-mask-composite:xor;mask-composite:exclude;animation:ckfill 3s linear forwards}";
+        + "-webkit-mask-composite:xor;mask-composite:exclude;animation:ckfill " + (ms / 1000) + "s linear forwards}";
       document.head.appendChild(st);
     }
     var o = document.createElement('div'); o.className = 'ck-run';
@@ -112,11 +113,19 @@ _JS = r"""
       stop('ck_auto:cancel');
     }
     evs.forEach(function(e){ window.addEventListener(e, cancel, true); });
-    setTimeout(function(){ stop('ck_auto:go:' + b[0]); }, 3000);
+    setTimeout(function(){ stop('ck_auto:go:' + b[0]); }, ms);
   }
   go(0);
-})(%s);
+})(%s, %d);
 """
+
+
+def _secs():
+    from .mqa import cfg
+    try:
+        return max(1, min(60, int(cfg().get("auto_start_seconds", 3) or 3)))
+    except (TypeError, ValueError):
+        return 3
 
 
 def _on_profile_open():
@@ -124,7 +133,9 @@ def _on_profile_open():
 
 
 def _on_render(deck_browser):
-    if not _st["pending"] or not on("auto_start"):
+    if not on("auto_start"):
+        return
+    if not _st["pending"] and not (on("auto_every") and not _st.get("cancelled")):
         return
     try:
         from . import rounds as R
@@ -132,7 +143,7 @@ def _on_render(deck_browser):
         if not cands:
             _st["pending"] = False
             return
-        deck_browser.web.eval(_JS % json.dumps(cands))   # หน้าถูกวาดใหม่ (เช่น sync ตอนเปิด) = เริ่มนับใหม่
+        deck_browser.web.eval(_JS % (json.dumps(cands), _secs() * 1000))   # หน้าถูกวาดใหม่ (เช่น sync ตอนเปิด) = เริ่มนับใหม่
     except Exception as e:
         print("[cardkit autostart]", e)
 
@@ -142,6 +153,8 @@ def _on_msg(handled, message, context):
         return handled
     _st["pending"] = False
     parts = message.split(":")
+    if parts[1] == "cancel":
+        _st["cancelled"] = True          # ยกเลิกแล้ว ไม่นับอีกจนกว่าจะออกไปหน้าอื่นแล้วกลับมา
     if len(parts) == 3 and parts[1] == "go" and mw.state == "deckBrowser":
         try:
             _start(int(parts[2]))
@@ -153,6 +166,7 @@ def _on_msg(handled, message, context):
 def _on_state(new, old):
     if new != "deckBrowser" and old == "deckBrowser":
         _st["pending"] = False                       # ไปหน้าอื่นเองแล้ว → ไม่ต้องนับ
+        _st["cancelled"] = False                     # กลับมาหน้า Decks ครั้งหน้า = นับใหม่ได้ (โหมดทุกครั้ง)
     if new == "overview" and old == "review":
         QTimer.singleShot(0, _next_deck)
 

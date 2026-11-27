@@ -39,6 +39,8 @@
     "decks_rounds_only": false,
     "auto_start_countdown": true,
     "auto_next_deck": true,
+    "auto_start_every_time": false,
+    "auto_start_seconds": 3,
     "wrong_answer_move_button": true,
     "decks_hover_hide": true,
     "word_split_front_tail": "<br><br><br><br><br>ภาพ+syn",

@@ -41,6 +41,7 @@ KEYS = {"inline": "mqa_inline", "inline_stealth": "mqa_inline_stealth",
         "word_split": "word_card_split",
         "decks_hide_empty": "decks_hide_empty", "decks_rounds_only": "decks_rounds_only",
         "auto_start": "auto_start_countdown", "auto_next": "auto_next_deck",
+        "auto_every": "auto_start_every_time",
         "decks_hover_hide": "decks_hover_hide"}
 
 TAG_NEW = "แยกข้อ::ใหม่"
@@ -879,9 +880,11 @@ OPTIONS = [
      "เหลือแค่ deck ที่ยังต้องท่อง · ท้ายตารางมีปุ่ม \"แสดงทั้งหมด\"", None),
     ("decks_rounds_only", "หน้า Decks: แสดงเฉพาะ deck ในชุด Rounds",
      "deck ที่ไม่ได้อยู่ในชุดไหนเลยจะถูกซ่อน (ยังไม่ได้ตั้งชุด = แสดงทั้งหมด)", None),
-    ("auto_start", "เปิด Anki: นับ 3 วิแล้วเข้าท่องเอง",
-     "แถว deck ในชุด Rounds ที่การ์ดเยอะสุด (เท่ากัน = อันบน) มีเส้นขอบวิ่ง 3 วิ แล้วเข้าท่อง "
-     "· กดปุ่ม/คลิก/เลื่อน/ขยับเมาส์ = ยกเลิก · ขึ้นแค่ตอนเปิดแอป · deck ที่ซ่อนไม่นับ", None),
+    ("auto_start", "นับถอยหลังแล้วเข้าท่องเอง",
+     "แถว deck ในชุด Rounds ที่การ์ดเยอะสุด (เท่ากัน = อันบน) มีเส้นขอบวิ่งครบรอบ แล้วเข้าท่อง "
+     "· กดปุ่ม/คลิก/เลื่อน/ขยับเมาส์ = ยกเลิก · deck ที่ซ่อนไม่นับ · ปกติขึ้นแค่ตอนเปิด Anki", None),
+    ("auto_every", "ทุกครั้งที่อยู่หน้า Decks (ไม่ใช่แค่ตอนเปิด)",
+     "กลับมาหน้า Decks เมื่อไหร่ก็นับถอยหลังใหม่ (ยกเลิกแล้ว = ไม่นับอีกจนกว่าจะออกไปหน้าอื่นแล้วกลับมา)", "auto_start"),
     ("auto_next", "ท่องจบ deck แล้วเข้า deck ถัดไปในชุดเอง",
      "เรียงการ์ดเยอะสุดก่อน จนหมดชุด แล้วค่อยขึ้นหน้า Congratulations", None),
     ("decks_hover_hide", "หน้า Decks: ปุ่ม − / + ตอนชี้เมาส์",
@@ -894,12 +897,30 @@ class SettingsDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent or mw)
         self.setWindowTitle("CardKit · ตั้งค่าการ์ดหลายข้อ")
-        self.setMinimumWidth(460)
+        self.setMinimumWidth(520)
+        self.setMinimumHeight(520)
         lay = QVBoxLayout(self)
         self.boxes = {}
         c = cfg()
+        from aqt.qt import QTabWidget, QScrollArea, QSpinBox
+        tabs = QTabWidget()
+        lay.addWidget(tabs)
+        outer = lay
+        pages = {}
+        key_tab = {}
+        for gname, items in _grouped():
+            page = QWidget()
+            pl = QVBoxLayout(page)
+            pages[gname] = pl
+            for o in items:
+                key_tab[o[0]] = gname
+            sc = QScrollArea()
+            sc.setWidgetResizable(True)
+            sc.setWidget(page)
+            tabs.addTab(sc, gname)
         for key, title, desc, parent_key in OPTIONS:
-            box = QCheckBox(title)
+            lay = pages[key_tab[key]]
+            box = QCheckBox(_short_title(title))
             box.setChecked(bool(c.get(KEYS[key], key in DEFAULT_ON)))
             f = box.font()
             f.setBold(parent_key is None)
@@ -920,6 +941,20 @@ class SettingsDialog(QDialog):
                 note.setEnabled(parent.isChecked())
                 parent.toggled.connect(box.setEnabled)
                 parent.toggled.connect(note.setEnabled)
+            if key == "auto_every":
+                row = QHBoxLayout()
+                row.setContentsMargins(52, 0, 0, 10)
+                row.addWidget(QLabel("นับถอยหลัง"))
+                self.secs = QSpinBox()
+                self.secs.setRange(1, 60)
+                self.secs.setValue(int(c.get("auto_start_seconds", 3) or 3))
+                self.secs.setSuffix(" วิ")
+                row.addWidget(self.secs)
+                row.addStretch(1)
+                lay.addLayout(row)
+        for pl in pages.values():
+            pl.addStretch(1)
+        lay = outer
         # "ไม่แสดงจาง ๆ ตอนเปิด" ไม่มีผลถ้าเลือก "ไม่แสดงปุ่มเลย"
         st, hb = self.boxes["inline_stealth"], self.boxes["inline_hidebtn"]
 
@@ -956,6 +991,8 @@ class SettingsDialog(QDialog):
         c = cfg()
         for key, box in self.boxes.items():
             c[KEYS[key]] = box.isChecked()
+        if getattr(self, "secs", None) is not None:
+            c["auto_start_seconds"] = self.secs.value()
         mw.addonManager.writeConfig(ADDON, c)
         super().accept()
         redraw_reviewer()
@@ -968,7 +1005,53 @@ def open_settings():
 
 MENU_TITLE = "🃏 CardKit"
 _menu = None
+_secs_act = None
 _move_act = None
+
+
+# หมวดของเมนู / แท็บตั้งค่า (ลำดับตามนี้)
+GROUPS = [
+    ("📝 การ์ดข้อสอบ", ["inline", "inline_stealth", "inline_hidebtn", "inline_accordion", "click_choice",
+                       "wrong_move", "choice_noframe", "compact_answer", "split_tool", "word_split"]),
+    ("✏️ ทบทวน / แก้ไข", ["keep_scroll", "edit_here", "deck_tree"]),
+    ("🗂 หน้า Decks", ["decks_hide_empty", "decks_hover_hide", "decks_rounds_only", "deck_scroll",
+                      "auto_start", "auto_every", "auto_next"]),
+    ("🖱 เมาส์ / แป้นพิมพ์", ["mouse_back", "mouse_mid_quote", "shift_quote", "hover_open"]),
+    ("🍎 Mac", ["mac_menubar_fix", "mac_emoji_fix"]),
+]
+
+
+def _grouped():
+    """[(ชื่อหมวด, [option tuples])] · ตัวที่ไม่อยู่หมวดไหน → หมวดสุดท้าย "อื่น ๆ" """
+    by = {o[0]: o for o in OPTIONS}
+    used, out = set(), []
+    for name, keys in GROUPS:
+        items = [by[k] for k in keys if k in by]
+        used.update(k for k in keys)
+        if items:
+            out.append((name, items))
+    rest = [o for o in OPTIONS if o[0] not in used]
+    if rest:
+        out.append(("อื่น ๆ", rest))
+    return out
+
+
+def _short_title(title):
+    for pre in ("หน้า Decks: ", "Mac: "):
+        if title.startswith(pre):
+            return title[len(pre):]
+    return title
+
+
+def _set_countdown_secs():
+    from aqt.qt import QInputDialog
+    c = cfg()
+    cur = int(c.get("auto_start_seconds", 3) or 3)
+    v, ok = QInputDialog.getInt(mw, "นับถอยหลัง", "จำนวนวินาทีก่อนเข้าท่องเอง:", cur, 1, 60)
+    if ok:
+        c["auto_start_seconds"] = v
+        mw.addonManager.writeConfig(ADDON, c)
+        tooltip(f"นับถอยหลัง {v} วิ")
 
 
 def _toggle(feature, checked):
@@ -980,8 +1063,19 @@ def _toggle(feature, checked):
             next(o[1] for o in OPTIONS if o[0] == feature))
 
 
+def _all_actions(menu):
+    for a in menu.actions():
+        yield a
+        if a.menu() is not None:
+            yield from _all_actions(a.menu())
+
+
 def _sync_checks():
-    for act in _menu.actions():
+    try:
+        _secs_act.setText(f"⏱ ตั้งเวลานับถอยหลัง… ({int(cfg().get('auto_start_seconds', 3) or 3)} วิ)")
+    except Exception:
+        pass
+    for act in _all_actions(_menu):
         feature = act.data()
         if feature in KEYS:
             act.setChecked(on(feature))
@@ -1102,12 +1196,19 @@ def setup_menubar():
     global _menu
     bar = mw.form.menubar
     _menu = QMenu(MENU_TITLE, mw)
-    for key, title, desc, parent_key in OPTIONS:
-        act = _menu.addAction(("      ↳ " + title) if parent_key else title)
-        act.setCheckable(True)
-        act.setData(key)
-        act.setToolTip(desc)
-        act.triggered.connect(lambda checked, k=key: _toggle(k, checked))
+    global _secs_act
+    for gname, items in _grouped():
+        sub = _menu.addMenu(gname)
+        sub.setToolTipsVisible(True)
+        for key, title, desc, parent_key in items:
+            act = sub.addAction(("      ↳ " + _short_title(title)) if parent_key else _short_title(title))
+            act.setCheckable(True)
+            act.setData(key)
+            act.setToolTip(desc)
+            act.triggered.connect(lambda checked, k=key: _toggle(k, checked))
+            if key == "auto_every":
+                _secs_act = sub.addAction("      ⏱ ตั้งเวลานับถอยหลัง…", _set_countdown_secs)
+        sub.aboutToShow.connect(_sync_checks)
     _menu.addSeparator()
     _menu.addAction("ตั้งค่าเพิ่มเติม…", open_settings)
     _menu.addAction("สอนปุ่มพิมพ์ \" (เช่นปุ่ม DPI เมาส์)…", _teach_quote)

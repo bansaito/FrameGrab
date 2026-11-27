@@ -91,3 +91,7 @@
 **decks_manual_hidden** – (จำเอง) deck ที่กด − ซ่อนไว้
 
 **wrong_answer_move_button** – ตอบผิด (คลิกตัวเลือก) แล้วมีปุ่ม "↪ ย้ายข้อนี้" โผล่ชั่วคราวประมาณ 4 วิ (true/false)
+
+**auto_start_every_time** – นับถอยหลังเข้าท่องทุกครั้งที่อยู่หน้า Decks ไม่ใช่แค่ตอนเปิด Anki (true/false)
+
+**auto_start_seconds** – จำนวนวินาทีที่นับถอยหลัง (ค่าเริ่มต้น 3)
