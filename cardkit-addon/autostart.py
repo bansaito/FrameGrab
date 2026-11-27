@@ -131,6 +131,23 @@ def _secs():
         return 3
 
 
+def _busy():
+    try:
+        return bool(mw.progress.busy())
+    except Exception:
+        return False
+
+
+def _go_when_ready(did, tries=0):
+    """นับครบแล้ว แต่ถ้ากำลัง sync อยู่ → รอจนเสร็จแล้วค่อยเข้า (ยังอยู่หน้า Decks เท่านั้น)"""
+    if mw.state != "deckBrowser" or _st.get("cancelled"):
+        return
+    if _busy() and tries < 60:
+        QTimer.singleShot(500, lambda: _go_when_ready(did, tries + 1))
+        return
+    _start(did)
+
+
 def _on_profile_open():
     _st["pending"] = bool(on("auto_start"))
     _st["cancelled"] = False
@@ -151,6 +168,9 @@ def _on_render(deck_browser):
     """อยู่หน้า Decks เมื่อไหร่ = นับถอยหลัง (ยกเลิกแล้วไม่นับซ้ำจนกว่าจะออกไปหน้าอื่นแล้วกลับมา)"""
     if not on("auto_start") or _st.get("cancelled"):
         return
+    if _busy():                                     # กำลัง sync / โหลดอยู่ → รอเสร็จก่อนค่อยนับ (กันชนกัน)
+        QTimer.singleShot(700, _kick)
+        return
     try:
         cands = [[did, n] for did, n, _o in _candidates()]   # ทุก deck ที่มีการ์ดและโชว์อยู่
         if not cands:
@@ -169,9 +189,10 @@ def _on_msg(handled, message, context):
         _st["cancelled"] = True          # ยกเลิกแล้ว ไม่นับอีกจนกว่าจะออกไปหน้าอื่นแล้วกลับมา
     if len(parts) == 3 and parts[1] == "go" and mw.state == "deckBrowser":
         try:
-            _start(int(parts[2]))
+            did = int(parts[2])
         except ValueError:
-            pass
+            return (True, None)
+        QTimer.singleShot(0, lambda: _go_when_ready(did))
     return (True, None)
 
 
