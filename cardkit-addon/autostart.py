@@ -15,7 +15,9 @@
 import time
 
 from aqt import gui_hooks, mw
-from aqt.qt import QApplication, QEvent, QObject, Qt, QTimer
+import os
+
+from aqt.qt import QApplication, QDialog, QEvent, QMainWindow, QObject, Qt, QTimer
 from aqt.utils import tooltip
 
 from .mqa import cfg, on
@@ -96,6 +98,46 @@ def _secs(key, default, lo):
         return default
 
 
+def _other_window_in_front():
+    """มีหน้าต่างจริงอื่น (Add, Browse, Edit, ตั้งค่า …) อยู่ข้างหน้า · หน้าต่างลอยเล็ก ๆ ของ add-on ไม่นับ"""
+    if QApplication.activeModalWidget() is not None or QApplication.activePopupWidget() is not None:
+        return "popup/modal"
+    aw = QApplication.activeWindow()
+    if aw is None or aw is mw:
+        return ""
+    if isinstance(aw, (QDialog, QMainWindow)) and aw.isVisible():
+        return type(aw).__name__
+    return ""
+
+
+def _app_inactive():
+    try:
+        return QApplication.instance().applicationState() != Qt.ApplicationState.ApplicationActive
+    except Exception:
+        return False
+
+
+# บันทึกสั้น ๆ ว่าทำไมยังไม่นับ (ไว้ส่งให้ดูถ้าไม่ทำงาน) · ไฟล์ autostart_log.txt ในโฟลเดอร์ add-on
+_LOG = os.path.join(os.path.dirname(__file__), "autostart_log.txt")
+_last_reason = {"r": None}
+
+
+def _log(reason):
+    if reason == _last_reason["r"]:
+        return
+    _last_reason["r"] = reason
+    try:
+        lines = []
+        if os.path.exists(_LOG):
+            with open(_LOG, encoding="utf-8") as f:
+                lines = f.read().splitlines()[-60:]
+        lines.append(time.strftime("%H:%M:%S ") + reason)
+        with open(_LOG, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+    except Exception:
+        pass
+
+
 def _busy():
     try:
         return bool(mw.progress.busy())
@@ -154,6 +196,7 @@ class _Auto(QObject):
         self.anchor = None           # ตำแหน่งเมาส์ล่าสุด (กันเมาส์สั่นนิดหน่อย)
 
     def enter_decks(self):
+        _log("เข้าหน้า Decks")
         self.stopped = False
         self.reset()
         if not self.timer.isActive():
@@ -178,16 +221,23 @@ class _Auto(QObject):
         if mw.state != "deckBrowser":
             self.leave_decks()
             return
-        if not on("auto_start") or self.stopped:
+        if not on("auto_start"):
+            _log("ปิดสวิตช์อยู่")
             self._end_run()
             return
-        if _busy() or not mw.isActiveWindow() or QApplication.activeModalWidget() is not None \
-                or QApplication.activePopupWidget() is not None:
+        if self.stopped:
+            _log("กด Esc หยุดไว้")
+            self._end_run()
+            return
+        why = "กำลัง sync/โหลด" if _busy() else ("ใช้แอปอื่นอยู่" if _app_inactive() else _other_window_in_front())
+        if why:
+            _log("ยังไม่นับ: " + why)
             self.reset()                     # sync / หน้าต่างอื่นอยู่ข้างหน้า → ยังไม่นับ
             return
         now = time.monotonic()
         if self.phase == "idle":
             if now - self.last_input < _secs("auto_start_delay", 3, 0):
+                _log("รอไม่แตะอะไร")
                 return
             try:
                 c = _candidates()
@@ -195,8 +245,10 @@ class _Auto(QObject):
                 print("[cardkit autostart]", e)
                 c = []
             if not c:
+                _log("ไม่มี deck ที่มีการ์ดโชว์อยู่")
                 self.last_input = now        # ไม่มี deck ให้เข้า → รอรอบหน้า
                 return
+            _log(f"เริ่มเส้นเขียว deck {c[0][0]} ({c[0][1]} ใบ)")
             run = _secs("auto_start_seconds", 3, 1)
             self.phase, self.run_did, self.run_end = "run", c[0][0], now + run
             _eval(_DRAW_JS % (self.run_did, run * 1000))
@@ -204,6 +256,7 @@ class _Auto(QObject):
             did = self.run_did
             self._end_run()
             self.timer.stop()
+            _log(f"เข้าท่อง deck {did}")
             _start(did)
 
     # ผู้ใช้แตะอะไร = เริ่มนับใหม่ · Esc = หยุดจนกว่าจะออกจากหน้า Decks
@@ -212,6 +265,7 @@ class _Auto(QObject):
             return False
         t = ev.type()
         if t == QEvent.Type.KeyPress:
+            _log("แตะ: กดปุ่ม")
             if ev.key() == Qt.Key.Key_Escape and not self.stopped:
                 self.stopped = True
                 try:
@@ -220,6 +274,7 @@ class _Auto(QObject):
                     pass
             self.reset()
         elif t in (QEvent.Type.MouseButtonPress, QEvent.Type.Wheel):
+            _log("แตะ: คลิก/เลื่อน")
             self.reset()
         elif t == QEvent.Type.MouseMove:
             try:
@@ -228,6 +283,7 @@ class _Auto(QObject):
                 return False
             if self.anchor is None or (abs(p.x() - self.anchor.x()) + abs(p.y() - self.anchor.y())) >= 30:
                 self.anchor = p
+                _log("แตะ: ขยับเมาส์")
                 self.reset()
         return False
 
@@ -240,6 +296,7 @@ def _install():
     if _auto is None:
         _auto = _Auto()
         QApplication.instance().installEventFilter(_auto)
+        _log("— เริ่มระบบ —")
 
 
 def _on_state(new, old):

@@ -197,6 +197,8 @@ def _on_msg(handled, message, context):
         ids = {int(x) for x in arg.split(",") if x.strip().lstrip("-").isdigit()}
         cur = set(_manual())
         _save_manual(cur | ids if cmd == "ck_dbhide" else cur - ids)
+        if cmd == "ck_dbhide":
+            _show_all["on"] = False          # อยู่โหมดแสดงทั้งหมด → กด − แล้วซ่อนให้เห็นทันที
         try:
             mw.deckBrowser.refresh()
         except Exception:
