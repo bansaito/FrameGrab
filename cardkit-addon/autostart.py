@@ -1,60 +1,82 @@
 """
-เข้าท่องอัตโนมัติ (เฉพาะ deck ในชุด Rounds ที่โชว์อยู่หน้า Decks · deck ที่ซ่อนไม่นับ)
-  • เปิด Anki ครั้งแรก: แถว deck ที่การ์ดเยอะสุด (เท่ากัน = อันบนกว่า) มีเส้นขอบวิ่งครบรอบใน 3 วิ
-    ไม่กดอะไร → เข้าท่อง deck นั้น · กดปุ่ม/คลิก/เลื่อน/ขยับเมาส์ = ยกเลิก        สวิตช์ auto_start_countdown
-    (auto_start_every_time = ทุกครั้งที่อยู่หน้า Decks · auto_start_seconds = กี่วิ)
-  • ท่องจบ deck → เข้า deck ถัดไปในชุดเดียวกันเอง (การ์ดเยอะสุดก่อน) จนหมดชุด      สวิตช์ auto_next_deck
+เข้าท่องอัตโนมัติ (ระบบใหม่ · ตัวจับเวลาอยู่ฝั่ง Anki ไม่ขึ้นกับหน้าเว็บ)
+
+  อยู่หน้า Decks แล้ว "ไม่แตะอะไรเลย"
+     รอ (auto_start_delay วิ)  →  เส้นเขียววิ่งรอบแถว deck (auto_start_seconds วิ)  →  เข้าท่อง
+  • ขยับเมาส์ / คลิก / เลื่อน / กดปุ่ม = เริ่มนับใหม่ (ไม่ใช่ยกเลิกถาวร)
+  • Esc = หยุดนับ จนกว่าจะออกไปหน้าอื่นแล้วกลับมา
+  • ไม่นับตอน sync/โหลด หรือมีหน้าต่างอื่นอยู่ด้านหน้า (Add, Browse …)
+  • deck ที่เลือก: การ์ดเยอะสุด (เท่ากัน = อันบนสุด) · เฉพาะที่โชว์อยู่ (ไม่ซ่อน / ไม่อยู่ใต้ deck ที่พับ)
+  • เส้นเขียวเป็นแค่ภาพ ถ้าวาดไม่ขึ้นก็ยังเข้าท่องได้                              สวิตช์ auto_start_countdown
+
+  ท่องจบ deck → เข้า deck ถัดไปเอง (ในชุด Rounds เดียวกัน · ไม่อยู่ในชุด = deck ไหนก็ได้)   สวิตช์ auto_next_deck
 """
 
-import json
+import time
 
 from aqt import gui_hooks, mw
-from aqt.qt import QTimer
+from aqt.qt import QApplication, QEvent, QObject, Qt, QTimer
 from aqt.utils import tooltip
 
-from .mqa import on
+from .mqa import cfg, on
 
-_st = {"pending": False}          # รอนับถอยหลังตอนเปิดแอป (จนกว่าจะเข้า/ยกเลิก)
+TICK_MS = 200
 
 
-def _manual_hidden():
-    try:
-        from . import deckfilter
-        return set(deckfilter._manual())
-    except Exception:
-        return set()
-
+# ---------------------------------------------------------------- เลือก deck
 
 def _tree_info():
-    """{did: (ลำดับในต้นไม้, จำนวนการ์ดที่ท่องได้ตอนนี้)}"""
+    """{did: (ลำดับในต้นไม้, จำนวนการ์ดที่ท่องได้ตอนนี้, did แม่)}"""
     out = {}
 
-    def walk(node):
+    def walk(node, parent):
         for ch in node.children:
-            out[ch.deck_id] = (len(out), ch.new_count + ch.learn_count + ch.review_count)
-            walk(ch)
-    walk(mw.col.sched.deck_due_tree())
+            out[ch.deck_id] = (len(out), ch.new_count + ch.learn_count + ch.review_count, parent)
+            walk(ch, ch.deck_id)
+    walk(mw.col.sched.deck_due_tree(), None)
     return out
 
 
-def _candidates(groups=None):
-    """[(did, จำนวน, ลำดับ)] deck ที่ยังมีการ์ด · ไม่รวมที่ซ่อนเอง
-    groups=None = ทุก deck · ส่งชุดมา = เฉพาะ deck ในชุดนั้น"""
+def _shown_on_page(info):
+    """deck ที่โชว์อยู่หน้า Decks จริง (ไม่ถูกซ่อน · deck แม่ไม่ได้พับ)"""
+    vis = None
+    try:
+        from . import deckfilter
+        r = deckfilter._visible_ids()
+        vis = r[0] if r else None
+        hidden = set(deckfilter._manual())
+    except Exception:
+        hidden = set()
+    out = set()
+    for did, (_o, _n, parent) in info.items():
+        if did in hidden or (vis is not None and did not in vis):
+            continue
+        p, ok = parent, True
+        while p is not None:
+            d = mw.col.decks.get(p, default=False)
+            if not d or d.get("collapsed"):
+                ok = False
+                break
+            p = info.get(p, (0, 0, None))[2]
+        if ok:
+            out.add(did)
+    return out
+
+
+def _candidates(groups=None, visible_only=True):
+    """[(did, จำนวน, ลำดับ)] เรียง: การ์ดเยอะสุด → อยู่บนสุด"""
     info = _tree_info()
-    hidden = _manual_hidden()
-    if groups is None:
-        dids = list(info)
-    else:
-        dids = [d["did"] for g in groups for d in g["decks"]]
+    dids = list(info) if groups is None else [d["did"] for g in groups for d in g["decks"]]
+    shown = _shown_on_page(info) if visible_only else None
     seen, out = set(), []
     for did in dids:
-        if did in seen or did in hidden or did not in info:
+        if did in seen or did not in info:
             continue
         seen.add(did)
-        order, n = info[did]
-        if n > 0:
+        order, n, _p = info[did]
+        if n > 0 and (shown is None or did in shown):
             out.append((did, n, order))
-    out.sort(key=lambda x: (-x[1], x[2]))          # การ์ดเยอะสุดก่อน · เท่ากัน = อยู่บนกว่า
+    out.sort(key=lambda x: (-x[1], x[2]))
     return out
 
 
@@ -67,93 +89,11 @@ def _start(did):
         print("[cardkit autostart]", e)
 
 
-# ---------------------------------------------------------------- นับถอยหลังตอนเปิดแอป
-
-_JS = r"""
-(function(cands, ms, delay){
-  if (window.__ckAuto) return; window.__ckAuto = 1;
-  function pick(){
-    var best = null;
-    cands.forEach(function(c){                         // c = [did, n] เรียงมาแล้ว (เยอะสุด/บนสุดก่อน)
-      if (best) return;
-      var tr = document.getElementById(String(c[0]));
-      if (tr && tr.classList.contains('deck') && tr.offsetParent !== null && tr.style.display !== 'none') best = [c[0], tr];
-    });
-    return best;
-  }
-  function go(tries){
-    var b = pick();
-    if (!b) { if (tries < 8) setTimeout(function(){ go(tries + 1); }, 200); else pycmd('ck_auto:none'); return; }
-    var tr = b[1], r = tr.getBoundingClientRect();
-    if (r.top < 0 || r.bottom > window.innerHeight) tr.scrollIntoView({block: 'center'});
-    r = tr.getBoundingClientRect();
-    if (!document.getElementById('ck-auto-css')) {
-      var st = document.createElement('style'); st.id = 'ck-auto-css';
-      st.textContent = "@property --ckp{syntax:'<angle>';inherits:false;initial-value:0deg}"
-        + "@keyframes ckfill{to{--ckp:360deg}}"
-        + ".ck-run{position:absolute;pointer-events:none;border-radius:10px;padding:2px;z-index:9999;"
-        + "background:conic-gradient(from -90deg,#22c55e var(--ckp),rgba(34,197,94,.12) 0);"
-        + "-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);"
-        + "-webkit-mask-composite:xor;mask-composite:exclude;animation:ckfill " + (ms / 1000) + "s linear forwards}";
-      document.head.appendChild(st);
-    }
-    var o = document.createElement('div'); o.className = 'ck-run';
-    o.style.left = (r.left + window.scrollX - 4) + 'px'; o.style.top = (r.top + window.scrollY - 3) + 'px';
-    o.style.width = (r.width + 4) + 'px'; o.style.height = (r.height + 2) + 'px';
-    document.body.appendChild(o);
-    var done = false, x0 = null, y0 = null;
-    var evs = ['keydown', 'mousedown', 'wheel', 'touchstart', 'mousemove'];
-    function stop(send){
-      if (done) return; done = true; o.remove();
-      evs.forEach(function(e){ window.removeEventListener(e, cancel, true); });
-      pycmd(send);
-    }
-    function cancel(e){
-      if (e.type === 'mousemove') {                    // ขยับเมาส์นิดหน่อยไม่นับ
-        if (x0 === null) { x0 = e.clientX; y0 = e.clientY; return; }
-        if (Math.abs(e.clientX - x0) + Math.abs(e.clientY - y0) < 30) return;
-      }
-      stop('ck_auto:cancel');
-    }
-    evs.forEach(function(e){ window.addEventListener(e, cancel, true); });
-    setTimeout(function(){ stop('ck_auto:go:' + b[0]); }, ms);
-  }
-  // รอเฉย ๆ ก่อนเริ่ม (delay) · ระหว่างรอ ถ้าผู้ใช้กด/คลิก/เลื่อน/ขยับเมาส์ = ยกเลิกเลย
-  if (!delay) { go(0); return; }
-  var pre = ['keydown', 'mousedown', 'wheel', 'touchstart', 'mousemove'], px = null, py = null, gone = false;
-  function preCancel(e){
-    if (e.type === 'mousemove') {
-      if (px === null) { px = e.clientX; py = e.clientY; return; }
-      if (Math.abs(e.clientX - px) + Math.abs(e.clientY - py) < 30) return;
-    }
-    gone = true; clearTimeout(tm);
-    pre.forEach(function(ev){ window.removeEventListener(ev, preCancel, true); });
-    pycmd('ck_auto:cancel');
-  }
-  pre.forEach(function(ev){ window.addEventListener(ev, preCancel, true); });
-  var tm = setTimeout(function(){
-    pre.forEach(function(ev){ window.removeEventListener(ev, preCancel, true); });
-    if (!gone) go(0);
-  }, delay);
-})(%s, %d, %d);
-"""
-
-
-def _secs():
-    from .mqa import cfg
+def _secs(key, default, lo):
     try:
-        return max(1, min(60, int(cfg().get("auto_start_seconds", 3) or 3)))
+        return max(lo, min(60, int(cfg().get(key, default))))
     except (TypeError, ValueError):
-        return 3
-
-
-def _delay():
-    """รอก่อนเริ่มนับ (วิ) · 0 = เริ่มนับทันที"""
-    from .mqa import cfg
-    try:
-        return max(0, min(60, int(cfg().get("auto_start_delay", 3))))
-    except (TypeError, ValueError):
-        return 3
+        return default
 
 
 def _busy():
@@ -163,73 +103,171 @@ def _busy():
         return False
 
 
-def _go_when_ready(did, tries=0):
-    """นับครบแล้ว แต่ถ้ากำลัง sync อยู่ → รอจนเสร็จแล้วค่อยเข้า (ยังอยู่หน้า Decks เท่านั้น)"""
-    if mw.state != "deckBrowser" or _st.get("cancelled"):
-        return
-    if _busy() and tries < 60:
-        QTimer.singleShot(500, lambda: _go_when_ready(did, tries + 1))
-        return
-    _start(did)
+# ---------------------------------------------------------------- เส้นเขียว (แค่ภาพ)
+
+_DRAW_JS = r"""
+(function(did, ms){
+  var old = document.getElementById('ck-run'); if (old) old.remove();
+  var tr = document.getElementById(String(did)); if (!tr) return;
+  var r = tr.getBoundingClientRect();
+  if (r.top < 0 || r.bottom > window.innerHeight) { tr.scrollIntoView({block: 'center'}); r = tr.getBoundingClientRect(); }
+  if (!document.getElementById('ck-run-css')) {
+    var st = document.createElement('style'); st.id = 'ck-run-css';
+    st.textContent = "@property --ckp{syntax:'<angle>';inherits:false;initial-value:0deg}"
+      + "@keyframes ckfill{to{--ckp:360deg}}"
+      + "#ck-run{position:absolute;pointer-events:none;border-radius:10px;padding:2px;z-index:9999;"
+      + "background:conic-gradient(from -90deg,#22c55e var(--ckp),rgba(34,197,94,.12) 0);"
+      + "-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);"
+      + "-webkit-mask-composite:xor;mask-composite:exclude}";
+    document.head.appendChild(st);
+  }
+  var o = document.createElement('div'); o.id = 'ck-run';
+  o.style.left = (r.left + window.scrollX - 4) + 'px'; o.style.top = (r.top + window.scrollY - 3) + 'px';
+  o.style.width = (r.width + 4) + 'px'; o.style.height = (r.height + 2) + 'px';
+  o.style.animation = 'ckfill ' + (ms / 1000) + 's linear forwards';
+  document.body.appendChild(o);
+})(%d, %d);
+"""
+_CLEAR_JS = "(function(){var o=document.getElementById('ck-run'); if(o) o.remove();})();"
 
 
-def _on_profile_open():
-    _st["pending"] = bool(on("auto_start"))
-    _st["cancelled"] = False
-    # Anki วาดหน้า Decks ก่อนส่งสัญญาณ "เปิดโปรไฟล์แล้ว" → ครั้งแรกเรายังไม่พร้อม · สั่งเริ่มเองอีกที
-    if _st["pending"]:
-        QTimer.singleShot(400, _kick)
-
-
-def _kick():
+def _eval(js):
     try:
-        if mw.state == "deckBrowser" and mw.deckBrowser is not None:
-            _on_render(mw.deckBrowser)
-    except Exception as e:
-        print("[cardkit autostart]", e)
+        if mw.state == "deckBrowser":
+            mw.deckBrowser.web.eval(js)
+    except Exception:
+        pass
 
 
-def _on_render(deck_browser):
-    """อยู่หน้า Decks เมื่อไหร่ = นับถอยหลัง (ยกเลิกแล้วไม่นับซ้ำจนกว่าจะออกไปหน้าอื่นแล้วกลับมา)"""
-    if not on("auto_start") or _st.get("cancelled"):
-        return
-    if _busy():                                     # กำลัง sync / โหลดอยู่ → รอเสร็จก่อนค่อยนับ (กันชนกัน)
-        QTimer.singleShot(700, _kick)
-        return
-    try:
-        cands = [[did, n] for did, n, _o in _candidates()]   # ทุก deck ที่มีการ์ดและโชว์อยู่
-        if not cands:
+# ---------------------------------------------------------------- ตัวจับเวลา
+
+class _Auto(QObject):
+    def __init__(self):
+        super().__init__(mw)
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self._tick)
+        self.last_input = time.monotonic()
+        self.phase = "idle"          # idle (รอ) / run (เส้นวิ่ง)
+        self.run_did = None
+        self.run_end = 0.0
+        self.stopped = False         # กด Esc แล้ว (จนกว่าจะออกจากหน้า Decks)
+        self.anchor = None           # ตำแหน่งเมาส์ล่าสุด (กันเมาส์สั่นนิดหน่อย)
+
+    def enter_decks(self):
+        self.stopped = False
+        self.reset()
+        if not self.timer.isActive():
+            self.timer.start(TICK_MS)
+
+    def leave_decks(self):
+        self.timer.stop()
+        self._end_run()
+        self.stopped = False
+
+    def reset(self):
+        self.last_input = time.monotonic()
+        self._end_run()
+
+    def _end_run(self):
+        if self.phase == "run":
+            _eval(_CLEAR_JS)
+        self.phase = "idle"
+        self.run_did = None
+
+    def _tick(self):
+        if mw.state != "deckBrowser":
+            self.leave_decks()
             return
-        deck_browser.web.eval(_JS % (json.dumps(cands), _secs() * 1000, _delay() * 1000))
-    except Exception as e:
-        print("[cardkit autostart]", e)
+        if not on("auto_start") or self.stopped:
+            self._end_run()
+            return
+        if _busy() or not mw.isActiveWindow() or QApplication.activeModalWidget() is not None \
+                or QApplication.activePopupWidget() is not None:
+            self.reset()                     # sync / หน้าต่างอื่นอยู่ข้างหน้า → ยังไม่นับ
+            return
+        now = time.monotonic()
+        if self.phase == "idle":
+            if now - self.last_input < _secs("auto_start_delay", 3, 0):
+                return
+            try:
+                c = _candidates()
+            except Exception as e:
+                print("[cardkit autostart]", e)
+                c = []
+            if not c:
+                self.last_input = now        # ไม่มี deck ให้เข้า → รอรอบหน้า
+                return
+            run = _secs("auto_start_seconds", 3, 1)
+            self.phase, self.run_did, self.run_end = "run", c[0][0], now + run
+            _eval(_DRAW_JS % (self.run_did, run * 1000))
+        elif now >= self.run_end:
+            did = self.run_did
+            self._end_run()
+            self.timer.stop()
+            _start(did)
+
+    # ผู้ใช้แตะอะไร = เริ่มนับใหม่ · Esc = หยุดจนกว่าจะออกจากหน้า Decks
+    def eventFilter(self, obj, ev):
+        if not self.timer.isActive():
+            return False
+        t = ev.type()
+        if t == QEvent.Type.KeyPress:
+            if ev.key() == Qt.Key.Key_Escape and not self.stopped:
+                self.stopped = True
+                try:
+                    tooltip("หยุดเข้าท่องอัตโนมัติ (จนกว่าจะออกจากหน้านี้)", period=1500)
+                except Exception:
+                    pass
+            self.reset()
+        elif t in (QEvent.Type.MouseButtonPress, QEvent.Type.Wheel):
+            self.reset()
+        elif t == QEvent.Type.MouseMove:
+            try:
+                p = ev.globalPosition().toPoint()
+            except Exception:
+                return False
+            if self.anchor is None or (abs(p.x() - self.anchor.x()) + abs(p.y() - self.anchor.y())) >= 30:
+                self.anchor = p
+                self.reset()
+        return False
 
 
-def _on_msg(handled, message, context):
-    if not (isinstance(message, str) and message.startswith("ck_auto:")):
-        return handled
-    _st["pending"] = False
-    parts = message.split(":")
-    if parts[1] == "cancel":
-        _st["cancelled"] = True          # ยกเลิกแล้ว ไม่นับอีกจนกว่าจะออกไปหน้าอื่นแล้วกลับมา
-    if len(parts) == 3 and parts[1] == "go" and mw.state == "deckBrowser":
-        try:
-            did = int(parts[2])
-        except ValueError:
-            return (True, None)
-        QTimer.singleShot(0, lambda: _go_when_ready(did))
-    return (True, None)
+_auto = None
+
+
+def _install():
+    global _auto
+    if _auto is None:
+        _auto = _Auto()
+        QApplication.instance().installEventFilter(_auto)
 
 
 def _on_state(new, old):
-    if new != "deckBrowser" and old == "deckBrowser":
-        _st["pending"] = False                       # ไปหน้าอื่นเองแล้ว → ไม่ต้องนับ
-        _st["cancelled"] = False                     # กลับมาหน้า Decks ครั้งหน้า = นับใหม่ได้ (โหมดทุกครั้ง)
+    if _auto is None:
+        return
+    if new == "deckBrowser":
+        _auto.enter_decks()
+    elif old == "deckBrowser":
+        _auto.leave_decks()
     if new == "overview" and old == "review":
         QTimer.singleShot(0, _next_deck)
 
 
-# ---------------------------------------------------------------- ท่องจบ → deck ถัดไปในชุด
+def _on_profile_open():
+    _install()
+    # Anki วาดหน้า Decks ก่อนสัญญาณนี้ → เริ่มนับเองถ้าอยู่หน้า Decks แล้ว
+    QTimer.singleShot(300, lambda: _auto.enter_decks() if mw.state == "deckBrowser" else None)
+
+
+def _on_render(deck_browser):
+    # หน้าถูกวาดใหม่ระหว่างเส้นวิ่ง (sync / refresh) → วาดเส้นใหม่ตามเวลาที่เหลือ
+    if _auto is not None and _auto.phase == "run" and _auto.run_did:
+        left = max(200, int((_auto.run_end - time.monotonic()) * 1000))
+        did = _auto.run_did
+        QTimer.singleShot(50, lambda: _eval(_DRAW_JS % (did, left)))
+
+
+# ---------------------------------------------------------------- ท่องจบ → deck ถัดไป
 
 def _next_deck():
     if not on("auto_next") or mw.state != "overview" or mw.col is None:
@@ -240,17 +278,16 @@ def _next_deck():
         from . import rounds as R
         cur = mw.col.decks.get_current_id()
         g = next((g for g in R.groups() if any(d["did"] == cur for d in g["decks"])), None)
-        # อยู่ในชุด Rounds = ไปต่อในชุดเดียวกัน · ไม่อยู่ในชุด = deck ไหนก็ได้ที่ยังมีการ์ด (ไม่รวมที่ซ่อน)
-        nxt = next((c for c in _candidates([g] if g else None) if c[0] != cur), None)
+        nxt = next((c for c in _candidates([g] if g else None, visible_only=g is None) if c[0] != cur), None)
         if nxt is None:
-            return                                   # หมดทั้งชุดแล้ว → หน้า Congratulations ตามปกติ
+            return                                   # หมดแล้ว → หน้า Congratulations ตามปกติ
         tooltip(f"ต่อ: {mw.col.decks.name(nxt[0]).split('::')[-1]}", period=1500)
         _start(nxt[0])
     except Exception as e:
         print("[cardkit next deck]", e)
 
 
+gui_hooks.main_window_did_init.append(_install)
 gui_hooks.profile_did_open.append(_on_profile_open)
-gui_hooks.deck_browser_did_render.append(_on_render)
-gui_hooks.webview_did_receive_js_message.append(_on_msg)
 gui_hooks.state_did_change.append(_on_state)
+gui_hooks.deck_browser_did_render.append(_on_render)
