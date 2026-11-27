@@ -3,13 +3,11 @@
   • ซ่อน deck ที่ไม่มีการ์ดวันนี้ (New/Learn/Due = 0 หมด)            สวิตช์ decks_hide_empty
   • แสดงเฉพาะ deck ในชุด Rounds                                       สวิตช์ decks_rounds_only
     (ทั้งสองอย่างเก็บ deck แม่ไว้ให้ต้นไม้ไม่ขาด · ท้ายตารางมีปุ่ม "แสดงทั้งหมด")
-  • เปิด Anki → เข้าท่องชุดหลักทันที (ถ้าชุดหลักมีการ์ด)              สวิตช์ start_study_main
 """
 
 import json
 
 from aqt import gui_hooks, mw
-from aqt.qt import QTimer
 
 from .mqa import on
 
@@ -183,39 +181,5 @@ def _on_msg(handled, message, context):
     return (True, None)
 
 
-# ---------------------------------------------------------------- เปิด Anki → ท่องชุดหลัก
-
-_started = {"done": False}
-
-
-def _start_study(tries=0):
-    if _started["done"]:
-        return
-    try:
-        if mw.progress.busy() and tries < 30:           # กำลัง sync/โหลดอยู่ → รอก่อน
-            QTimer.singleShot(1000, lambda: _start_study(tries + 1))
-            return
-    except Exception:
-        pass
-    _started["done"] = True
-    try:
-        if not on("start_study_main") or mw.col is None or mw.state != "deckBrowser":
-            return
-        from . import bubble
-        from . import rounds as R
-        g = bubble.primary_group()
-        if g is None or bubble.capped_left(g) <= 0:
-            return                                   # ชุดหลักไม่มีการ์ด → อยู่หน้า Decks ตามปกติ
-        R.study_set(g)
-    except Exception as e:
-        print("[cardkit start study]", e)
-
-
-def _on_profile_open():
-    _started["done"] = False
-    QTimer.singleShot(1200, _start_study)            # รอหน้า Decks / sync ตอนเปิดเสร็จก่อน
-
-
 gui_hooks.deck_browser_did_render.append(_on_render)
 gui_hooks.webview_did_receive_js_message.append(_on_msg)
-gui_hooks.profile_did_open.append(_on_profile_open)
