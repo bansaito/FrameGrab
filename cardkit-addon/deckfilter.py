@@ -79,10 +79,10 @@ _JS = r"""
   if (!document.getElementById('ck-dbh-css')) {
     var st = document.createElement('style'); st.id = 'ck-dbh-css';
     // ชิดซ้ายสุดของตาราง เป็นแถวเดียวกันทุก deck (ไม่ขยับตามการย่อหน้า)
-    st.textContent = '.ck-hcell{position:relative}'
-      + '.ck-h{position:absolute;left:-26px;top:0;bottom:0;width:20px;display:flex;align-items:center;justify-content:center;opacity:0;'
+    st.textContent = '.ck-hcell{position:relative;padding-left:24px!important}'
+      + '.ck-h{position:absolute;left:2px;top:0;bottom:0;width:20px;display:flex;align-items:center;justify-content:center;opacity:0;'
       + 'cursor:pointer;user-select:none;transition:opacity .12s;font-weight:bold}'
-      + 'tr.deck:hover .ck-h{opacity:.4}.ck-h:hover{opacity:.9!important}';
+      + 'tr.deck:hover .ck-h{opacity:.6}.ck-h:hover{opacity:1!important}';
     document.head.appendChild(st);
   }
   function run(){
