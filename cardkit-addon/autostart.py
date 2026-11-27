@@ -130,6 +130,18 @@ def _secs():
 
 def _on_profile_open():
     _st["pending"] = bool(on("auto_start"))
+    _st["cancelled"] = False
+    # Anki วาดหน้า Decks ก่อนส่งสัญญาณ "เปิดโปรไฟล์แล้ว" → ครั้งแรกเรายังไม่พร้อม · สั่งเริ่มเองอีกที
+    if _st["pending"]:
+        QTimer.singleShot(400, _kick)
+
+
+def _kick():
+    try:
+        if _st["pending"] and mw.state == "deckBrowser" and mw.deckBrowser is not None:
+            _on_render(mw.deckBrowser)
+    except Exception as e:
+        print("[cardkit autostart]", e)
 
 
 def _on_render(deck_browser):
