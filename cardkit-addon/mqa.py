@@ -45,7 +45,7 @@ KEYS = {"inline": "mqa_inline", "inline_stealth": "mqa_inline_stealth",
         "decks_keep_round": "decks_keep_round_set", "due_button": "toolbar_due_button",
         "auto_ignore_move": "auto_start_ignore_mouse_move", "find_replace": "review_find_replace",
         "next_marker": "next_question_marker", "next_fade": "next_marker_fade",
-        "next_scroll": "next_question_scroll",
+        "next_scroll": "next_question_scroll", "due_dialog": "set_due_easy_dialog",
         "decks_hover_hide": "decks_hover_hide"}
 
 TAG_NEW = "แยกข้อ::ใหม่"
@@ -68,7 +68,7 @@ DEFAULT_ON = {"inline", "inline_stealth", "inline_hidebtn", "inline_accordion",
               "deck_tree", "mac_menubar_fix", "mac_emoji_fix", "deck_scroll", "word_split",
               "decks_hide_empty", "decks_hover_hide", "auto_start", "auto_next", "wrong_move", "web_search",
               "decks_keep_round", "due_button", "auto_ignore_move", "find_replace", "next_marker",
-              "next_fade", "next_scroll"}
+              "next_fade", "next_scroll", "due_dialog"}
 
 
 def on(feature):
@@ -96,7 +96,7 @@ CSS_JS = r"""
   .mqa-q.mqa-here { width: auto; height: auto; overflow: visible; vertical-align: baseline; }
   .mqa-q.mqa-here::before { content: var(--mqa-sym, "👉"); margin-right: 6px; display: inline-block;
     animation: mqaHere 1.2s ease-in-out 3; transition: opacity .6s ease; }
-  .mqa-q.mqa-here.mqa-fade::before { opacity: 0; }
+  .mqa-q.mqa-here.mqa-fade::before { opacity: .3; }
   @keyframes mqaHere { 0%,100% { transform: translateX(0); } 50% { transform: translateX(5px); } }
   /* เริ่มต้นจาง → ผ่านไป 3 วินาทีค่อย ๆ ล่องหน → ชี้เมาส์ที่ข้อนั้นถึงโผล่ */
   .mqa-btn { display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
@@ -930,7 +930,7 @@ OPTIONS = [
     ("next_marker", "ตอบแล้ว → ข้อถัดไปมีสัญลักษณ์",
      "การ์ดหลายข้อ: ตอบข้อหนึ่งแล้ว ข้อถัดไปที่ยังไม่ตอบมี 👉 ขยับเบา ๆ บอกว่าถึงข้อนี้แล้ว", "click_choice"),
     ("next_fade", "สัญลักษณ์แสดงแค่ชั่วคราว",
-     "โผล่ประมาณ 3 วิ แล้วค่อย ๆ จาง · ชี้เมาส์ที่ตัวเลือกข้อนั้น = โผล่อีก", "next_marker"),
+     "โผล่ชัดประมาณ 3 วิ แล้วจางลง (ไม่หายหมด) · ชี้เมาส์ที่ตัวเลือกข้อนั้น = ชัดอีก", "next_marker"),
     ("next_scroll", "ตอบแล้วเลื่อนหน้าให้เห็นข้อถัดไป",
      "การ์ดหลายข้อ: ตอบเสร็จ ถ้าข้อถัดไปอยู่นอกจอ จะเลื่อนลงให้เห็นโจทย์และตัวเลือก (เลื่อนน้อยที่สุด)", "click_choice"),
     ("wrong_move", "ตอบผิด → มีปุ่ม \"↪ ย้ายข้อนี้\" ชั่วคราว",
@@ -991,6 +991,8 @@ OPTIONS = [
      "ถ้ามี deck ในชุดไหนยังมีการ์ด deck อื่นในชุดนั้นจะโชว์ด้วย (ถึงจะเป็น 0) ให้เห็นครบทั้งรอบ", "decks_hide_empty"),
     ("due_button", "ปุ่ม 📅 Set Due Date บนแถบด้านบน",
      "ระหว่างท่อง ชี้เมาส์ทางขวาของ Sync มีปุ่มโผล่ กดแล้ว Set Due Date ของการ์ดนี้", None),
+    ("due_dialog", "Set Due Date: ▲▼ / ลูกกลิ้ง / ปุ่มลัดวัน",
+     "หน้าต่าง Set Due Date มีปุ่ม ▲▼ เลื่อนลูกกลิ้งเปลี่ยนเลขได้ และปุ่มลัด วันนี้ 1 7 14 21 30 60 120 180", None),
     ("find_replace", "⌘F / Ctrl+F = ค้นหาและแทนที่ในการ์ด",
      "หน้าทบทวน: ช่องค้นหามุมขวาบน บอก \"N จาก M\" · ⋮ = แทนที่ / แทนที่ทั้งหมด (แก้ในโน้ตจริง Ctrl+Z ย้อนได้) "
      "· ช่องว่างก็นับ", None),
@@ -1141,7 +1143,7 @@ _move_act = None
 GROUPS = [
     ("📝 การ์ดข้อสอบ", ["inline", "inline_stealth", "inline_hidebtn", "inline_accordion", "click_choice",
                        "next_marker", "next_fade", "next_scroll", "wrong_move", "choice_noframe", "compact_answer", "split_tool", "word_split"]),
-    ("✏️ ทบทวน / แก้ไข", ["keep_scroll", "edit_here", "deck_tree", "web_search", "due_button", "find_replace"]),
+    ("✏️ ทบทวน / แก้ไข", ["keep_scroll", "edit_here", "deck_tree", "web_search", "due_button", "due_dialog", "find_replace"]),
     ("🗂 หน้า Decks", ["decks_hide_empty", "decks_keep_round", "decks_hover_hide", "decks_rounds_only", "deck_scroll",
                       "auto_start", "auto_ignore_move", "auto_next"]),
     ("🖱 เมาส์ / แป้นพิมพ์", ["mouse_back", "mouse_mid_quote", "shift_quote", "hover_open"]),

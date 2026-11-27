@@ -117,3 +117,5 @@
 **next_question_scroll** – ตอบแล้วเลื่อนหน้าให้เห็นข้อถัดไป (true/false)
 
 **next_marker_symbol** – สัญลักษณ์ข้อถัดไป (ค่าเริ่มต้น 👉)
+
+**set_due_easy_dialog** – หน้าต่าง Set Due Date มี ▲▼ ลูกกลิ้ง และปุ่มลัด 7 14 21 30 60 120 180 (true/false)
