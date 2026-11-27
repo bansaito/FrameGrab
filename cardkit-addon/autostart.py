@@ -37,20 +37,23 @@ def _tree_info():
     return out
 
 
-def _candidates(groups):
-    """[(did, จำนวน, ลำดับ)] deck ในชุดที่ยังมีการ์ด · ไม่รวมที่ซ่อนเอง"""
+def _candidates(groups=None):
+    """[(did, จำนวน, ลำดับ)] deck ที่ยังมีการ์ด · ไม่รวมที่ซ่อนเอง
+    groups=None = ทุก deck · ส่งชุดมา = เฉพาะ deck ในชุดนั้น"""
     info = _tree_info()
     hidden = _manual_hidden()
+    if groups is None:
+        dids = list(info)
+    else:
+        dids = [d["did"] for g in groups for d in g["decks"]]
     seen, out = set(), []
-    for g in groups:
-        for d in g["decks"]:
-            did = d["did"]
-            if did in seen or did in hidden or did not in info:
-                continue
-            seen.add(did)
-            order, n = info[did]
-            if n > 0:
-                out.append((did, n, order))
+    for did in dids:
+        if did in seen or did in hidden or did not in info:
+            continue
+        seen.add(did)
+        order, n = info[did]
+        if n > 0:
+            out.append((did, n, order))
     out.sort(key=lambda x: (-x[1], x[2]))          # การ์ดเยอะสุดก่อน · เท่ากัน = อยู่บนกว่า
     return out
 
@@ -138,24 +141,21 @@ def _on_profile_open():
 
 def _kick():
     try:
-        if _st["pending"] and mw.state == "deckBrowser" and mw.deckBrowser is not None:
+        if mw.state == "deckBrowser" and mw.deckBrowser is not None:
             _on_render(mw.deckBrowser)
     except Exception as e:
         print("[cardkit autostart]", e)
 
 
 def _on_render(deck_browser):
-    if not on("auto_start"):
-        return
-    if not _st["pending"] and not (on("auto_every") and not _st.get("cancelled")):
+    """อยู่หน้า Decks เมื่อไหร่ = นับถอยหลัง (ยกเลิกแล้วไม่นับซ้ำจนกว่าจะออกไปหน้าอื่นแล้วกลับมา)"""
+    if not on("auto_start") or _st.get("cancelled"):
         return
     try:
-        from . import rounds as R
-        cands = [[did, n] for did, n, _o in _candidates(R.groups())]
+        cands = [[did, n] for did, n, _o in _candidates()]   # ทุก deck ที่มีการ์ดและโชว์อยู่
         if not cands:
-            _st["pending"] = False
             return
-        deck_browser.web.eval(_JS % (json.dumps(cands), _secs() * 1000))   # หน้าถูกวาดใหม่ (เช่น sync ตอนเปิด) = เริ่มนับใหม่
+        deck_browser.web.eval(_JS % (json.dumps(cands), _secs() * 1000))
     except Exception as e:
         print("[cardkit autostart]", e)
 
@@ -194,12 +194,11 @@ def _next_deck():
         from . import rounds as R
         cur = mw.col.decks.get_current_id()
         g = next((g for g in R.groups() if any(d["did"] == cur for d in g["decks"])), None)
-        if g is None:
-            return                                   # deck นี้ไม่อยู่ในชุด Rounds
-        nxt = next((c for c in _candidates([g]) if c[0] != cur), None)
+        # อยู่ในชุด Rounds = ไปต่อในชุดเดียวกัน · ไม่อยู่ในชุด = deck ไหนก็ได้ที่ยังมีการ์ด (ไม่รวมที่ซ่อน)
+        nxt = next((c for c in _candidates([g] if g else None) if c[0] != cur), None)
         if nxt is None:
             return                                   # หมดทั้งชุดแล้ว → หน้า Congratulations ตามปกติ
-        tooltip(f"ต่อ: {R._short(nxt[0])}", period=1500)
+        tooltip(f"ต่อ: {mw.col.decks.name(nxt[0]).split('::')[-1]}", period=1500)
         _start(nxt[0])
     except Exception as e:
         print("[cardkit next deck]", e)

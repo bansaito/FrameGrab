@@ -903,12 +903,11 @@ OPTIONS = [
     ("decks_rounds_only", "หน้า Decks: แสดงเฉพาะ deck ในชุด Rounds",
      "deck ที่ไม่ได้อยู่ในชุดไหนเลยจะถูกซ่อน (ยังไม่ได้ตั้งชุด = แสดงทั้งหมด)", None),
     ("auto_start", "นับถอยหลังแล้วเข้าท่องเอง",
-     "แถว deck ในชุด Rounds ที่การ์ดเยอะสุด (เท่ากัน = อันบน) มีเส้นขอบวิ่งครบรอบ แล้วเข้าท่อง "
-     "· กดปุ่ม/คลิก/เลื่อน/ขยับเมาส์ = ยกเลิก · deck ที่ซ่อนไม่นับ · ปกติขึ้นแค่ตอนเปิด Anki", None),
-    ("auto_every", "ทุกครั้งที่อยู่หน้า Decks (ไม่ใช่แค่ตอนเปิด)",
-     "กลับมาหน้า Decks เมื่อไหร่ก็นับถอยหลังใหม่ (ยกเลิกแล้ว = ไม่นับอีกจนกว่าจะออกไปหน้าอื่นแล้วกลับมา)", "auto_start"),
+     "อยู่หน้า Decks เมื่อไหร่ แถว deck ที่การ์ดเยอะสุด (เท่ากัน = อันบน) มีเส้นขอบวิ่งครบรอบ แล้วเข้าท่อง "
+     "· กดปุ่ม/คลิก/เลื่อน/ขยับเมาส์ = ยกเลิก (ไม่นับซ้ำจนกว่าจะออกไปหน้าอื่นแล้วกลับมา) · deck ที่ซ่อนไม่นับ", None),
     ("auto_next", "ท่องจบ deck แล้วเข้า deck ถัดไปในชุดเอง",
-     "เรียงการ์ดเยอะสุดก่อน จนหมดชุด แล้วค่อยขึ้นหน้า Congratulations", None),
+     "เรียงการ์ดเยอะสุดก่อน จนหมดชุด (deck ที่ไม่อยู่ในชุด Rounds = ไป deck ไหนก็ได้ที่ยังมีการ์ด) "
+     "แล้วค่อยขึ้นหน้า Congratulations", None),
     ("decks_hover_hide", "หน้า Decks: ปุ่ม − / + ตอนชี้เมาส์",
      "ชี้ที่ deck มีปุ่ม − จาง ๆ หน้าชื่อ กดแล้วซ่อนแถวนั้นและแถวถัดไปทั้งหมด (อยู่เหนือกลุ่มที่ต้องท่อง = ซ่อนขึ้นบน) "
      "· แถวติดกับที่ซ่อนมีปุ่ม + เปิดคืน", None),
@@ -966,7 +965,7 @@ class SettingsDialog(QDialog):
                 note.setEnabled(parent.isChecked())
                 parent.toggled.connect(box.setEnabled)
                 parent.toggled.connect(note.setEnabled)
-            if key == "auto_every":
+            if key == "auto_start":
                 row = QHBoxLayout()
                 row.setContentsMargins(52, 0, 0, 10)
                 row.addWidget(QLabel("นับถอยหลัง"))
@@ -1040,7 +1039,7 @@ GROUPS = [
                        "wrong_move", "choice_noframe", "compact_answer", "split_tool", "word_split"]),
     ("✏️ ทบทวน / แก้ไข", ["keep_scroll", "edit_here", "deck_tree", "web_search"]),
     ("🗂 หน้า Decks", ["decks_hide_empty", "decks_hover_hide", "decks_rounds_only", "deck_scroll",
-                      "auto_start", "auto_every", "auto_next"]),
+                      "auto_start", "auto_next"]),
     ("🖱 เมาส์ / แป้นพิมพ์", ["mouse_back", "mouse_mid_quote", "shift_quote", "hover_open"]),
     ("🍎 Mac", ["mac_menubar_fix", "mac_emoji_fix"]),
 ]
@@ -1231,7 +1230,7 @@ def setup_menubar():
             act.setData(key)
             act.setToolTip(desc)
             act.triggered.connect(lambda checked, k=key: _toggle(k, checked))
-            if key == "auto_every":
+            if key == "auto_start":
                 _secs_act = sub.addAction("      ⏱ ตั้งเวลานับถอยหลัง…", _set_countdown_secs)
         sub.aboutToShow.connect(_sync_checks)
     _menu.addSeparator()
