@@ -44,7 +44,8 @@ KEYS = {"inline": "mqa_inline", "inline_stealth": "mqa_inline_stealth",
         "auto_every": "auto_start_every_time", "web_search": "right_click_web_search",
         "decks_keep_round": "decks_keep_round_set", "due_button": "toolbar_due_button",
         "auto_ignore_move": "auto_start_ignore_mouse_move", "find_replace": "review_find_replace",
-        "next_marker": "next_question_marker",
+        "next_marker": "next_question_marker", "next_fade": "next_marker_fade",
+        "next_scroll": "next_question_scroll",
         "decks_hover_hide": "decks_hover_hide"}
 
 TAG_NEW = "แยกข้อ::ใหม่"
@@ -66,7 +67,8 @@ DEFAULT_ON = {"inline", "inline_stealth", "inline_hidebtn", "inline_accordion",
               "mouse_back", "mouse_mid_quote", "shift_quote",
               "deck_tree", "mac_menubar_fix", "mac_emoji_fix", "deck_scroll", "word_split",
               "decks_hide_empty", "decks_hover_hide", "auto_start", "auto_next", "wrong_move", "web_search",
-              "decks_keep_round", "due_button", "auto_ignore_move", "find_replace", "next_marker"}
+              "decks_keep_round", "due_button", "auto_ignore_move", "find_replace", "next_marker",
+              "next_fade", "next_scroll"}
 
 
 def on(feature):
@@ -92,8 +94,9 @@ CSS_JS = r"""
   .mqa-slot { margin: 6px auto 4px; max-width: 46em; }
   .mqa-q { display: inline-block; width: 0; height: 0; overflow: hidden; vertical-align: top; }
   .mqa-q.mqa-here { width: auto; height: auto; overflow: visible; vertical-align: baseline; }
-  .mqa-q.mqa-here::before { content: "👉"; margin-right: 6px; display: inline-block;
-    animation: mqaHere 1.2s ease-in-out 3; }
+  .mqa-q.mqa-here::before { content: var(--mqa-sym, "👉"); margin-right: 6px; display: inline-block;
+    animation: mqaHere 1.2s ease-in-out 3; transition: opacity .6s ease; }
+  .mqa-q.mqa-here.mqa-fade::before { opacity: 0; }
   @keyframes mqaHere { 0%,100% { transform: translateX(0); } 50% { transform: translateX(5px); } }
   /* เริ่มต้นจาง → ผ่านไป 3 วินาทีค่อย ๆ ล่องหน → ชี้เมาส์ที่ข้อนั้นถึงโผล่ */
   .mqa-btn { display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
@@ -180,6 +183,7 @@ CSS_JS = r"""
     mqaCollapseOthers(s);
     mqaMark(s, i, c);
     if (!s.classList.contains("open")) mqaToggle(i);
+    setTimeout(function () { mqaHere(true); }, 10);
     var ans = s.getAttribute("data-ans");
     if (window.mqaWrongMove && ans && c !== ans)
       mqaMovePill(document.querySelector('.mqa-choice.wrong[data-i="' + i + '"]'));
@@ -223,25 +227,55 @@ CSS_JS = r"""
     };
     arm();
   }
-  // ตอบข้อหนึ่งแล้ว → ข้อถัดไปที่ยังไม่ตอบมี 👉 บอกว่าถึงข้อนี้แล้ว
-  function mqaHere() {
-    document.querySelectorAll(".mqa-q.mqa-here").forEach(function (m) { m.classList.remove("mqa-here"); });
-    if (!window.mqaNextMark) return;
+  // ตอบข้อหนึ่งแล้ว → ข้อถัดไปที่ยังไม่ตอบ: สัญลักษณ์ (ชั่วคราว) + เลื่อนหน้าให้เห็น
+  var mqaHereT = null;
+  function mqaHere(scroll) {
+    document.querySelectorAll(".mqa-q.mqa-here").forEach(function (m) { m.classList.remove("mqa-here", "mqa-fade"); });
+    clearTimeout(mqaHereT);
+    if (!window.mqaNextMark && !window.mqaNextScroll) return;
     var slots = Array.prototype.slice.call(document.querySelectorAll(".mqa-slot[data-i]"));
     if (slots.length < 2) return;
     var last = -1;
     slots.forEach(function (sl, k) { if (sl.getAttribute("data-picked")) last = k; });
     if (last < 0) return;
     for (var k = last + 1; k < slots.length; k++) {
-      if (!slots[k].getAttribute("data-picked")) {
-        var m = document.querySelector('.mqa-q[data-i="' + slots[k].getAttribute("data-i") + '"]');
-        if (m) m.classList.add("mqa-here");
-        return;
+      if (slots[k].getAttribute("data-picked")) continue;
+      var ni = slots[k].getAttribute("data-i");
+      var m = document.querySelector('.mqa-q[data-i="' + ni + '"]');
+      if (!m) return;
+      if (window.mqaNextSym) document.documentElement.style.setProperty("--mqa-sym", JSON.stringify(window.mqaNextSym));
+      if (window.mqaNextMark) {
+        m.classList.add("mqa-here");
+        if (window.mqaNextFade) mqaHereT = setTimeout(function () { m.classList.add("mqa-fade"); }, 3000);
       }
+      if (scroll && window.mqaNextScroll) {
+        // ให้โจทย์ข้อถัดไป + ตัวเลือกอยู่บนจอ (เลื่อนน้อยที่สุด เฉลยข้อเดิมยังเห็นได้)
+        setTimeout(function () {
+          var ch = document.querySelectorAll('.mqa-choice[data-i="' + ni + '"]');
+          var lastEl = ch.length ? ch[ch.length - 1] : m;
+          var r = lastEl.getBoundingClientRect(), top = m.getBoundingClientRect().top;
+          if (r.bottom > window.innerHeight - 20) {
+            var dy = Math.min(r.bottom - window.innerHeight + 40, top - 20);   // ไม่ให้โจทย์หลุดขอบบน
+            if (dy > 0) window.scrollBy({top: dy, behavior: "smooth"});
+          }
+        }, 450);
+      }
+      return;
     }
   }
+  // ชี้เมาส์ที่ตัวเลือกของข้อที่มีสัญลักษณ์ (จางไปแล้ว) → โผล่อีก
+  document.addEventListener("mouseover", function (e) {
+    var c = e.target && e.target.closest && e.target.closest(".mqa-choice");
+    if (!c || !window.mqaNextFade) return;
+    var m = document.querySelector('.mqa-q.mqa-here[data-i="' + c.getAttribute("data-i") + '"]');
+    if (m && m.classList.contains("mqa-fade")) {
+      m.classList.remove("mqa-fade");
+      clearTimeout(mqaHereT);
+      mqaHereT = setTimeout(function () { m.classList.add("mqa-fade"); }, 3000);
+    }
+  });
   function mqaMark(s, i, c) {
-    setTimeout(mqaHere, 0);
+    setTimeout(function () { mqaHere(false); }, 0);
     s.setAttribute("data-picked", c);
     var right = s.getAttribute("data-ans");
     document.querySelectorAll('.mqa-choice[data-i="' + i + '"]').forEach(function (el) {
@@ -379,8 +413,11 @@ def on_card_will_show(text, card, kind):
     out = _render_card(text, card, kind)
     if kind in ("reviewQuestion", "reviewAnswer"):
         flag = "true" if on("wrong_move") else "false"
-        nxt = "true" if on("next_marker") else "false"
-        out = f"<script>window.mqaWrongMove={flag};window.mqaNextMark={nxt};</script>" + out
+        import json as _json
+        js = {"mqaWrongMove": on("wrong_move"), "mqaNextMark": on("next_marker"),
+              "mqaNextFade": on("next_marker") and on("next_fade"), "mqaNextScroll": on("next_scroll"),
+              "mqaNextSym": (cfg().get("next_marker_symbol") or "👉")}
+        out = "<script>" + "".join(f"window.{k}={_json.dumps(v)};" for k, v in js.items()) + "</script>" + out
     return out
 
 
@@ -890,8 +927,12 @@ OPTIONS = [
     ("click_choice", "คลิกตัวเลือกเพื่อตอบ",
      "หน้าโจทย์: คลิก ก./ข./ค./ง. ที่คิดว่าถูก → เปิดเฉลยข้อนั้น "
      "ตัวเลือกที่ถูกเป็นสีเขียว ถ้าตอบผิดตัวที่เลือกเป็นสีแดง · ตอบแล้วคลิกซ้ำเพื่อซ่อน/แสดงผลของข้อนั้น", None),
-    ("next_marker", "ตอบแล้ว → ข้อถัดไปมี 👉",
+    ("next_marker", "ตอบแล้ว → ข้อถัดไปมีสัญลักษณ์",
      "การ์ดหลายข้อ: ตอบข้อหนึ่งแล้ว ข้อถัดไปที่ยังไม่ตอบมี 👉 ขยับเบา ๆ บอกว่าถึงข้อนี้แล้ว", "click_choice"),
+    ("next_fade", "สัญลักษณ์แสดงแค่ชั่วคราว",
+     "โผล่ประมาณ 3 วิ แล้วค่อย ๆ จาง · ชี้เมาส์ที่ตัวเลือกข้อนั้น = โผล่อีก", "next_marker"),
+    ("next_scroll", "ตอบแล้วเลื่อนหน้าให้เห็นข้อถัดไป",
+     "การ์ดหลายข้อ: ตอบเสร็จ ถ้าข้อถัดไปอยู่นอกจอ จะเลื่อนลงให้เห็นโจทย์และตัวเลือก (เลื่อนน้อยที่สุด)", "click_choice"),
     ("wrong_move", "ตอบผิด → มีปุ่ม \"↪ ย้ายข้อนี้\" ชั่วคราว",
      "คลิกตัวเลือกผิดแล้วมีปุ่มสีฟ้าต่อท้าย ❌ ประมาณ 4 วิ (ชี้เมาส์ = ค้างไว้) · หายไปแล้วชี้ที่ตัวเลือก ❌ = โผล่อีก · กดแล้วเปิดแผงย้ายข้อ", "click_choice"),
     ("choice_noframe", "ไม่มีกรอบสี เหลือแค่ ✅ ❌",
@@ -1004,6 +1045,17 @@ class SettingsDialog(QDialog):
                 note.setEnabled(parent.isChecked())
                 parent.toggled.connect(box.setEnabled)
                 parent.toggled.connect(note.setEnabled)
+            if key == "next_marker":
+                from aqt.qt import QLineEdit
+                srow = QHBoxLayout()
+                srow.setContentsMargins(24, 0, 0, 10)
+                srow.addWidget(QLabel("สัญลักษณ์"))
+                self.sym = QLineEdit(c.get("next_marker_symbol") or "👉")
+                self.sym.setMaxLength(4)
+                self.sym.setFixedWidth(70)
+                srow.addWidget(self.sym)
+                srow.addStretch(1)
+                lay.addLayout(srow)
             if key == "auto_start":
                 row = QHBoxLayout()
                 row.setContentsMargins(52, 0, 0, 10)
@@ -1064,6 +1116,8 @@ class SettingsDialog(QDialog):
         c = cfg()
         for key, box in self.boxes.items():
             c[KEYS[key]] = box.isChecked()
+        if getattr(self, "sym", None) is not None and self.sym.text().strip():
+            c["next_marker_symbol"] = self.sym.text().strip()
         if getattr(self, "secs", None) is not None:
             c["auto_start_seconds"] = self.secs.value()
             c["auto_start_delay"] = self.wait.value()
@@ -1086,7 +1140,7 @@ _move_act = None
 # หมวดของเมนู / แท็บตั้งค่า (ลำดับตามนี้)
 GROUPS = [
     ("📝 การ์ดข้อสอบ", ["inline", "inline_stealth", "inline_hidebtn", "inline_accordion", "click_choice",
-                       "next_marker", "wrong_move", "choice_noframe", "compact_answer", "split_tool", "word_split"]),
+                       "next_marker", "next_fade", "next_scroll", "wrong_move", "choice_noframe", "compact_answer", "split_tool", "word_split"]),
     ("✏️ ทบทวน / แก้ไข", ["keep_scroll", "edit_here", "deck_tree", "web_search", "due_button", "find_replace"]),
     ("🗂 หน้า Decks", ["decks_hide_empty", "decks_keep_round", "decks_hover_hide", "decks_rounds_only", "deck_scroll",
                       "auto_start", "auto_ignore_move", "auto_next"]),
@@ -1115,6 +1169,54 @@ def _short_title(title):
         if title.startswith(pre):
             return title[len(pre):]
     return title
+
+
+_sym_menu = None
+SYMBOLS = ("👉", "▶", "➜", "•", "⭐", "🔹", "✏️")
+
+
+def _add_symbol_menu(sub):
+    from aqt.qt import QActionGroup
+    global _sym_menu
+    m = sub.addMenu("      สัญลักษณ์")
+    grp = QActionGroup(m)
+    grp.setExclusive(True)
+    for sym in SYMBOLS:
+        a = m.addAction(sym)
+        a.setCheckable(True)
+        a.setData(("sym", sym))
+        grp.addAction(a)
+        a.triggered.connect(lambda _=False, v=sym: _set_symbol(v))
+    m.addSeparator()
+    m.addAction("อื่น ๆ…", _ask_symbol)
+    _sym_menu = m
+
+
+def _set_symbol(v):
+    c = cfg()
+    c["next_marker_symbol"] = v
+    mw.addonManager.writeConfig(ADDON, c)
+    _sync_symbol_menu()
+    redraw_reviewer()
+
+
+def _ask_symbol():
+    from aqt.qt import QInputDialog
+    v, ok = QInputDialog.getText(mw, "สัญลักษณ์ข้อถัดไป", "พิมพ์หรือวางสัญลักษณ์:",
+                                 text=cfg().get("next_marker_symbol") or "👉")
+    if ok and v.strip():
+        _set_symbol(v.strip()[:4])
+
+
+def _sync_symbol_menu():
+    if _sym_menu is None:
+        return
+    cur = cfg().get("next_marker_symbol") or "👉"
+    _sym_menu.menuAction().setText(f"      สัญลักษณ์: {cur}")
+    for a in _sym_menu.actions():
+        d = a.data()
+        if isinstance(d, (tuple, list)) and len(d) == 2 and d[0] == "sym":
+            a.setChecked(d[1] == cur)
 
 
 def _open_ctx_actions():
@@ -1209,6 +1311,7 @@ def _all_actions(menu):
 def _sync_checks():
     try:
         _sync_time_menus()
+        _sync_symbol_menu()
     except Exception:
         pass
     for act in _all_actions(_menu):
@@ -1346,6 +1449,8 @@ def setup_menubar():
                 _add_time_menus(sub)
             if key == "web_search":
                 sub.addAction("      ✎ แก้เมนูคลิกขวา…", _open_ctx_actions)
+            if key == "next_marker":
+                _add_symbol_menu(sub)
         sub.aboutToShow.connect(_sync_checks)
     _menu.addSeparator()
     _menu.addAction("ตั้งค่าเพิ่มเติม…", open_settings)

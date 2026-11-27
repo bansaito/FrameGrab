@@ -111,3 +111,9 @@
 **review_find_replace** – หน้าทบทวน: ⌘F / Ctrl+F ค้นหาและแทนที่ในการ์ด (แทนที่ = แก้ในโน้ตจริง) (true/false)
 
 **next_question_marker** – การ์ดหลายข้อ: ตอบข้อหนึ่งแล้ว ข้อถัดไปที่ยังไม่ตอบมี 👉 (true/false)
+
+**next_marker_fade** – สัญลักษณ์ข้อถัดไปโผล่ชั่วคราวแล้วจาง (true/false)
+
+**next_question_scroll** – ตอบแล้วเลื่อนหน้าให้เห็นข้อถัดไป (true/false)
+
+**next_marker_symbol** – สัญลักษณ์ข้อถัดไป (ค่าเริ่มต้น 👉)
