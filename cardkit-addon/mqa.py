@@ -60,7 +60,7 @@ DEFAULT_ON = {"inline", "inline_stealth", "inline_hidebtn", "inline_accordion",
               "click_choice", "choice_noframe", "hover_open", "keep_scroll", "edit_here",
               "mouse_back", "mouse_mid_quote", "shift_quote",
               "deck_tree", "mac_menubar_fix", "mac_emoji_fix", "deck_scroll", "word_split",
-              "decks_hide_empty", "decks_rounds_only", "start_study_main"}
+              "decks_hide_empty", "start_study_main"}
 
 
 def on(feature):

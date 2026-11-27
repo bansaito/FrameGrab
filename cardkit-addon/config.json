@@ -36,7 +36,7 @@
     "decks_keep_scroll": true,
     "word_card_split": true,
     "decks_hide_empty": true,
-    "decks_rounds_only": true,
+    "decks_rounds_only": false,
     "start_study_main": true,
     "word_split_front_tail": "<br><br><br><br><br>ภาพ+syn",
     "word_split_pad_lines": 8,
