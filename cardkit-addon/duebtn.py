@@ -1,7 +1,9 @@
 """
-แถบด้านบน (Decks Add Browse Stats Sync): ระหว่างท่อง ชี้เมาส์ทางขวาของ Sync → ปุ่ม "📅 ตั้งวันทวน" โผล่
+แถบด้านบน (Decks Add Browse Stats Sync): ระหว่างท่อง ชี้เมาส์ทางขวาของ Sync → ปุ่ม "📅 Set Due Date ⇧⌘D" โผล่
 กด = Set Due Date ของการ์ดที่กำลังท่อง (เหมือน More → Set Due Date / Ctrl+Shift+D)
 """
+
+import sys
 
 from aqt import gui_hooks, mw
 
@@ -30,8 +32,12 @@ def _on_links(links, toolbar):
     if not on("due_button"):
         return
     try:
-        html = toolbar.create_link("ck_set_due", "📅 ตั้งวันทวน", _click,
-                                   tip="Set Due Date ของการ์ดนี้ (Ctrl+Shift+D)", id=_ID)
+        keys = "⇧⌘D" if sys.platform == "darwin" else "Ctrl+Shift+D"
+        label = "📅 Set Due Date"
+        html = toolbar.create_link("ck_set_due", label, _click,
+                                   tip=f"Set Due Date ของการ์ดนี้ ({keys})", id=_ID)
+        html = html.replace(f">{label}</a>", f">{label}<span style=\"opacity:.5;font-size:.8em;"
+                                              f"margin-left:8px\">{keys}</span></a>", 1)
         if mw.state != "review":
             html = html.replace("<a ", '<a style="display:none" ', 1)
         links.append(_CSS + html)
