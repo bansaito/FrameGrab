@@ -13,7 +13,7 @@ from urllib.parse import quote_plus
 from aqt import gui_hooks, mw
 from aqt.qt import (
     QAction, QApplication, QCheckBox, QDialog, QDialogButtonBox, QHBoxLayout, QHeaderView, QLabel,
-    QPushButton, QTableWidget, QTableWidgetItem, QUrl, QVBoxLayout,
+    QPlainTextEdit, QPushButton, QTableWidget, QTableWidgetItem, QUrl, QVBoxLayout,
 )
 from aqt.utils import openLink, tooltip
 
@@ -104,10 +104,11 @@ class ActionsDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent or mw)
         self.setWindowTitle("CardKit · เมนูคลิกขวา")
-        self.resize(900, 360)
+        self.resize(920, 560)
         lay = QVBoxLayout(self)
         tip = QLabel("{text} = ข้อความที่เลือก · {prompt} = prompt ที่เติมข้อความแล้ว · "
-                     "ติ๊ก \"คัดลอก\" = คัดลอก prompt ไว้ให้วางเอง (เช่น Gemini)")
+                     "ติ๊ก \"คัดลอก\" = คัดลอก prompt ไว้ให้วางเอง (เช่น Gemini) · "
+                     "คลิกบรรทัดแล้วแก้ prompt ในกล่องด้านล่างได้หลายบรรทัด")
         tip.setWordWrap(True)
         tip.setStyleSheet("color: gray;")
         lay.addWidget(tip)
@@ -118,11 +119,30 @@ class ActionsDialog(QDialog):
         h.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         h.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         h.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        lay.addWidget(self.t)
+        lay.addWidget(self.t, 3)
+        # กล่องแก้ prompt ของบรรทัดที่เลือก (หลายบรรทัดได้)
+        head = QHBoxLayout()
+        self.plabel = QLabel("prompt ของบรรทัดที่เลือก:")
+        head.addWidget(self.plabel)
+        head.addStretch(1)
+        ins = QPushButton("แทรก {text}")
+        ins.setToolTip("ใส่ตำแหน่งของข้อความที่คลุมดำ")
+        ins.clicked.connect(lambda: self.pe.insertPlainText("{text}"))
+        head.addWidget(ins)
+        lay.addLayout(head)
+        self.pe = QPlainTextEdit()
+        self.pe.setPlaceholderText("เช่น {text}\n\nสร้างภาพประกอบเรื่องข้างบนนี้ ให้จำง่าย")
+        self.pe.textChanged.connect(self._pe_changed)
+        lay.addWidget(self.pe, 2)
+        self._loading = False
+        self.t.currentCellChanged.connect(lambda r, c, pr, pc: self._load_pe(r))
+        self.t.itemChanged.connect(self._item_changed)
         for a in actions():
             self._row(a)
+        if self.t.rowCount():
+            self.t.setCurrentCell(0, 2)
         row = QHBoxLayout()
-        for txt, fn in (("＋ เพิ่มบรรทัด", lambda: self._row({"label": "✨ ใหม่", "url": "", "prompt": "{text}"})),
+        for txt, fn in (("＋ เพิ่มบรรทัด", self._add_row),
                         ("－ ลบบรรทัดที่เลือก", self._del),
                         ("↑", lambda: self._move(-1)), ("↓", lambda: self._move(1)),
                         ("คืนค่าเดิม", self._reset)):
@@ -145,11 +165,43 @@ class ActionsDialog(QDialog):
         box.setChecked(bool(a.get("copy")))
         self.t.setCellWidget(r, 3, box)
 
+    def _load_pe(self, r):
+        self._loading = True
+        it = self.t.item(r, 2) if r >= 0 else None
+        self.pe.setEnabled(it is not None)
+        self.pe.setPlainText(it.text() if it else "")
+        name = self.t.item(r, 0).text() if r >= 0 and self.t.item(r, 0) else ""
+        self.plabel.setText(f"prompt ของ \"{name}\":" if name else "prompt ของบรรทัดที่เลือก:")
+        self._loading = False
+
+    def _pe_changed(self):
+        if self._loading:
+            return
+        r = self.t.currentRow()
+        if r < 0:
+            return
+        it = self.t.item(r, 2)
+        if it is None:
+            it = QTableWidgetItem("")
+            self.t.setItem(r, 2, it)
+        self._loading = True
+        it.setText(self.pe.toPlainText())
+        self._loading = False
+
+    def _item_changed(self, it):
+        # แก้ในตารางตรง ๆ → อัปเดตกล่องใหญ่ด้วย
+        if not self._loading and it.column() in (0, 2) and it.row() == self.t.currentRow():
+            self._load_pe(it.row())
+
     def _get(self, r):
         return {"label": (self.t.item(r, 0).text() if self.t.item(r, 0) else ""),
                 "url": (self.t.item(r, 1).text() if self.t.item(r, 1) else ""),
                 "prompt": (self.t.item(r, 2).text() if self.t.item(r, 2) else ""),
                 "copy": self.t.cellWidget(r, 3).isChecked()}
+
+    def _add_row(self):
+        self._row({"label": "✨ ใหม่", "url": "", "prompt": "{text}"})
+        self.t.setCurrentCell(self.t.rowCount() - 1, 0)
 
     def _del(self):
         r = self.t.currentRow()
