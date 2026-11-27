@@ -63,6 +63,9 @@ mark.ck-hit.cur{background:#f59e0b;color:#111}
       inp.addEventListener('keyup', function(e){ e.stopPropagation(); });
       inp.addEventListener('keypress', function(e){ e.stopPropagation(); });
     });
+    document.addEventListener('keydown', function(e){          // Esc ปิดได้แม้ไม่ได้อยู่ในช่องพิมพ์
+      if (e.key === 'Escape' && bar && bar.style.display === 'block') { e.preventDefault(); e.stopPropagation(); close(); }
+    }, true);
     bar.querySelector('#ck-fp').onclick = function(){ step(-1); };
     bar.querySelector('#ck-fn').onclick = function(){ step(1); };
     bar.querySelector('#ck-fx').onclick = close;
