@@ -21,6 +21,7 @@ from . import scrollkeep  # noqa: F401  (หน้า Decks จำตำแห�
 from . import wordsplit  # noqa: F401  (การ์ดคำศัพท์แยกหน้า/หลัง)
 from . import deckfilter  # noqa: F401  (หน้า Decks ไม่รก)
 from . import autostart  # noqa: F401  (นับ 3 วิแล้วท่อง + ท่องจบไป deck ถัดไป)
+from . import websearch  # noqa: F401  (คลิกขวา → ค้นหาในเว็บ)
 from . import mouse  # noqa: F401  (ปุ่มเมาส์กลาง = ", ปุ่มข้าง = ย้อนกลับ)
 
 mw.addonManager.setConfigUpdatedAction(__name__, drop.reload_config)
