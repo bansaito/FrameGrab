@@ -103,3 +103,5 @@
 **decks_keep_round_set** – หน้า Decks: deck ในชุด Rounds เดียวกันไม่ซ่อน ถ้าในชุดยังมี deck ที่มีการ์ด (true/false)
 
 **toolbar_due_button** – ระหว่างท่อง ชี้เมาส์ขวาของ Sync มีปุ่ม 📅 ตั้งวันทวน (Set Due Date) (true/false)
+
+**context_actions** – บรรทัดในเมนูคลิกขวา [{label, url, prompt, copy}] · {text} = ข้อความที่เลือก · {prompt} = prompt ที่เติมแล้ว (แก้ง่ายกว่าที่ CardKit → แก้เมนูคลิกขวา…)

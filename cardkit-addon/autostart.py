@@ -20,7 +20,7 @@ import os
 from aqt.qt import QApplication, QDialog, QEvent, QMainWindow, QObject, Qt, QTimer
 from aqt.utils import tooltip
 
-from .mqa import cfg, on
+from .mqa import ADDON, cfg, on
 
 TICK_MS = 200
 
@@ -138,6 +138,48 @@ def _log(reason):
         pass
 
 
+# ---------------------------------------------------------------- พัก / สลับเปิดปิด
+
+def pause(minutes):
+    c = cfg()
+    c["auto_pause_until"] = time.time() + minutes * 60
+    mw.addonManager.writeConfig(ADDON, c)
+    if _auto is not None:
+        _auto.reset()
+    tooltip(f"☕ พัก {minutes} นาที · ไม่เข้าท่องเอง", period=1800)
+
+
+def resume():
+    c = cfg()
+    c.pop("auto_pause_until", None)
+    mw.addonManager.writeConfig(ADDON, c)
+    if _auto is not None:
+        _auto.reset()
+    tooltip("เลิกพักแล้ว", period=1200)
+
+
+def paused_left():
+    """เหลือเวลาพักกี่วินาที (0 = ไม่ได้พัก)"""
+    try:
+        return max(0, int(float(cfg().get("auto_pause_until", 0)) - time.time()))
+    except (TypeError, ValueError):
+        return 0
+
+
+def toggle():
+    from .mqa import KEYS
+    c = cfg()
+    key = KEYS["auto_start"]
+    new = not on("auto_start")
+    c[key] = new
+    if new:
+        c.pop("auto_pause_until", None)
+    mw.addonManager.writeConfig(ADDON, c)
+    if _auto is not None:
+        _auto.reset()
+    tooltip("เข้าท่องเอง: " + ("เปิด" if new else "ปิด"), period=1500)
+
+
 def _busy():
     try:
         return bool(mw.progress.busy())
@@ -228,6 +270,10 @@ class _Auto(QObject):
         if self.stopped:
             _log("กด Esc หยุดไว้")
             self._end_run()
+            return
+        if paused_left() > 0:
+            _log("☕ พักอยู่")
+            self.reset()
             return
         why = "กำลัง sync/โหลด" if _busy() else ("ใช้แอปอื่นอยู่" if _app_inactive() else _other_window_in_front())
         if why:

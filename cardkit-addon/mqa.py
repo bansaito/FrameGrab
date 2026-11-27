@@ -914,9 +914,9 @@ OPTIONS = [
     ("decks_hover_hide", "หน้า Decks: ปุ่ม − / + ตอนชี้เมาส์",
      "ชี้ที่ deck มีปุ่ม − จาง ๆ หน้าชื่อ กดแล้วซ่อนแถวนั้นและแถวถัดไปทั้งหมด (อยู่เหนือกลุ่มที่ต้องท่อง = ซ่อนขึ้นบน) "
      "· แถวติดกับที่ซ่อนมีปุ่ม + เปิดคืน", None),
-    ("web_search", "คลิกขวา → ค้นหาในเว็บ",
-     "เลือกข้อความแล้วคลิกขวา มี \"🔍 ค้นหา … ในเว็บ\" กดแล้วเปิด Google ในเบราว์เซอร์ทันที "
-     "(หน้าการ์ดและช่องแก้การ์ด)", None),
+    ("web_search", "คลิกขวา → ค้นหา / สร้างภาพ (ตั้งเองได้)",
+     "เลือกข้อความแล้วคลิกขวา มี \"🔍 ค้นหาในเว็บ\" และ \"🎨 สร้างภาพ\" (Gemini) "
+     "· เพิ่ม/แก้บรรทัดและ prompt เองได้ที่ \"แก้เมนูคลิกขวา…\"", None),
     ("decks_keep_round", "deck ในชุด Rounds เดียวกันไม่ซ่อน",
      "ถ้ามี deck ในชุดไหนยังมีการ์ด deck อื่นในชุดนั้นจะโชว์ด้วย (ถึงจะเป็น 0) ให้เห็นครบทั้งรอบ", "decks_hide_empty"),
     ("due_button", "ปุ่ม 📅 ตั้งวันทวน บนแถบด้านบน",
@@ -1010,6 +1010,9 @@ class SettingsDialog(QDialog):
         hint.setWordWrap(True)
         hint.setStyleSheet("color: gray; font-size: 11px;")
         lay.addWidget(hint)
+        cb = QPushButton("🖱  แก้เมนูคลิกขวา…")
+        cb.clicked.connect(lambda: __import__(__name__.rsplit(".", 1)[0] + ".websearch", fromlist=["x"]).open_dialog(self))
+        lay.addWidget(cb)
         kb = QPushButton("⌨  ตั้งคีย์ลัด…")
         kb.setToolTip("เปลี่ยนปุ่มลัดของปุ่มลอย Rounds เช่น อีก 1 รอบ / ย้อน / เริ่มใหม่")
 
@@ -1080,6 +1083,11 @@ def _short_title(title):
         if title.startswith(pre):
             return title[len(pre):]
     return title
+
+
+def _open_ctx_actions():
+    from . import websearch
+    websearch.open_dialog(mw)
 
 
 _time_menus = []      # [(เมนูย่อย, config key, ชื่อ, ค่าเริ่มต้น)]
@@ -1304,6 +1312,8 @@ def setup_menubar():
             act.triggered.connect(lambda checked, k=key: _toggle(k, checked))
             if key == "auto_start":
                 _add_time_menus(sub)
+            if key == "web_search":
+                sub.addAction("      ✎ แก้เมนูคลิกขวา…", _open_ctx_actions)
         sub.aboutToShow.connect(_sync_checks)
     _menu.addSeparator()
     _menu.addAction("ตั้งค่าเพิ่มเติม…", open_settings)

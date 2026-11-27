@@ -18,6 +18,7 @@ CFG = "shortcuts"
 COMMANDS = [
     ("menu", "เปิด/ปิดเมนูปุ่มลอย (หน้า Decks / หน้า deck)", ["G"]),
     ("plus_now", "อีก 1 รอบ ทันที ไม่ต้องเปิดเมนู", ["Shift+G"]),
+    ("auto_toggle", "เปิด/ปิด เข้าท่องเอง (หน้า Decks)", ["P"]),
     ("plus", "ในเมนู: อีก 1 รอบ", ["F", "Space"]),
     ("undo", "ในเมนู: ↶ ย้อน", ["Z"]),
     ("reset", "ในเมนู: ↺ เริ่มใหม่ชุดนี้", ["R"]),
@@ -137,7 +138,7 @@ class ShortcutDialog(QDialog):
     def accept(self):
         new = {cid: [k for k in (a.text(), b.text()) if k] for cid, (a, b) in self.edits.items()}
         # ปุ่มซ้ำ: เมนู/นอกเมนู แยกกัน (คำสั่ง "ในเมนู" ซ้ำกันเองไม่ได้ · นอกเมนูซ้ำกันเองไม่ได้)
-        outside = {"menu", "plus_now"}
+        outside = {"menu", "plus_now", "auto_toggle"}
         for group in (outside, set(new) - outside):
             seen = {}
             for cid in group:

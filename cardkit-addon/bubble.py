@@ -12,7 +12,7 @@
 from aqt import gui_hooks, mw
 from aqt.qt import (
     QColor, QEvent, QFrame, QHBoxLayout, QLabel, QPainter, QPen, QPoint, QPropertyAnimation, QPushButton,
-    QRectF, QScrollArea, Qt, QTimer, QVBoxLayout, QWidget,
+    QMenu, QRectF, QScrollArea, Qt, QTimer, QVBoxLayout, QWidget,
 )
 
 from . import rounds as R
@@ -405,6 +405,13 @@ class Menu(QFrame):
         else:
             allb = _chip("↺", "#2A2F38", "#374151", "เริ่มใหม่ทุกชุด: ทุกชุดกลับเป็นค่าเริ่มต้น เช่น 2/1/1 (Shift+R)")
             allb.clicked.connect(lambda: self._do_all(R.reset_all))
+        from . import autostart as AS
+        left = AS.paused_left()
+        cup = _chip("☕", "#3B2F1E" if left else "#2A2F38", "#4B3A22" if left else "#374151",
+                    (f"พักอยู่ อีก {left // 60 + 1} นาที · คลิกเพื่อเลิกพัก/เปลี่ยน" if left
+                     else "พัก: ไม่เข้าท่องเองชั่วคราว"))
+        cup.clicked.connect(lambda: self._pause_menu(cup))
+        bottom.addWidget(cup)
         bottom.addWidget(allb)
         bottom.addWidget(gear)
         bottom.addWidget(close)
@@ -414,6 +421,16 @@ class Menu(QFrame):
         for w in self.findChildren(QPushButton):
             w.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+
+    def _pause_menu(self, btn):
+        from . import autostart as AS
+        m = QMenu(self)
+        for mins in (10, 30, 60):
+            m.addAction(f"☕ พัก {mins} นาที", lambda mins=mins: (AS.pause(mins), self.close()))
+        if AS.paused_left():
+            m.addSeparator()
+            m.addAction("เลิกพัก", lambda: (AS.resume(), self.close()))
+        m.exec(btn.mapToGlobal(btn.rect().bottomLeft()))
 
     # ---- คีย์ลัดตอนเมนูเปิด
     def keyPressEvent(self, ev):
@@ -646,7 +663,10 @@ def _setup_g_shortcut(rebuild=False):
         for st in ("deckBrowser", "overview"):
             keymap.unregister_state(st, _km_keys)
         _qs, _km_keys = [], []
-        for cmd, fn in (("menu", _on_g), ("plus_now", _on_shift_g)):
+        def _auto_toggle():
+            from . import autostart as AS
+            AS.toggle()
+        for cmd, fn in (("menu", _on_g), ("plus_now", _on_shift_g), ("auto_toggle", _auto_toggle)):
             for key in SC.get(cmd):
                 q = QShortcut(QKeySequence(key), mw)
                 q.activated.connect(fn)
