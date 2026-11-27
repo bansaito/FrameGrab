@@ -176,6 +176,15 @@ CSS_JS = r"""
     if (window.mqaWrongMove && ans && c !== ans)
       mqaMovePill(document.querySelector('.mqa-choice.wrong[data-i="' + i + '"]'));
   }
+  // ปุ่มหายไปแล้ว → ชี้เมาส์ที่ตัวเลือกที่ตอบผิด (❌) = เรียกปุ่มกลับมา
+  if (!window.mqaPillHover) {
+    window.mqaPillHover = 1;
+    document.addEventListener("mouseover", function (e) {
+      if (!window.mqaWrongMove || document.getElementById("mqa-pill")) return;
+      var el = e.target && e.target.closest && e.target.closest(".mqa-choice.wrong");
+      if (el && !el.classList.contains("off")) mqaMovePill(el);
+    });
+  }
   // ตอบผิด → ปุ่ม "↪ ย้ายข้อนี้" โผล่ชั่วคราวต่อท้ายตัวเลือกที่ผิด (ชี้เมาส์ = ค้างไว้) แล้วจางหาย
   function mqaMovePill(el) {
     var old = document.getElementById("mqa-pill"); if (old) old.remove();
@@ -855,7 +864,7 @@ OPTIONS = [
      "หน้าโจทย์: คลิก ก./ข./ค./ง. ที่คิดว่าถูก → เปิดเฉลยข้อนั้น "
      "ตัวเลือกที่ถูกเป็นสีเขียว ถ้าตอบผิดตัวที่เลือกเป็นสีแดง · ตอบแล้วคลิกซ้ำเพื่อซ่อน/แสดงผลของข้อนั้น", None),
     ("wrong_move", "ตอบผิด → มีปุ่ม \"↪ ย้ายข้อนี้\" ชั่วคราว",
-     "คลิกตัวเลือกผิดแล้วมีปุ่มสีฟ้าโผล่ด้านล่างประมาณ 4 วิ (ชี้เมาส์ = ค้างไว้) กดแล้วเปิดแผงย้ายข้อ", "click_choice"),
+     "คลิกตัวเลือกผิดแล้วมีปุ่มสีฟ้าต่อท้าย ❌ ประมาณ 4 วิ (ชี้เมาส์ = ค้างไว้) · หายไปแล้วชี้ที่ตัวเลือก ❌ = โผล่อีก · กดแล้วเปิดแผงย้ายข้อ", "click_choice"),
     ("choice_noframe", "ไม่มีกรอบสี เหลือแค่ ✅ ❌",
      "ตัวเลือกที่ตอบไม่มีกล่องสีเขียว/แดง มีแค่อีโมจิต่อท้าย", "click_choice"),
     ("compact_answer", "ย่อเฉลยเหลือแค่บรรทัดคำตอบ",
